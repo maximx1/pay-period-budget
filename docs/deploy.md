@@ -47,10 +47,16 @@ Everything below is run on the server, in that folder.
 cp .env.docker.example .env
 ```
 
+If an AI assistant is doing this for you, give it [deploy-agent.md](deploy-agent.md)
+instead: the same steps, written as instructions with a check after each one.
+
 Edit `.env` and set **`APP_URL`** to the address you will type into the browser, for
 example `https://budget.example.com`. It has to match exactly (scheme, host, and port if
 there is one): the server refuses changes that come from any other address, which is what
 stops another website from acting as you.
+
+The Android app's own origin, `https://localhost`, is allowed as well by default, so the
+phone app works without further setup. `APP_ALSO_ALLOW` in `.env` changes that.
 
 ## 4. Start it
 

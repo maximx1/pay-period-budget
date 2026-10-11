@@ -32,7 +32,9 @@ export async function parseJson<T extends z.ZodType>(c: Context, schema: T): Pro
 
 export function clientIp(c: Context, trustProxy: boolean): string {
   if (trustProxy) {
-    const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+    // A proxy appends the address it saw to whatever the visitor sent, so only the last
+    // entry can be believed; the first is free for the visitor to forge.
+    const forwarded = c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
     if (forwarded) return forwarded;
   }
   try {

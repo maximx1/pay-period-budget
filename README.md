@@ -97,7 +97,8 @@ The same web app wrapped with [Capacitor](https://capacitorjs.com). The project 
 
 **The server has to allow the app.** The app's pages are served from `https://localhost`
 inside the phone, so that origin must be in the server's `APP_ORIGINS`, next to the web
-address:
+address. The Docker setup adds it by default (`APP_ALSO_ALLOW` in `.env.docker.example`).
+Without Docker:
 
 ```
 APP_ORIGINS=https://budget.example.com,https://localhost
@@ -105,18 +106,22 @@ APP_ORIGINS=https://budget.example.com,https://localhost
 
 **Build and install**
 
-1. Copy `.env.android.example` to `.env.android` and set `VITE_API_BASE_URL` to the server.
-2. `npm run build:android` builds the web app into `dist/android` and copies it into the
+1. `npm run build:android` builds the web app into `dist/android` and copies it into the
    Android project. Run it again after every change to the web code.
-3. `npm run open:android` opens the project in Android Studio; press Run. Or, from
+2. `npm run open:android` opens the project in Android Studio; press Run. Or, from
    `android/`, `./gradlew installDebug` installs on the connected device.
+
+**Connecting it to a server.** The first time it opens, the app asks for the server's
+address: type what you open in a browser, for example `https://budget.example.com`. It
+checks that a budget server answers there and remembers it. "Change server" under the
+sign-in form asks again. Only `https://` addresses are accepted.
 
 **Fingerprint unlock.** On a phone with a fingerprint or face enrolled, the app offers once
 to unlock that way. After that the password is only needed if you log out, the session
 ends, or every fingerprint is removed from the phone. Settings → App lock turns it on or off.
 
-**Against the API on this machine.** A debug build may use plain HTTP to reach the
+**Against the API on this machine.** A debug build may also use plain HTTP to reach the
 development server; a release build never can. Put `https://localhost` in `APP_ORIGINS` in
-`.env`, start `npm run dev`, and set `VITE_API_BASE_URL` to `http://10.0.2.2:8787` for an
-emulator, or to `http://127.0.0.1:8787` for a phone on USB after
-`adb reverse tcp:8787 tcp:8787`.
+`.env`, start `npm run dev`, run `adb reverse tcp:8787 tcp:8787`, and connect the app to
+`http://127.0.0.1:8787` (an emulator can use `http://10.0.2.2:8787` without `adb reverse`).
+`.env.android.example` shows how to build that address in so the app does not ask.

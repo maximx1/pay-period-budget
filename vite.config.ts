@@ -1,16 +1,13 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig } from "vite";
 
 const apiTarget = `http://localhost:${process.env.API_PORT ?? 8787}`;
 
+// `--mode android` builds the copy that ships inside the phone app, into its own folder.
+// VITE_API_BASE_URL in .env.android is optional there: without it the app asks for the
+// server's address the first time it is opened.
 export default defineConfig(({ mode }) => {
-  // `--mode android` builds the copy that ships inside the phone app. It is not served by
-  // the API, so it has to be told where the API is.
-  if (mode === "android" && !loadEnv(mode, process.cwd(), "VITE_").VITE_API_BASE_URL) {
-    throw new Error("Set VITE_API_BASE_URL in .env.android first (copy .env.android.example).");
-  }
-
   return {
     plugins: [react(), tailwindcss()],
     build: {

@@ -294,3 +294,23 @@ Still to check, with a fingerprint enrolled (emulator first, then the Pixel):
 6. Signing the phone out from the web's Settings forces a password sign-in.
 7. Turning it off in Settings: reopening goes straight in with no prompt.
 
+**Added 2026-10-11: the app asks for its server.** At the owner's request, so one build
+works against whatever address the server ends up at.
+
+- `src/client/lib/serverUrl.ts` holds the API's address. On the web it is the page's own
+  origin as before. In the app it is what the user typed, kept in preferences
+  (`server.url`); `VITE_API_BASE_URL` is now only an optional starting value and the
+  Android build no longer requires it.
+- `ServerGate` (outermost in `main.tsx`) shows "Connect to your server" until an address
+  is set. `parseServerUrl` reduces what was typed to an origin and insists on `https://`,
+  except `http://` to `localhost`, `127.0.0.1` and `10.0.2.2` for development.
+  `probeServer` in `api.ts` then requires `/api/auth/config` to answer like this app.
+- "Change server" under the sign-in form (app only) forgets the address and the sign-in.
+- A browser reports a server that does not allow the app's origin the same way as no
+  server at all, so the error says both are possible.
+- Checked on the emulator with a build that has no address built in: an `http://` address
+  is refused, an unrelated `https://` site is reported as unreachable, the development
+  server connects, and Change server asks again with the old address filled in. Plain
+  http to `127.0.0.1` works without `allowMixedContent`, which stays off in that build.
+- `compose.yaml` now allows `https://localhost` by default (`APP_ALSO_ALLOW`).
+

@@ -12,7 +12,7 @@ Kick-off prompt for the next session:
 ## Where things stand
 
 - Repository: `github.com/maximx1/pay-period-budget` (public), branch `main`.
-- `npm run check` passes: 569 tests, 23 files. `npm run build` is clean.
+- `npm run check` passes: 593 tests, 25 files. `npm run build` is clean.
 - The web app is complete for daily use: accounts and sign-in, budget setup, pay periods,
   transactions, recurring bills and income, period adjustments, manual ordering, settings.
 - It has only ever run on the development machine. Nothing is deployed.
@@ -39,8 +39,10 @@ Kick-off prompt for the next session:
 until this exists, so it comes before phase 8.
 
 **Decided 2026-10-11:** the owner already runs nginx on a server, so this is the "existing
-reverse proxy" route in the guide. Deployment waits until the app is complete; the owner
-said not to work on it from the Mac.
+reverse proxy" route in the guide. The owner is doing it now, with an AI assistant on the
+server following `docs/deploy-agent.md`, and is arranging the domain and the nginx site
+separately. Once it is up, the Android app only needs that address typed into its
+"Connect to your server" screen.
 
 After the first account exists: set `ALLOW_REGISTRATION=false`.
 

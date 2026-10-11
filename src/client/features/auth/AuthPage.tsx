@@ -2,9 +2,11 @@ import { Wallet } from "lucide-react";
 import { Navigate, NavLink } from "react-router";
 import { Card } from "../../components/ui/Card.tsx";
 import { cn } from "../../lib/cn.ts";
+import { isNative } from "../../lib/platform.ts";
 import { useDocumentTitle } from "../../lib/useDocumentTitle.ts";
 import { LoginForm } from "./LoginForm.tsx";
 import { RegisterForm } from "./RegisterForm.tsx";
+import { ConnectedServer } from "./ServerGate.tsx";
 import { useRegistrationOpen } from "./session.ts";
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
@@ -46,6 +48,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           )}
           {mode === "login" ? <LoginForm /> : <RegisterForm />}
         </Card>
+        {isNative && <ConnectedServer />}
       </div>
     </main>
   );

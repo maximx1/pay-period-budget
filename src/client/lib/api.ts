@@ -1,9 +1,8 @@
 import type { ApiErrorBody, ApiErrorCode } from "../../shared/api.ts";
 import { isNative } from "./platform.ts";
+import { getServerUrl } from "./serverUrl.ts";
 import { clearToken, getToken } from "./sessionStore.ts";
 
-// Empty on the web (same origin as the API). The Android build points this at the server.
-const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -33,7 +32,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   let response: Response;
   try {
-    response = await fetch(BASE_URL + path, {
+    response = await fetch(getServerUrl() + path, {
       method,
       credentials: isNative ? "omit" : "include",
       headers,
@@ -61,6 +60,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     onUnauthenticated?.();
   }
   throw error;
+}
+
+/**
+ * Whether a Pay Period Budget server answers at `baseUrl`, before the app commits to it.
+ * `unreachable` covers no connection, no HTTPS, and a server that does not allow this app.
+ */
+export async function probeServer(baseUrl: string): Promise<"ok" | "unreachable" | "not-a-budget-server"> {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/auth/config`, { credentials: "omit", signal: AbortSignal.timeout(10_000) });
+  } catch {
+    return "unreachable";
+  }
+  const body = (await response.json().catch(() => null)) as { registrationOpen?: unknown } | null;
+  return response.ok && typeof body?.registrationOpen === "boolean" ? "ok" : "not-a-budget-server";
 }
 
 export const api = {

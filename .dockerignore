@@ -9,5 +9,6 @@ backups
 !.env.example
 !.env.docker.example
 .claude
+android
 docs
 *.md

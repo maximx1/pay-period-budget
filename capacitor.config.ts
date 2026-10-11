@@ -2,6 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 import { loadEnv } from "vite";
 
 // `cap sync` runs straight after the Android build, so this reads the same .env.android.
+// The address there is only a default the app starts with; it is usually set for development.
 const apiUrl = loadEnv("android", process.cwd(), "VITE_").VITE_API_BASE_URL ?? "";
 
 const config: CapacitorConfig = {

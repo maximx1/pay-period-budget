@@ -18,8 +18,9 @@ services:
     # A tiny init process, so stop signals reach the server and it exits promptly.
     init: true
     environment:
-      # The address you type into the browser. Requests from anywhere else are refused.
-      APP_ORIGINS: ${APP_URL:?Set APP_URL in .env to the address you will open the app at, for example https://budget.example.com}
+      # The address you type into the browser, plus the Android app's own origin. Requests
+      # from anywhere else are refused.
+      APP_ORIGINS: "${APP_URL:?Set APP_URL in .env to the address you will open the app at, for example https://budget.example.com},${APP_ALSO_ALLOW-https://localhost}"
       TRUST_PROXY: ${TRUST_PROXY:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}

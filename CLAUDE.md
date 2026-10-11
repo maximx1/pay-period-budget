@@ -24,7 +24,7 @@ touching periods, transactions or recurring items.
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
 | `npm run db:backup -- <file>` | Write a consistent copy of the database |
-| `npm run build:android` | Build the client into `dist/android` with the API address from `.env.android`, then copy it into `android/` |
+| `npm run build:android` | Build the client into `dist/android`, then copy it into `android/`. `.env.android` may give it a server address to start with |
 | `npm run open:android` | Open `android/` in Android Studio |
 
 Migrations are applied automatically when the server (or a test) opens the database.
@@ -92,7 +92,8 @@ android/      Capacitor's Android project. Generated once, then edited by hand; 
   (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
 - The Android app runs this same client. Branch on `isNative` from `lib/platform.ts`, and
   keep anything only the app needs (Capacitor plugins) in `lib/nativeShell.ts`, which a
-  browser never downloads. The session token is touched only through `lib/sessionStore.ts`.
+  browser never downloads. The session token is touched only through `lib/sessionStore.ts`,
+  and the server's address only through `lib/serverUrl.ts` (the app asks for it at first run).
 - Inside authenticated routes get the user with `useCurrentUser()`.
 - "Today" on the client is `todayIn(budget.timezone, new Date())` using `useBudget()`, never
   the device's own date.
