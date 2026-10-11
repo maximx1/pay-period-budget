@@ -12,5 +12,6 @@ export function toTransaction(record: TransactionRecord): Transaction {
     paidAt: record.paidAt?.toISOString() ?? null,
     note: record.note,
     sortOrder: record.sortOrder,
+    recurringId: record.recurringId,
   };
 }

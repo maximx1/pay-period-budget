@@ -198,14 +198,17 @@ Occurrences are `firstDueDate` + k × interval units, for k = 0, 1, 2 …, never
 - `month`: add `k × interval` months to `firstDueDate`, clamping the day. "The 25th of
   every month" = unit month, interval 1, first due on a 25th.
 - `year`: add `k × interval` years, clamping Feb 29 to Feb 28.
-- `period`: one occurrence on the start date of every period on or after `firstDueDate`
-  (interval ignored). Meant for the paycheck.
+- `period`: one occurrence per period, dated on the period's first day, in the period that
+  *contains* `firstDueDate` and in every later one (interval ignored). It stops with periods
+  that start after `endDate`. Meant for the paycheck: an item first due mid-period still
+  shows up in that period, per decision 7.
 
 ### Turning occurrences into transactions
 
 An occurrence becomes a transaction: `name` = the item's name, amount = default amount with
 the sign for its kind, `occursAt` = occurrence date at `00:00`, `status` = `upcoming`,
 `recurringId` and `occurrenceDate` set. A unique index on `(recurringId, occurrenceDate)`
+(one-off transactions have a null `recurringId`, which a unique index ignores)
 makes this idempotent; insert with "do nothing on conflict".
 
 It happens at exactly two moments:
@@ -256,7 +259,7 @@ transactions       id, user_id → users, name, amount_cents, occurs_at, status,
                    sort_order, note, recurring_id → recurring_items (set null),
                    occurrence_date, created_at, updated_at
                    index (user_id, occurs_at)
-                   unique (recurring_id, occurrence_date) where recurring_id is not null
+                   unique (recurring_id, occurrence_date)   -- nulls don't collide
 recurring_items    id, user_id → users, name, description, kind, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    created_at, updated_at

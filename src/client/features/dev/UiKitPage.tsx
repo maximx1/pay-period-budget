@@ -11,6 +11,8 @@ import { Fab } from "../../components/ui/Fab.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
+import { SelectField } from "../../components/ui/SelectField.tsx";
+import { TextAreaField } from "../../components/ui/TextAreaField.tsx";
 import { PasswordField, TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 
@@ -69,6 +71,16 @@ export function UiKitPage() {
             value={kind}
             onChange={setKind}
           />
+          <SelectField
+            label="Repeats"
+            options={[
+              { value: "month", label: "months" },
+              { value: "week", label: "weeks" },
+            ]}
+          />
+          <div className="sm:col-span-2">
+            <TextAreaField label="Description" hint="Free text; links become clickable." />
+          </div>
         </Card>
       </Section>
 

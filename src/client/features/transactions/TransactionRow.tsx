@@ -1,4 +1,4 @@
-import { Circle, CircleCheck } from "lucide-react";
+import { Circle, CircleCheck, Repeat } from "lucide-react";
 import { formatTime } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
@@ -38,7 +38,12 @@ export function TransactionRow({ transaction, onToggle, onEdit }: TransactionRow
         className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
       >
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium text-fg">{name}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-medium text-fg">{name}</span>
+            {transaction.recurringId && (
+              <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="From a recurring item" />
+            )}
+          </span>
           {details && <span className="block truncate text-sm text-muted">{details}</span>}
         </span>
         <span className={cn("shrink-0 font-semibold tabular-nums", income ? "text-primary" : "text-fg")}>

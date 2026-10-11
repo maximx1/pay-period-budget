@@ -30,7 +30,7 @@ export function createPeriodService(deps: {
   now?: () => Date;
   /**
    * Runs inside the generating transaction for each period as it is created, before the
-   * next one is derived from it. Phase 5 uses this to add recurring items' transactions.
+   * next one is derived from it. The app uses this to add recurring items' transactions.
    */
   onPeriodCreated?: (repos: Repos, period: PeriodRecord) => Promise<void>;
 }) {
@@ -244,6 +244,11 @@ export function createPeriodService(deps: {
       const budget = await loadBudget(store, userId);
       const today = todayIn(budget.timezone, now());
       return (await containingOrCreate(userId, budget, date, today)).id;
+    },
+
+    /** Today's date in the user's budget time zone. Works on the store or inside a transaction. */
+    async today(repos: Repos, userId: string): Promise<LocalDate> {
+      return todayIn((await loadBudget(repos, userId)).timezone, now());
     },
 
     /**

@@ -32,9 +32,9 @@ different app.
 | [2](phase-02-app-shell.md) | App shell: side panel, routing, UI primitives | Done | n/a |
 | [3](phase-03-periods.md) | Budget setup and the period engine | Done | n/a |
 | [4](phase-04-transactions.md) | Transactions and the home view | Done | n/a |
-| [5](phase-05-recurring.md) | Recurring items (bills and income) | Ready | Sonnet, Opus review of 5.3 |
-| [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready after 5 | Opus, or Sonnet with Opus review |
-| [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready after 5 | Sonnet |
+| [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
+| [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready | Opus, or Sonnet with Opus review |
+| [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready | Sonnet |
 | [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready after 7 | Sonnet for 8.1 to 8.3, Opus for 8.4 |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, deploy, iOS | Not planned in detail | n/a |
 
@@ -87,6 +87,18 @@ different app.
   another period goes there, creating the period if needed.
 - Read the implementation notes at the bottom of `phase-04-transactions.md` before phase 5.
 
+### What phase 5 delivered
+
+- Recurrence maths: every n weeks, months or years, or every pay period
+  (`src/shared/recurrence.ts`).
+- `recurring_items` table and `/api/recurring` (list, create, preview, update, delete, end).
+- Occurrences become upcoming transactions when a period is generated and when an item is
+  created, exactly once each. Creating an item with a past first due date back-fills
+  earlier periods; the dialog previews and warns first.
+- Recurring page: filterable card grid, add / edit dialog, end and delete, descriptions
+  with clickable links.
+- Read the implementation notes at the bottom of `phase-05-recurring.md` before phase 6.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -105,8 +117,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 5.1 from
-> docs/plan/phase-05-recurring.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 6.1 from
+> docs/plan/phase-06-period-adjustments.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

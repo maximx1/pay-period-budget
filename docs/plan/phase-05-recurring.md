@@ -18,7 +18,7 @@ nav label "Recurring". Do not call them accounts; that word belongs to a later f
 
 ### 5.1 Recurrence math (pure)
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/shared/recurrence.ts`, `src/shared/recurrence.test.ts`.
 
@@ -54,7 +54,7 @@ in and out of range; every `describeRecurrence` example above.
 
 ### 5.2 Tables, repository and CRUD endpoints
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/server/db/schema.ts`, migration `--name recurring_items`,
 `src/server/repos/types.ts`, new `src/server/repos/sqlite/recurring.ts`,
@@ -91,7 +91,7 @@ passes `endDate`; deleting an item leaves a transaction that pointed at it in pl
 
 ### 5.3 Generating transactions from recurring items
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/server/services/recurring.ts`, `src/server/services/periods.ts`,
 new `src/server/services/materialize.ts`, `src/server/routes/recurring.ts`,
@@ -155,7 +155,7 @@ test), including when `firstDueDate` is edited.
 
 ### 5.4 Recurring page
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/recurring/api.ts`, `RecurringCard.tsx`,
 `RecurringDialog.tsx`, `Linkified.tsx`; new `src/shared/links.ts`,
@@ -200,4 +200,39 @@ hidden until the toggle is on.
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+Completed 2026-10-10. Where the build differs from the task text above, this section wins.
+
+- **"Every pay period" means the period containing the first due date and every later
+  one**, dated on each period's first day. The task text said "periods on or after the
+  first due date", which would have skipped the current period for an item added
+  mid-period. `domain.md` is updated.
+- **The unique index on `(recurring_id, occurrence_date)` is a plain one**, not partial.
+  One-off transactions have a null `recurring_id`, and nulls never collide.
+- **Hand-fixed migration:** drizzle-kit generated the `recurring_id` column without its
+  `ON DELETE set null`. `0003_recurring_items.sql` was corrected by hand (the snapshot was
+  already right). Check generated SQL for foreign-key actions whenever a column with a
+  reference is *added* to an existing table.
+- **`materializeInPeriod` returns `{ count, sumCents, dates }`** and takes
+  `{ dryRun: true }` for the preview. `materializeAllInPeriod` is what `app.ts` passes to
+  the period service as `onPeriodCreated`.
+- **`periods.today(repos, userId)`** gives today in the budget's time zone and works on
+  the store or inside a transaction.
+- **Patch validation:** the end date is checked against the first due date only when the
+  patch touches one of them, because "End this" can legitimately leave an item whose end
+  date (today) is before a first due date that was still in the future. Editing such an
+  item in the dialog asks for the end date to be cleared or moved first.
+- **Ending an item that already ended** keeps its earlier end date.
+- **New primitives:** `SelectField`, `TextAreaField` and the `Field` wrapper they share
+  (label, hint, error), all on `/dev/ui`. `lib/useDebouncedValue.ts` debounces the preview.
+- **Dialog wording:** the type toggle reads "Bill / Income"; the schedule row is
+  "Every [n] [months | weeks | years | pay period]", with the number hidden for pay period.
+  A sentence under it reads the rule back ("Every 2 weeks on Saturday").
+- **The filter bar only appears once there is at least one item**; with none, the page is
+  a single empty state with the Add button.
+- Home rows from a recurring item carry a small repeat icon.
+- Checked in the browser at 375px and 1024px, dark and light: adding with the live
+  schedule sentence and preview, the back-fill warning for a past first due date, links in
+  a description (two links, sentence punctuation and brackets left outside them), the new
+  transaction appearing on Home without a reload, All / Bills / Income, search, Show
+  archived, the description "more" toggle, the edit dialog prefilled, and "End this" with
+  its upcoming transaction removed.

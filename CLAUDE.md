@@ -15,7 +15,7 @@ touching periods, transactions or recurring items.
 | `npm run dev` | API on :8787 (`tsx watch`) + Vite on :5173, which proxies `/api` |
 | `npm run check` | Typecheck + all tests. Must pass before a task is done |
 | `npm run test:watch` | Vitest in watch mode |
-| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts` |
+| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before |
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
 

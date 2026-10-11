@@ -138,3 +138,30 @@ const hourMinute = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "nu
 export function formatTime(dateTime: LocalDateTime): string {
   return hourMinute.format(new Date(`${dateTime}:00Z`));
 }
+
+const weekdayLong = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long" });
+
+/** "Saturday" */
+export function formatWeekday(date: LocalDate): string {
+  return weekdayLong.format(toUtc(date));
+}
+
+/** "Mar 15" */
+export function formatMonthDay(date: LocalDate): string {
+  return monthDay.format(toUtc(date));
+}
+
+/** "Oct 12, 2027" */
+export function formatLongDate(date: LocalDate): string {
+  return monthDayYear.format(toUtc(date));
+}
+
+/** Day of the month, 1 to 31. */
+export function dayOfMonth(date: LocalDate): number {
+  return Number(date.slice(8, 10));
+}
+
+/** Whole calendar months from `from` to `to`, ignoring the day: Jan 31 to Feb 1 is 1. */
+export function diffCalendarMonths(from: LocalDate, to: LocalDate): number {
+  return (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
+}

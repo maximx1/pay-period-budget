@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Db } from "../../db/client.ts";
 import type { DataStore, Repos } from "../types.ts";
 import { createPeriodRepo } from "./periods.ts";
+import { createRecurringRepo } from "./recurring.ts";
 import { createScheduleRepo } from "./schedules.ts";
 import { createSessionRepo } from "./sessions.ts";
 import { createSettingsRepo } from "./settings.ts";
@@ -16,6 +17,7 @@ function createRepos(db: Db): Repos {
     schedules: createScheduleRepo(db),
     periods: createPeriodRepo(db),
     transactions: createTransactionRepo(db),
+    recurring: createRecurringRepo(db),
   };
 }
 

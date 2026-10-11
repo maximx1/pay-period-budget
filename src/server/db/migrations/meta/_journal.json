@@ -22,6 +22,13 @@
       "when": 1791680829781,
       "tag": "0002_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791681590961,
+      "tag": "0003_recurring_items",
+      "breakpoints": true
     }
   ]
 }

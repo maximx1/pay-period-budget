@@ -10,9 +10,12 @@ import { requireAuth } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
+import { recurringRoutes } from "./routes/recurring.ts";
 import { transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
+import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
+import { createRecurringService } from "./services/recurring.ts";
 import { createTransactionService } from "./services/transactions.ts";
 
 export type AppDeps = {
@@ -25,8 +28,15 @@ export type AppDeps = {
 
 export function createApp({ store, config, now, staticDir }: AppDeps) {
   const auth = createAuthService({ store, sessionTtlMs: config.sessionTtlMs, now });
-  const periods = createPeriodService({ store, now });
+  const clock = now ?? (() => new Date());
+  const periods = createPeriodService({
+    store,
+    now,
+    // Each new period gets its recurring bills and income before the next is derived from it.
+    onPeriodCreated: (repos, period) => materializeAllInPeriod(repos, period, clock()),
+  });
   const transactions = createTransactionService({ store, periods, now });
+  const recurring = createRecurringService({ store, periods, now });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -38,6 +48,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, authed }));
   api.route("/transactions", transactionRoutes({ transactions, authed }));
+  api.route("/recurring", recurringRoutes({ recurring, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });

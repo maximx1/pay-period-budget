@@ -43,6 +43,28 @@ export function createTransactionRepo(db: Db): TransactionRepo {
       await db.insert(transactions).values(transaction);
       return transaction;
     },
+    async createIfAbsent(transaction) {
+      const inserted = await db
+        .insert(transactions)
+        .values(transaction)
+        .onConflictDoNothing({ target: [transactions.recurringId, transactions.occurrenceDate] })
+        .returning({ id: transactions.id });
+      return inserted.length > 0;
+    },
+    async listUpcomingForRecurringAfter(userId, recurringId, date) {
+      return db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.recurringId, recurringId),
+            eq(transactions.status, "upcoming"),
+            gte(transactions.occursAt, atStartOfDay(addDays(date, 1))),
+          ),
+        )
+        .orderBy(asc(transactions.occursAt));
+    },
     async update(userId, id, patch, now) {
       await db
         .update(transactions)

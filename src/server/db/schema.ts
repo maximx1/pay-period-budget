@@ -1,6 +1,7 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
-import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
+import { TRANSACTION_KINDS, TRANSACTION_STATUSES } from "../../shared/transactions.ts";
 
 // Conventions: text UUID primary keys, instants as integer milliseconds (timestamp_ms),
 // money as integer cents, calendar dates as "YYYY-MM-DD" text.
@@ -104,6 +105,29 @@ export const periods = sqliteTable(
   ],
 );
 
+/** Recurring bills and income: templates that produce transactions. (Not "accounts".) */
+export const recurringItems = sqliteTable(
+  "recurring_items",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    kind: text("kind", { enum: TRANSACTION_KINDS }).notNull(),
+    /** Positive; `kind` gives the direction. Used when an occurrence is turned into a transaction. */
+    defaultAmountCents: integer("default_amount_cents").notNull(),
+    recurrenceUnit: text("recurrence_unit", { enum: RECURRENCE_UNITS }).notNull(),
+    recurrenceInterval: integer("recurrence_interval").notNull().default(1),
+    firstDueDate: text("first_due_date").notNull(),
+    endDate: text("end_date"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("recurring_items_user_id_idx").on(t.userId)],
+);
+
 export const transactions = sqliteTable(
   "transactions",
   {
@@ -121,8 +145,17 @@ export const transactions = sqliteTable(
     /** Manual order among transactions with the same occurs_at. */
     sortOrder: integer("sort_order").notNull().default(0),
     note: text("note"),
+    /** The recurring item this came from, if any. Cleared if that item is deleted. */
+    recurringId: text("recurring_id").references(() => recurringItems.id, { onDelete: "set null" }),
+    /** The scheduled date this was generated for. Unlike occurs_at it never changes. */
+    occurrenceDate: text("occurrence_date"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (t) => [index("transactions_user_occurs_idx").on(t.userId, t.occursAt)],
+  (t) => [
+    index("transactions_user_occurs_idx").on(t.userId, t.occursAt),
+    // One transaction per occurrence of an item. Rows with no item have a null recurring_id,
+    // and SQLite treats nulls as distinct, so they are unaffected.
+    uniqueIndex("transactions_recurring_occurrence_unique").on(t.recurringId, t.occurrenceDate),
+  ],
 );

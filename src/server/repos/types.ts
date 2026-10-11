@@ -3,8 +3,9 @@
 // Swapping the database means writing a new implementation of DataStore.
 
 import type { LocalDate, LocalDateTime } from "../../shared/dates.ts";
+import type { RecurrenceUnit } from "../../shared/recurrence.ts";
 import type { ScheduleType } from "../../shared/schedule.ts";
-import type { TransactionStatus } from "../../shared/transactions.ts";
+import type { TransactionKind, TransactionStatus } from "../../shared/transactions.ts";
 
 export type UserRecord = {
   id: string;
@@ -116,6 +117,10 @@ export type TransactionRecord = {
   paidAt: Date | null;
   sortOrder: number;
   note: string | null;
+  /** The recurring item that generated it, or null. */
+  recurringId: string | null;
+  /** The scheduled date it was generated for, or null for a one-off. */
+  occurrenceDate: LocalDate | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -135,7 +140,44 @@ export interface TransactionRepo {
     endDate: LocalDate,
   ): Promise<{ paidCents: number; upcomingCents: number }>;
   create(transaction: TransactionRecord): Promise<TransactionRecord>;
+  /**
+   * Inserts a generated transaction unless one already exists for the same recurring item
+   * and occurrence date. Returns whether it was inserted.
+   */
+  createIfAbsent(transaction: TransactionRecord): Promise<boolean>;
+  /** A recurring item's upcoming transactions dated after `date`. */
+  listUpcomingForRecurringAfter(userId: string, recurringId: string, date: LocalDate): Promise<TransactionRecord[]>;
   update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;
+  delete(userId: string, id: string): Promise<void>;
+}
+
+export type RecurringRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  kind: TransactionKind;
+  /** Positive; `kind` gives the direction. */
+  defaultAmountCents: number;
+  recurrenceUnit: RecurrenceUnit;
+  recurrenceInterval: number;
+  firstDueDate: LocalDate;
+  endDate: LocalDate | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type RecurringRecordPatch = Partial<
+  Omit<RecurringRecord, "id" | "userId" | "createdAt" | "updatedAt">
+>;
+
+export interface RecurringRepo {
+  findById(userId: string, id: string): Promise<RecurringRecord | null>;
+  /** All of the user's items, by name. */
+  list(userId: string): Promise<RecurringRecord[]>;
+  create(item: RecurringRecord): Promise<RecurringRecord>;
+  update(userId: string, id: string, patch: RecurringRecordPatch, now: Date): Promise<void>;
+  /** Transactions it generated stay, with their link to it cleared. */
   delete(userId: string, id: string): Promise<void>;
 }
 
@@ -146,6 +188,7 @@ export interface Repos {
   schedules: ScheduleRepo;
   periods: PeriodRepo;
   transactions: TransactionRepo;
+  recurring: RecurringRepo;
 }
 
 export interface DataStore extends Repos {

@@ -56,6 +56,8 @@ export type Transaction = {
   paidAt: string | null;
   note: string | null;
   sortOrder: number;
+  /** The recurring item it was generated from, or null for a one-off (or if that item was deleted). */
+  recurringId: string | null;
 };
 
 /** Returned by create and update: the saved transaction and the period it now falls in. */

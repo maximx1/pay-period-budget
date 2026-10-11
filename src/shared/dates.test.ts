@@ -6,10 +6,15 @@ import {
   atStartOfDay,
   compareDates,
   dateOf,
+  dayOfMonth,
+  diffCalendarMonths,
   diffDays,
   formatDateRange,
   formatDay,
+  formatLongDate,
+  formatMonthDay,
   formatTime,
+  formatWeekday,
   isLocalDate,
   isLocalDateTime,
   nowIn,
@@ -179,5 +184,28 @@ describe("formatting", () => {
   ])("formats the time of %s as %s", (dateTime, expected) => {
     // Intl separates the time and AM/PM with a narrow no-break space in newer runtimes.
     expect(formatTime(dateTime).replace(/\s/g, " ")).toBe(expected);
+  });
+
+  it("formats the other date shapes", () => {
+    expect(formatWeekday("2026-10-10")).toBe("Saturday");
+    expect(formatMonthDay("2026-03-15")).toBe("Mar 15");
+    expect(formatLongDate("2027-10-12")).toBe("Oct 12, 2027");
+  });
+});
+
+describe("dayOfMonth / diffCalendarMonths", () => {
+  it("reads the day of the month", () => {
+    expect(dayOfMonth("2026-10-05")).toBe(5);
+    expect(dayOfMonth("2026-10-31")).toBe(31);
+  });
+
+  it.each([
+    ["2026-01-31", "2026-02-01", 1],
+    ["2026-01-01", "2026-01-31", 0],
+    ["2026-10-10", "2027-01-10", 3],
+    ["2026-03-15", "2026-01-20", -2],
+    ["2026-12-31", "2027-01-01", 1],
+  ])("counts calendar months from %s to %s as %i", (from, to, expected) => {
+    expect(diffCalendarMonths(from, to)).toBe(expected);
   });
 });
