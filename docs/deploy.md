@@ -30,18 +30,14 @@ sudo systemctl enable --now docker
 
 ## 2. Put the code on the server
 
-Clone the repository onto the server (it is private, so the server needs access to it:
-an SSH key added to your GitHub account, or a deploy key on the repository):
+Clone the repository onto the server:
 
 ```bash
-git clone git@github.com:<your-user>/pay-period-budget.git /opt/pay-period-budget
+git clone https://github.com/maximx1/pay-period-budget.git /opt/pay-period-budget
 ```
 
-Or, without giving the server any GitHub access, copy it across from a machine that has it:
-
-```bash
-rsync -a --exclude node_modules --exclude dist --exclude data --exclude .env ./ yourserver:/opt/pay-period-budget/
-```
+(Create `/opt/pay-period-budget` and give your user ownership of it first, or clone into a
+folder you already own.)
 
 Everything below is run on the server, in that folder.
 
@@ -194,7 +190,7 @@ git pull
 docker compose up -d --build
 ```
 
-(Or rsync the new code across instead of `git pull`, if that is how it got there.) Database changes are applied
+Database changes are applied
 automatically when the new version starts. If the new container does not become healthy,
 `docker compose logs app` says why.
 
