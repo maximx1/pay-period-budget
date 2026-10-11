@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Start-up screen. Matches the web app's light page background and primary colour
+         (src/client/styles.css) so the first paint does not flash. -->
+    <color name="splash_background">#F2F6F3</color>
+    <color name="splash_icon">#15803D</color>
+</resources>

@@ -82,3 +82,37 @@ The response contains `token`; send it on later requests as `Authorization: Bear
 It is an ordinary session: it shows up under Settings → Signed-in devices and can be
 signed out from there. The endpoints are listed in
 [docs/plan/domain.md](docs/plan/domain.md#api-surface).
+
+## Android app
+
+The same web app wrapped with [Capacitor](https://capacitorjs.com). The project lives in
+`android/`; it signs in with a token instead of a cookie and otherwise talks to the same API.
+
+**You need**
+
+- Android Studio with SDK Platform 36 (the build fetches it if it is missing).
+- A JDK 21 that Gradle can find. Android Studio 2026.2 bundles Java 25, which the Gradle
+  version Capacitor 8 uses cannot run on: `brew install --cask temurin@21`.
+- A phone with USB debugging on, or an emulator.
+
+**The server has to allow the app.** The app's pages are served from `https://localhost`
+inside the phone, so that origin must be in the server's `APP_ORIGINS`, next to the web
+address:
+
+```
+APP_ORIGINS=https://budget.example.com,https://localhost
+```
+
+**Build and install**
+
+1. Copy `.env.android.example` to `.env.android` and set `VITE_API_BASE_URL` to the server.
+2. `npm run build:android` builds the web app into `dist/android` and copies it into the
+   Android project. Run it again after every change to the web code.
+3. `npm run open:android` opens the project in Android Studio; press Run. Or, from
+   `android/`, `./gradlew installDebug` installs on the connected device.
+
+**Against the API on this machine.** A debug build may use plain HTTP to reach the
+development server; a release build never can. Put `https://localhost` in `APP_ORIGINS` in
+`.env`, start `npm run dev`, and set `VITE_API_BASE_URL` to `http://10.0.2.2:8787` for an
+emulator, or to `http://127.0.0.1:8787` for a phone on USB after
+`adb reverse tcp:8787 tcp:8787`.

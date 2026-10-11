@@ -6,8 +6,11 @@ import type {
   LoginInput,
   PublicUser,
   RegisterInput,
+  TokenAuthResponse,
 } from "../../../shared/auth.ts";
 import { ApiError, api } from "../../lib/api.ts";
+import { isNative } from "../../lib/platform.ts";
+import { clearToken, setToken } from "../../lib/sessionStore.ts";
 
 export const SESSION_QUERY_KEY = ["session"] as const;
 
@@ -52,10 +55,21 @@ export function useCurrentUser(): PublicUser {
   return user;
 }
 
+/**
+ * Signs in or registers. A browser is handed the session cookie; the Android app asks for
+ * the token instead and keeps it for the Authorization header.
+ */
+async function authenticate(path: string, input: LoginInput | RegisterInput): Promise<AuthResponse> {
+  if (!isNative) return api.post<AuthResponse>(path, input);
+  const { user, token } = await api.post<TokenAuthResponse>(path, { ...input, transport: "token" });
+  await setToken(token);
+  return { user };
+}
+
 export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: LoginInput) => api.post<AuthResponse>("/api/auth/login", input),
+    mutationFn: (input: LoginInput) => authenticate("/api/auth/login", input),
     onSuccess: ({ user }) => queryClient.setQueryData(SESSION_QUERY_KEY, user),
   });
 }
@@ -63,7 +77,7 @@ export function useLogin() {
 export function useRegister() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RegisterInput) => api.post<AuthResponse>("/api/auth/register", input),
+    mutationFn: (input: RegisterInput) => authenticate("/api/auth/register", input),
     onSuccess: ({ user }) => queryClient.setQueryData(SESSION_QUERY_KEY, user),
   });
 }
@@ -72,7 +86,9 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<void>("/api/auth/logout"),
-    onSettled: () => {
+    onSettled: async () => {
+      // Dropped even if the server could not be reached, so the phone is signed out either way.
+      await clearToken().catch(() => undefined);
       // Signing out first unmounts the app; then drop its cached data so none of it
       // outlives the session.
       queryClient.setQueryData(SESSION_QUERY_KEY, null);

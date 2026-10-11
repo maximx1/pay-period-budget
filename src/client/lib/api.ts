@@ -1,4 +1,6 @@
 import type { ApiErrorBody, ApiErrorCode } from "../../shared/api.ts";
+import { isNative } from "./platform.ts";
+import { clearToken, getToken } from "./sessionStore.ts";
 
 // Empty on the web (same origin as the API). The Android build points this at the server.
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -23,12 +25,18 @@ export function setUnauthenticatedHandler(handler: () => void) {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // The Android app carries its session in a header; a browser carries it in the cookie.
+  const token = isNative ? getToken() : null;
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   let response: Response;
   try {
     response = await fetch(BASE_URL + path, {
       method,
-      credentials: "include",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      credentials: isNative ? "omit" : "include",
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -46,7 +54,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     payload?.error.message ?? "Something went wrong. Please try again.",
     payload?.error.fields,
   );
-  if (error.code === "unauthenticated") onUnauthenticated?.();
+  if (error.code === "unauthenticated") {
+    // Forget the token the server just refused, unless a newer sign-in has replaced it
+    // while this request was in flight.
+    if (token && token === getToken()) await clearToken().catch(() => undefined);
+    onUnauthenticated?.();
+  }
   throw error;
 }
 

@@ -21,6 +21,7 @@ backups/
 .env.*
 !.env.example
 !.env.docker.example
+!.env.android.example
 *.pem
 *.key
 *.crt

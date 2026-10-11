@@ -24,6 +24,8 @@ touching periods, transactions or recurring items.
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
 | `npm run db:backup -- <file>` | Write a consistent copy of the database |
+| `npm run build:android` | Build the client into `dist/android` with the API address from `.env.android`, then copy it into `android/` |
+| `npm run open:android` | Open `android/` in Android Studio |
 
 Migrations are applied automatically when the server (or a test) opens the database.
 The dev database is `data/app.db` (gitignored); delete the `data/` folder to start clean.
@@ -46,6 +48,7 @@ src/client/   React app
   features/<name>/   screens, hooks and components for one feature
   components/ui/     shared presentational primitives
   lib/api.ts    the only place that calls fetch
+android/      Capacitor's Android project. Generated once, then edited by hand; committed
 ```
 
 ## Rules that keep the codebase consistent
@@ -87,6 +90,9 @@ src/client/   React app
   the screen on phones.
 - Every screen must work from 360px wide up to ultrawide. Touch targets are at least 44px
   (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
+- The Android app runs this same client. Branch on `isNative` from `lib/platform.ts`, and
+  keep anything only the app needs (Capacitor plugins) in `lib/nativeShell.ts`, which a
+  browser never downloads. The session token is touched only through `lib/sessionStore.ts`.
 - Inside authenticated routes get the user with `useCurrentUser()`.
 - "Today" on the client is `todayIn(budget.timezone, new Date())` using `useBudget()`, never
   the device's own date.
@@ -117,6 +123,10 @@ src/client/   React app
 - Relative imports include the file extension (`./thing.ts`, `./Thing.tsx`). No path aliases.
 - In development the API listens on `API_PORT` (default 8787), not `PORT`; tooling sets
   `PORT` for the web dev server.
+- Run the Capacitor CLI as `npm run cap -- <command>`. Plain `npx cap` cannot load
+  `capacitor.config.ts` with TypeScript 7 installed.
+- The Android build needs a JDK 21. Gradle 8.14 (what Capacitor 8 ships) fails on Java 25
+  with "Unsupported class file major version 69".
 
 - Recurring bills and income are **recurring items** (`recurring_items`, `/api/recurring`,
   `features/recurring`). Never name them "accounts": that word is reserved for a future

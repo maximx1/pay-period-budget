@@ -12,7 +12,7 @@ Kick-off prompt for the next session:
 ## Where things stand
 
 - Repository: `github.com/maximx1/pay-period-budget` (public), branch `main`.
-- `npm run check` passes: 496 tests, 18 files. `npm run build` is clean.
+- `npm run check` passes: 509 tests, 20 files. `npm run build` is clean.
 - The web app is complete for daily use: accounts and sign-in, budget setup, pay periods,
   transactions, recurring bills and income, period adjustments, manual ordering, settings.
 - It has only ever run on the development machine. Nothing is deployed.
@@ -22,7 +22,9 @@ Kick-off prompt for the next session:
 | Phases 0 to 7 | Done. Each phase file ends with implementation notes; where they differ from the task text, the notes win |
 | 7.1 Date search | **Not built.** Tabled until the owner decides what it should do. The side-panel entry is a placeholder |
 | 8.1 Token sign-in and CORS | Done |
-| 8.2 to 8.4 Android app | **Not started.** On hold; needs the tools below |
+| 8.2 Client session transport | Done 2026-10-11 |
+| 8.3 Capacitor project | Done 2026-10-11 on the emulator against the dev API. Not yet on a real phone, against a deployed server, or as a release build |
+| 8.4 Biometric unlock | **Not started** |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 
@@ -40,7 +42,10 @@ an existing reverse proxy, the bundled Caddy profile (needs a public domain), or
 
 After the first account exists: set `ALLOW_REGISTRATION=false`.
 
-### 2. Phase 8.2: client session transport
+### 2. Phase 8.2: client session transport (done 2026-10-11)
+
+Built as specified; see the implementation notes in `phase-08-android.md`. The original
+notes are kept below for reference.
 
 Spec in `phase-08-android.md`. Adds `@capacitor/core` and a storage plugin. The web app
 must behave exactly as before (cookie flow). Things the spec does not say that matter:
@@ -54,7 +59,13 @@ must behave exactly as before (cookie flow). Things the spec does not say that m
   the sign-in page on every launch.
 - Changing the password signs out every *other* session; the phone keeps its own.
 
-### 3. Phase 8.3: the Capacitor project
+### 3. Phase 8.3: the Capacitor project (done 2026-10-11 on the emulator)
+
+What was built, decided and checked is in the implementation notes of
+`phase-08-android.md`; the notes below are the original ones. To run it again: start the
+`Pixel_9_Pro` emulator and `npm run dev`, then `npm run build:android` and, in `android/`,
+`./gradlew installDebug`. The dev machine has a gitignored `.env` (adds
+`https://localhost` to `APP_ORIGINS`) and `.env.android` (API at `http://10.0.2.2:8787`).
 
 - Current Capacitor is 8.5 (checked 2026-10-10): Node 22+, JDK 21, Android Gradle Plugin
   8.13, compile and target SDK 36, minimum SDK 24. Re-check before installing.
@@ -100,7 +111,14 @@ fingerprint enrolled; an emulator can simulate one but is not proof.
 
 ## What the owner needs to install or set up
 
-Checked on the development Mac on 2026-10-10.
+Checked on the development Mac on 2026-10-10. **Rechecked 2026-10-11** after the owner
+installed Android Studio 2026.2: its bundled JDK is 25, the SDK has Platform 37 and
+Build-Tools 37 only, and there is a `Pixel_9_Pro` emulator on API 37. Capacitor 8.5.3 still
+builds with Gradle 8.14.3 against SDK 36 on Java 21, so it also needed a
+**JDK 21** (Gradle 8.14 does not run on Java 25), now installed with
+`brew install --cask temurin@21`, and **SDK Platform 36**, which the first build fetched by
+itself. Nothing is missing for the emulator. A real phone still needs USB debugging and,
+for 8.4, a fingerprint enrolled. The table below is the 2026-10-10 state.
 
 **For the Android work (on the Mac)**
 
@@ -144,8 +162,9 @@ Be straight with the owner about these until they have been exercised.
 - **The sign-in page with registration closed** is covered by API tests; the page itself
   was only viewed with registration open.
 - **A successful password change** is covered by tests, not clicked through in a browser.
-- **Nothing has run on a real phone.** Layouts were checked in a desktop browser at 360px
-  and up.
+- **Nothing has run on a real phone.** The Android app has run on an emulator only, as a
+  debug build, against the development API over plain HTTP. A release build, HTTPS to a
+  deployed server and a touch pass over every screen are all still to do.
 
 ## How to check your work here
 

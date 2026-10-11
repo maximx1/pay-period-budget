@@ -12,6 +12,9 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "NODE_ENV=production tsx src/server/index.ts",
+    "cap": "node --experimental-strip-types --disable-warning=ExperimentalWarning node_modules/@capacitor/cli/bin/capacitor",
+    "build:android": "vite build --mode android && npm run cap -- sync android",
+    "open:android": "npm run cap -- open android",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -30,6 +33,11 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/preferences": "^8.0.1",
     "@hookform/resolvers": "^5.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.1",

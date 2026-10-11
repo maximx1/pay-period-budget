@@ -59,7 +59,7 @@ preflight from an allowed origin succeeds and from another origin gets no CORS h
 
 ### 8.2 Client session transport
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/lib/platform.ts`, new `src/client/lib/sessionStore.ts`,
 `src/client/lib/api.ts`, `src/client/features/auth/session.ts`.
@@ -80,7 +80,7 @@ plugin chosen in 8.4, if doing both together).
 
 ### 8.3 Capacitor project
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `capacitor.config.ts`, new `android/` (generated), `package.json` scripts,
 `.gitignore`, `src/client/styles.css`, `src/client/features/shell/*`, `README.md`.
@@ -160,3 +160,83 @@ password sign-in on the phone.
   `Authorization` header would be added). The Android app's origin must be added to
   `APP_ORIGINS` on the server.
 
+**8.2 completed 2026-10-11.** Verified by unit tests and, for the web flow, in a browser.
+The native path has not run on a device yet; that happens in 8.3.
+
+- Storage is `@capacitor/preferences` (plain app-private storage). 8.4 moves the token
+  behind the Keystore; `sessionStore.ts` is the only file that knows where it lives.
+- `sessionStore.ts` also exports `loadToken()`, which `main.tsx` awaits before rendering.
+  Unreadable storage counts as signed out rather than leaving a blank screen.
+- `api.ts` on native sends `Authorization: Bearer` and `credentials: "omit"`. A 401
+  `unauthenticated` clears the token only if it is still the one that request was sent
+  with, so a late refusal of an old token cannot wipe a newer sign-in.
+- Sign-in and registration go through `authenticate()` in `features/auth/session.ts`.
+  Logging out clears the token even when the server cannot be reached; the server-side
+  session then lingers until it expires or is revoked under Signed-in devices.
+- `X-Session-Expires` is not read by the client. The token does not change on renewal and
+  an expired one is answered with a 401, which already signs the app out.
+- `src/client/lib/api.test.ts` covers both platforms by mocking `platform.ts` and the
+  preferences plugin.
+- For 8.3: nothing stops a native build with an empty `VITE_API_BASE_URL`; the
+  `build:android` script should refuse to build without it.
+- For 8.3, checked 2026-10-11: Capacitor 8.5.3's Android template uses Gradle 8.14.3,
+  Android Gradle Plugin 8.13.0, compile and target SDK 36, Java 21. The development Mac has
+  Android Studio 2026.2, whose bundled JDK is 25, and only SDK Platform 37 and Build-Tools
+  37. Gradle 8.14 does not run on Java 25, so a JDK 21 is needed before the first build.
+
+**8.3 completed 2026-10-11** on the `Pixel_9_Pro` emulator (Android API 37, WebView 149)
+against the development API on the Mac. Not done, and so not part of this tick: a real
+phone, the deployed server over HTTPS, a release build, and a touch pass over every screen
+(sign-in, setup, home, the add-transaction dialog, the drawer, Recurring and Settings were
+used; the rest were not).
+
+Decided with the owner: app id `com.maximx1.payperiodbudget`; the wallet mark as the icon;
+develop against the API on the Mac from the emulator, deployment later.
+
+- `capacitor.config.ts` is TypeScript, and the Capacitor CLI cannot load it with
+  TypeScript 7 installed, so the CLI runs through `npm run cap` (Node's type stripping).
+- The Android copy of the client builds with `vite build --mode android` into
+  `dist/android`, not `dist/client`: it has the API address baked in and must never be
+  what the server serves. The mode reads `.env.android`; the build stops if
+  `VITE_API_BASE_URL` is missing.
+- Plain HTTP to the development machine: `allowMixedContent` is switched on only when the
+  API address starts with `http://`, and cleartext is permitted only by
+  `android/app/src/debug` (to `10.0.2.2` and `127.0.0.1`). A release build has neither.
+- `android:allowBackup` is `false`, so the session token is not copied into Google's
+  device backup.
+- `@capacitor/status-bar` was not added. Capacitor 8 has `SystemBars` in core, and with
+  edge-to-edge (enforced from Android 15) the bars are transparent: only the icon style
+  follows the theme, set from `src/client/lib/nativeShell.ts`.
+- `@capacitor/keyboard` was not added. `interactive-widget=resizes-content` already
+  shrinks the page when the keyboard opens (952 to 616 CSS px on the emulator) and the
+  add-transaction dialog keeps Add and Cancel on screen.
+- Back button: `nativeShell.ts` dispatches `cancel` at the topmost open `<dialog>`, which
+  is what Escape does, so `useModal.ts` needed no change.
+- Icon and start-up screen are vector drawables of the Lucide wallet mark plus PNGs for
+  Android 7; no asset-generation package. Colours are copied from `styles.css`.
+- `android/gradle/gradle-daemon-jvm.properties` asks for Java 21, so Android Studio's own
+  Java 25 is not used for the build.
+
+Checked on the emulator, driving the app with `adb` and reading the WebView over its
+debug port:
+
+- `./gradlew assembleDebug` succeeds with Temurin 21 and fetched SDK Platform 36 itself.
+  With Android Studio's Java 25 it fails: "Unsupported class file major version 69".
+- Sign-in uses the token (no cookie), the token lands in the app's preferences, and a
+  force-stop and reopen goes straight in with `/api/auth/me` answering 200.
+- Revoking the phone's session from another client sends the app to the sign-in page on
+  its next request and removes the stored token.
+- `/theme.js` loads. `env(safe-area-inset-*)` reports 52px top and 24px bottom with
+  gesture navigation; the top bar, drawer and + button sit clear of both bars.
+- Back closes the keyboard, then the dialog; closes the drawer; walks back through
+  Settings, Recurring, Home; and leaves the app at the root.
+- Status-bar icons follow the device's dark mode and the app's own Light/Dark setting.
+- The start-up screen and launcher icon show the wallet mark, in light and dark.
+
+Left for later:
+
+- The phone's session is listed under Signed-in devices as "Chrome on Android". Setting
+  `appendUserAgent` in `capacitor.config.ts` and teaching the server's device label about
+  it would let it say "Android app".
+- The start-up screen follows the device's theme, not the app's own setting, so a user
+  who forces the other theme sees one frame of the wrong background.

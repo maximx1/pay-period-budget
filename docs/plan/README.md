@@ -36,7 +36,7 @@ different app.
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Done, except date search (tabled) | n/a |
-| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 (API side) done; rest on hold | Sonnet for 8.2 and 8.3, Opus for 8.4 |
+| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 to 8.3 done (8.3 on an emulator against the dev API); 8.4 next | Sonnet for 8.2 and 8.3, Opus for 8.4 |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -151,7 +151,7 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 8.2 from
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 8.4 from
 > docs/plan/phase-08-android.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
