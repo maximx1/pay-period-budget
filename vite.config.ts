@@ -9,6 +9,9 @@ export default defineConfig({
   build: {
     outDir: "dist/client",
     emptyOutDir: true,
+    // The main bundle is React, the router, the query client and the form and validation
+    // libraries: about 530 kB before compression, 165 kB after. Warn only if it grows well past that.
+    chunkSizeWarningLimit: 650,
   },
   server: {
     port: 5173,

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn.ts";
+import { useDocumentTitle } from "../../lib/useDocumentTitle.ts";
 
 type PageHeaderProps = {
   title: string;
@@ -9,10 +10,12 @@ type PageHeaderProps = {
 };
 
 /**
- * Heading for a page inside the app shell. Below `lg` the top bar already shows the
- * title, so the <h1> is kept for screen readers only and just the subtitle and actions show.
+ * Heading for a page inside the app shell; also sets the browser tab title. Below `lg`
+ * the top bar already shows the title, so the <h1> is kept for screen readers only and
+ * just the subtitle and actions show.
  */
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+  useDocumentTitle(title);
   const visibleOnSmallScreens = Boolean(subtitle || actions);
 
   return (

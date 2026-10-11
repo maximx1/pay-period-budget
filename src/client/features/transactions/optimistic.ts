@@ -24,3 +24,25 @@ export function withStatus(view: PeriodView, transactionId: string, status: Tran
     },
   };
 }
+
+/**
+ * A full same-moment group's ids with one section's rows rearranged in place. Rows of the
+ * other section keep their positions, so marking something paid later doesn't jumble it.
+ */
+export function mergeOrder(groupIds: string[], sectionOrder: string[]): string[] {
+  const inSection = new Set(sectionOrder);
+  let next = 0;
+  return groupIds.map((id) => (inSection.has(id) ? (sectionOrder[next++] ?? id) : id));
+}
+
+/** The period view with the given transactions put in that order among themselves. */
+export function withOrder(view: PeriodView, ids: string[]): PeriodView {
+  const position = new Map(ids.map((id, index) => [id, index]));
+  const transactions = view.transactions
+    .map((transaction) =>
+      position.has(transaction.id) ? { ...transaction, sortOrder: position.get(transaction.id) ?? 0 } : transaction,
+    )
+    // Stable: anything that still ties keeps the order the server gave it.
+    .sort((a, b) => (a.occursAt < b.occursAt ? -1 : a.occursAt > b.occursAt ? 1 : a.sortOrder - b.sortOrder));
+  return { ...view, transactions };
+}

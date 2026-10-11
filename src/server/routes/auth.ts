@@ -1,5 +1,11 @@
 import { Hono } from "hono";
-import { type AuthResponse, loginInputSchema, registerInputSchema } from "../../shared/auth.ts";
+import {
+  type AuthResponse,
+  changePasswordSchema,
+  loginInputSchema,
+  registerInputSchema,
+  type SessionListResponse,
+} from "../../shared/auth.ts";
 import type { AppConfig } from "../env.ts";
 import { type AppEnv, clientIp, parseJson } from "../http.ts";
 import { AppError } from "../lib/errors.ts";
@@ -27,6 +33,8 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
   const loginByIdentifier = new RateLimiter(10, 15 * MINUTE, clock);
   const loginByIp = new RateLimiter(50, 15 * MINUTE, clock);
   const registerByIp = new RateLimiter(10, 60 * MINUTE, clock);
+  const passwordByUser = new RateLimiter(10, 15 * MINUTE, clock);
+  const authed = requireAuth(auth, config);
 
   const routes = new Hono<AppEnv>();
 
@@ -72,7 +80,40 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     return c.body(null, 204);
   });
 
-  routes.get("/me", requireAuth(auth, config), (c) => c.json<AuthResponse>({ user: c.var.user }));
+  routes.get("/me", authed, (c) => c.json<AuthResponse>({ user: c.var.user }));
+
+  routes.post("/password", authed, async (c) => {
+    const userId = c.var.user.id;
+    const retryAfter = passwordByUser.retryAfterSeconds(userId);
+    if (retryAfter) throw tooManyAttempts(retryAfter);
+
+    const input = await parseJson(c, changePasswordSchema);
+    try {
+      await auth.changePassword(userId, c.var.sessionId, input);
+      passwordByUser.reset(userId);
+      return c.body(null, 204);
+    } catch (error) {
+      // A wrong current password is a guess at it, signed in or not.
+      if (error instanceof AppError && error.fields?.currentPassword) passwordByUser.hit(userId);
+      throw error;
+    }
+  });
+
+  routes.get("/sessions", authed, async (c) =>
+    c.json<SessionListResponse>({ sessions: await auth.listSessions(c.var.user.id, c.var.sessionId) }),
+  );
+
+  routes.post("/sessions/revoke-others", authed, async (c) => {
+    await auth.revokeOtherSessions(c.var.user.id, c.var.sessionId);
+    return c.body(null, 204);
+  });
+
+  routes.delete("/sessions/:id", authed, async (c) => {
+    const id = c.req.param("id");
+    await auth.revokeSession(c.var.user.id, id);
+    if (id === c.var.sessionId) clearSessionCookie(c);
+    return c.body(null, 204);
+  });
 
   return routes;
 }

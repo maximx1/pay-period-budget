@@ -176,6 +176,35 @@ describe("time zone", () => {
   });
 });
 
+describe("changing the time zone", () => {
+  it("changes what today is without touching stored dates", async () => {
+    const client = await signUp("ann");
+    await setUp(client, { type: "weekly", anchorDate: "2026-01-09", timezone: "America/Chicago" });
+    t.clock.advance(17 * 60 * 60 * 1000); // 2026-01-16T05:00Z: 23:00 on the 15th in Chicago, 14:00 on the 16th in Tokyo
+    expect((await current(client)).period.seq).toBe(0);
+
+    const response = await client.patch("/api/settings", { timezone: "Asia/Tokyo" });
+    expect(response.status).toBe(200);
+    expect((await response.json()).budget).toMatchObject({ timezone: "Asia/Tokyo", anchorDate: "2026-01-09", type: "weekly" });
+
+    expect((await current(client)).period).toMatchObject({ seq: 1, startDate: "2026-01-16" });
+    expect((await allPeriods("ann"))[0]).toMatchObject({ startDate: "2026-01-09", endDate: "2026-01-15" });
+  });
+
+  it("rejects an unknown zone, a missing budget and a missing session", async () => {
+    const client = await signUp("ann");
+    expect((await client.patch("/api/settings", { timezone: "UTC" })).status).toBe(409);
+
+    await setUp(client);
+    const bad = await client.patch("/api/settings", { timezone: "Mars/Olympus_Mons" });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error.fields).toHaveProperty("timezone");
+    expect((await (await client.get("/api/budget")).json()).budget.timezone).toBe("UTC");
+
+    expect((await t.client().patch("/api/settings", { timezone: "UTC" })).status).toBe(401);
+  });
+});
+
 describe("current period", () => {
   it("creates the next period once today moves past the last one", async () => {
     const client = await signUp("ann");

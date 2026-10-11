@@ -354,6 +354,14 @@ export function createPeriodService(deps: {
       return changeDates(userId, periodId, { startDate: period.nominalStart, endDate: period.nominalEnd });
     },
 
+    /** Changes the zone that decides what "today" is. Stored dates and times are not converted. */
+    async setTimezone(userId: string, timezone: string): Promise<Budget> {
+      const budget = await loadBudget(store, userId);
+      await store.settings.upsert(userId, { timezone }, now());
+      const { type, anchorDate, openingCents } = budget.schedule;
+      return { type, anchorDate, openingCents, timezone };
+    },
+
     async getBudget(userId: string): Promise<Budget | null> {
       const schedule = await store.schedules.getForUser(userId);
       const settings = await store.settings.get(userId);

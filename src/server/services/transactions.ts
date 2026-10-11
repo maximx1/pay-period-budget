@@ -37,6 +37,12 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
     return period;
   }
 
+  /** Where a transaction arriving at this date and time goes: after everything already there. */
+  async function lastPlaceAt(repos: Repos, userId: string, occursAt: LocalDateTime): Promise<number> {
+    const max = await repos.transactions.maxSortOrderAt(userId, occursAt);
+    return max === null ? 0 : max + 1;
+  }
+
   const respond = (record: TransactionRecord, period: PeriodRecord): TransactionResponse => ({
     transaction: toTransaction(record),
     period: { id: period.id, startDate: period.startDate, endDate: period.endDate },
@@ -55,7 +61,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           occursAt: input.occursAt,
           status: input.paid ? "paid" : "upcoming",
           paidAt: input.paid ? createdAt : null,
-          sortOrder: 0,
+          sortOrder: await lastPlaceAt(repos, userId, input.occursAt),
           note: input.note || null,
           recurringId: null,
           occurrenceDate: null,
@@ -86,13 +92,20 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           note: patch.note === undefined ? before.note : patch.note || null,
           updatedAt,
         };
+        // Moving to a different date and time means joining the end of whatever is already there.
+        if (after.occursAt !== before.occursAt) after.sortOrder = await lastPlaceAt(repos, userId, after.occursAt);
 
         const oldPeriod = await repos.periods.findContaining(userId, dateOf(before.occursAt));
         const newPeriod =
           oldPeriod && after.occursAt === before.occursAt ? oldPeriod : await periodFor(repos, userId, after.occursAt);
 
-        const { name, amountCents, occursAt, paidAt, note } = after;
-        await repos.transactions.update(userId, id, { name, amountCents, occursAt, status, paidAt, note }, updatedAt);
+        const { name, amountCents, occursAt, paidAt, note, sortOrder } = after;
+        await repos.transactions.update(
+          userId,
+          id,
+          { name, amountCents, occursAt, status, paidAt, note, sortOrder },
+          updatedAt,
+        );
 
         if (oldPeriod?.id === newPeriod.id) {
           await applyLeftoverDelta(repos, userId, newPeriod.seq, after.amountCents - before.amountCents, updatedAt);
@@ -102,6 +115,32 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           await applyLeftoverDelta(repos, userId, newPeriod.seq, after.amountCents, updatedAt);
         }
         return respond(after, newPeriod);
+      });
+    },
+
+    /**
+     * Sets the display order of transactions that share one date and time: each takes the
+     * position it has in `ids`. Order between different times always follows the time.
+     */
+    reorder(userId: string, ids: string[]): Promise<void> {
+      return store.transaction(async (repos) => {
+        const invalid = (message: string) => new AppError(400, "validation", message, { ids: message });
+        const records: TransactionRecord[] = [];
+        for (const id of ids) {
+          const record = await repos.transactions.findById(userId, id);
+          if (!record) throw invalid("One of those transactions doesn't exist");
+          records.push(record);
+        }
+        if (records.some((record) => record.occursAt !== records[0]!.occursAt)) {
+          throw invalid("Only transactions with the same date and time can be reordered");
+        }
+
+        const updatedAt = now();
+        for (const [index, record] of records.entries()) {
+          if (record.sortOrder !== index) {
+            await repos.transactions.update(userId, record.id, { sortOrder: index }, updatedAt);
+          }
+        }
       });
     },
 

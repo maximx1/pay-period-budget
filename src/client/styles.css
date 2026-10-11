@@ -42,7 +42,12 @@
   }
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c1410;
   --surface: #141e18;
   --surface-2: #1b2720;

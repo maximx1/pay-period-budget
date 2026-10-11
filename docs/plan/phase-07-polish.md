@@ -31,7 +31,7 @@ first. Until then the page stays a placeholder.
 
 ### 7.2 Manual ordering within the same date and time
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/transactions.ts`, `src/server/services/transactions.ts`,
 `src/server/routes/transactions.ts`, `src/server/routes/transactions.test.ts`,
@@ -51,7 +51,7 @@ first. Until then the page stays a placeholder.
 
 ### 7.3 Settings page
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/auth.ts`, `src/server/services/auth.ts`, `src/server/routes/auth.ts`,
 `src/server/repos/types.ts`, `src/server/repos/sqlite/users.ts`, `sessions.ts`,
@@ -85,7 +85,7 @@ session id → 404.
 
 ### 7.4 Polish pass
 
-- [ ] Done
+- [x] Done
 
 **Files:** as needed across `src/client/`.
 
@@ -106,4 +106,50 @@ Write up anything that needs a decision rather than fixing it silently.
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+7.2, 7.3 and 7.4 completed 2026-10-10. 7.1 (date search) is still tabled and unbuilt.
+Where the build differs from the task text above, this section wins.
+
+**7.2 Manual ordering**
+- `PUT /api/transactions/order` answers 204. Another user's id is reported the same way as
+  an unknown one (400 on `ids`).
+- Recurring items generated onto the same day also take the next free position, so several
+  bills due the same day keep the order they were created in and can be rearranged.
+- The client always sends the *whole* group at that date and time, both paid and upcoming,
+  with only the tapped section's rows rearranged (`mergeOrder` in `optimistic.ts`). Positions
+  are therefore unique across the two sections and survive marking something paid.
+- While a day is in "Reorder" mode, rows that can move show up/down buttons *in place of*
+  the paid circle; other rows are unchanged. "Done" restores the circles.
+
+**7.3 Settings**
+- Endpoints: `POST /api/auth/password`, `GET /api/auth/sessions`,
+  `DELETE /api/auth/sessions/:id`, `POST /api/auth/sessions/revoke-others`,
+  `PATCH /api/settings` (time zone; returns the budget).
+- `requireAuth` now also sets `c.var.sessionId`.
+- A wrong current password is a 400 on `currentPassword`, limited to 10 tries per 15
+  minutes per account.
+- Device names come from `lib/userAgent.ts` ("Chrome on Mac"); "last active" is refreshed
+  about hourly, which is how often a session's last-seen time is written.
+- Changing the time zone changes what "today" is. Stored dates and times are not
+  converted (they are wall-clock values), which is what decision 10 calls for.
+- Theme: `public/theme.js` (plain script, loaded in `<head>`) applies a saved choice before
+  first paint; `lib/theme.ts` reads and writes it. They share the storage key `ppb-theme`.
+  An external file was used so the Content-Security-Policy needs no inline-script hash.
+- The time-zone select saves on change rather than through a Save button.
+
+**7.4 Polish**
+- Browser tab titles follow the page ("Recurring · Pay Period Budget") through
+  `useDocumentTitle`, which `PageHeader` calls.
+- Production HTML is served with `Cache-Control: no-cache`; covered by
+  `src/server/static.test.ts`, which also checks the SPA fallback and asset caching.
+- The Recurring and Settings pages are loaded on first visit (`lazy` routes).
+- The period summary's three figures wrap instead of breaking a large amount mid-number.
+- Walked Home, Recurring and Settings at 360, 768, 1280 and 2560px wide in both colour
+  schemes with deliberately awkward data (an 80-character name, an unbroken 90-character
+  word, a long URL, a seven-figure amount): no horizontal scrolling anywhere, every
+  icon-only control has a label, a long email in the side panel truncates.
+
+**Left for a decision rather than changed**
+- On a phone the floating + button sits over the right-hand end of whichever row is behind
+  it while scrolling (the list has room to scroll clear of it at the end). Normal for this
+  kind of button, but it could instead dock into the top bar on small screens.
+- There is no "forgot password". It needs a way to send email; see `backlog.md`.

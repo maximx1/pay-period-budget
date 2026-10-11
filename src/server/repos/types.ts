@@ -24,6 +24,7 @@ export interface UserRepo {
   findByEmail(email: string): Promise<UserRecord | null>;
   /** Throws UniqueConstraintError("username" | "email") on a duplicate. */
   create(user: NewUser): Promise<UserRecord>;
+  updatePasswordHash(id: string, passwordHash: string, now: Date): Promise<void>;
 }
 
 export type SessionRecord = {
@@ -39,9 +40,14 @@ export type SessionRecord = {
 export interface SessionRepo {
   create(session: SessionRecord): Promise<SessionRecord>;
   findByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
+  findById(userId: string, id: string): Promise<SessionRecord | null>;
+  /** The user's sessions, most recently used first. Includes expired ones not yet purged. */
+  listForUser(userId: string): Promise<SessionRecord[]>;
   touch(id: string, update: { lastSeenAt: Date; expiresAt: Date }): Promise<void>;
   deleteById(id: string): Promise<void>;
   deleteAllForUser(userId: string): Promise<void>;
+  /** Signs the user out everywhere except the session with `keepId`. */
+  deleteOthers(userId: string, keepId: string): Promise<void>;
   deleteExpired(now: Date): Promise<void>;
 }
 
@@ -139,6 +145,8 @@ export interface TransactionRepo {
     startDate: LocalDate,
     endDate: LocalDate,
   ): Promise<{ paidCents: number; upcomingCents: number }>;
+  /** The highest manual order among transactions at exactly this date and time, or null if there are none. */
+  maxSortOrderAt(userId: string, occursAt: LocalDateTime): Promise<number | null>;
   create(transaction: TransactionRecord): Promise<TransactionRecord>;
   /**
    * Inserts a generated transaction unless one already exists for the same recurring item

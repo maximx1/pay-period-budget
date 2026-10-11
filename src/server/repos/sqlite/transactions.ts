@@ -39,6 +39,13 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         .where(inRange(userId, startDate, endDate));
       return { paidCents: Number(row?.paidCents ?? 0), upcomingCents: Number(row?.upcomingCents ?? 0) };
     },
+    async maxSortOrderAt(userId, occursAt) {
+      const [row] = await db
+        .select({ max: sql<number | null>`max(${transactions.sortOrder})` })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.occursAt, occursAt)));
+      return row?.max ?? null;
+    },
     async create(transaction) {
       await db.insert(transactions).values(transaction);
       return transaction;

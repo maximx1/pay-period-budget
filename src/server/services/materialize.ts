@@ -27,6 +27,9 @@ export async function materializeInPeriod(
   const added: string[] = [];
 
   for (const date of occurrencesBetween(ruleOf(item), period.startDate, period.endDate, period.startDate)) {
+    const occursAt = atStartOfDay(date);
+    // Bills all arrive at midnight, so several can share a moment: each joins the end of the queue.
+    const lastPlace = options.dryRun ? null : await repos.transactions.maxSortOrderAt(item.userId, occursAt);
     const inserted =
       options.dryRun ||
       (await repos.transactions.createIfAbsent({
@@ -34,10 +37,10 @@ export async function materializeInPeriod(
         userId: item.userId,
         name: item.name,
         amountCents,
-        occursAt: atStartOfDay(date),
+        occursAt,
         status: "upcoming",
         paidAt: null,
-        sortOrder: 0,
+        sortOrder: lastPlace === null ? 0 : lastPlace + 1,
         note: null,
         recurringId: item.id,
         occurrenceDate: date,

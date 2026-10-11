@@ -6,8 +6,9 @@ import { AppError } from "./lib/errors.ts";
 
 export type AppEnv = {
   Variables: {
-    /** Set by requireAuth; only read it in routes behind that middleware. */
+    /** Set by requireAuth; only read these in routes behind that middleware. */
     user: PublicUser;
+    sessionId: string;
   };
 };
 

@@ -2,6 +2,7 @@ import { Wallet } from "lucide-react";
 import { NavLink } from "react-router";
 import { Card } from "../../components/ui/Card.tsx";
 import { cn } from "../../lib/cn.ts";
+import { useDocumentTitle } from "../../lib/useDocumentTitle.ts";
 import { LoginForm } from "./LoginForm.tsx";
 import { RegisterForm } from "./RegisterForm.tsx";
 
@@ -13,6 +14,8 @@ const tabClass = ({ isActive }: { isActive: boolean }) =>
   );
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
+  useDocumentTitle(mode === "login" ? "Sign in" : "Create account");
+
   return (
     <main className="flex min-h-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">

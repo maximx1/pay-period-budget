@@ -177,6 +177,160 @@ describe("sessions", () => {
   });
 });
 
+describe("changing the password", () => {
+  const next = "a better passphrase";
+
+  it("requires the current password", async () => {
+    const client = t.client();
+    await client.post("/api/auth/register", alice);
+
+    const response = await client.post("/api/auth/password", { currentPassword: "not it", newPassword: next });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("currentPassword");
+    expect((await t.client().post("/api/auth/login", { identifier: "alice", password: alice.password })).status).toBe(200);
+  });
+
+  it("applies the password rules to the new one", async () => {
+    const client = t.client();
+    await client.post("/api/auth/register", alice);
+
+    const response = await client.post("/api/auth/password", { currentPassword: alice.password, newPassword: "short" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("newPassword");
+  });
+
+  it("replaces the password and signs out every other session, keeping this one", async () => {
+    const here = t.client();
+    await here.post("/api/auth/register", alice);
+    const elsewhere = t.client();
+    await elsewhere.post("/api/auth/login", { identifier: "alice", password: alice.password });
+
+    const response = await here.post("/api/auth/password", { currentPassword: alice.password, newPassword: next });
+    expect(response.status).toBe(204);
+
+    expect((await here.get("/api/auth/me")).status).toBe(200);
+    expect((await elsewhere.get("/api/auth/me")).status).toBe(401);
+    expect((await t.client().post("/api/auth/login", { identifier: "alice", password: alice.password })).status).toBe(401);
+    expect((await t.client().post("/api/auth/login", { identifier: "alice", password: next })).status).toBe(200);
+    expect((await t.store.users.findByUsername("alice"))?.passwordHash).toMatch(/^\$argon2id\$/);
+  });
+
+  it("limits guesses at the current password", async () => {
+    const client = t.client();
+    await client.post("/api/auth/register", alice);
+    for (let i = 0; i < 10; i++) {
+      await client.post("/api/auth/password", { currentPassword: "guess", newPassword: next });
+    }
+
+    const blocked = await client.post("/api/auth/password", { currentPassword: alice.password, newPassword: next });
+    expect(blocked.status).toBe(429);
+
+    t.clock.advance(16 * 60 * 1000);
+    expect((await client.post("/api/auth/password", { currentPassword: alice.password, newPassword: next })).status).toBe(204);
+  });
+
+  it("requires a session", async () => {
+    const response = await t.client().post("/api/auth/password", { currentPassword: alice.password, newPassword: next });
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("signed-in devices", () => {
+  const bob = { username: "bob", email: "bob@example.com", password: "another secret" };
+  const chrome = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+  const pixel = "Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
+
+  type Listed = { id: string; device: string; current: boolean; createdAt: string; lastSeenAt: string };
+  const list = async (client: ReturnType<TestApp["client"]>) => (await (await client.get("/api/auth/sessions")).json()).sessions as Listed[];
+
+  async function twoDevices() {
+    const laptop = t.client();
+    await laptop.post("/api/auth/register", alice, { "user-agent": chrome });
+    t.clock.advance(60_000);
+    const phone = t.client();
+    await phone.post("/api/auth/login", { identifier: "alice", password: alice.password }, { "user-agent": pixel });
+    return { laptop, phone };
+  }
+
+  it("lists the account's sessions, newest activity first, marking the current one", async () => {
+    const { laptop, phone } = await twoDevices();
+
+    expect((await list(laptop)).map((s) => [s.device, s.current])).toEqual([
+      ["Chrome on Android", false],
+      ["Chrome on Mac", true],
+    ]);
+    expect((await list(phone)).map((s) => [s.device, s.current])).toEqual([
+      ["Chrome on Android", true],
+      ["Chrome on Mac", false],
+    ]);
+    expect((await list(laptop))[1]).toMatchObject({ createdAt: "2026-01-15T12:00:00.000Z", lastSeenAt: "2026-01-15T12:00:00.000Z" });
+  });
+
+  it("never shows another user's sessions, or expired ones", async () => {
+    const { laptop } = await twoDevices();
+    const other = t.client();
+    await other.post("/api/auth/register", bob);
+
+    expect((await list(other)).length).toBe(1);
+    expect((await list(laptop)).length).toBe(2);
+
+    // The phone goes unused for a month while the laptop stays active.
+    for (let day = 0; day < 31; day += 10) {
+      t.clock.advance(10 * 24 * 60 * 60 * 1000);
+      await laptop.get("/api/auth/me");
+    }
+    expect((await list(laptop)).map((s) => s.device)).toEqual(["Chrome on Mac"]);
+  });
+
+  it("signs one other device out", async () => {
+    const { laptop, phone } = await twoDevices();
+    const phoneSession = (await list(laptop)).find((s) => !s.current)!;
+
+    expect((await laptop.delete(`/api/auth/sessions/${phoneSession.id}`)).status).toBe(204);
+    expect((await phone.get("/api/auth/me")).status).toBe(401);
+    expect((await laptop.get("/api/auth/me")).status).toBe(200);
+    expect((await laptop.delete(`/api/auth/sessions/${phoneSession.id}`)).status).toBe(404);
+  });
+
+  it("signs out everywhere else at once", async () => {
+    const { laptop, phone } = await twoDevices();
+    const tablet = t.client();
+    await tablet.post("/api/auth/login", { identifier: "alice", password: alice.password });
+
+    expect((await laptop.post("/api/auth/sessions/revoke-others")).status).toBe(204);
+    expect((await phone.get("/api/auth/me")).status).toBe(401);
+    expect((await tablet.get("/api/auth/me")).status).toBe(401);
+    expect((await list(laptop)).length).toBe(1);
+  });
+
+  it("clears the cookie when the current session is the one signed out", async () => {
+    const { laptop } = await twoDevices();
+    const own = (await list(laptop)).find((s) => s.current)!;
+
+    const response = await laptop.delete(`/api/auth/sessions/${own.id}`);
+    expect(response.status).toBe(204);
+    expect(laptop.sessionCookie).toBeUndefined();
+  });
+
+  it("refuses to touch another user's session", async () => {
+    const { laptop } = await twoDevices();
+    const aliceSession = (await list(laptop))[0]!;
+    const other = t.client();
+    await other.post("/api/auth/register", bob);
+
+    expect((await other.delete(`/api/auth/sessions/${aliceSession.id}`)).status).toBe(404);
+    await other.post("/api/auth/sessions/revoke-others");
+    expect((await list(laptop)).length).toBe(2);
+  });
+
+  it("requires a session", async () => {
+    const anonymous = t.client();
+    expect((await anonymous.get("/api/auth/sessions")).status).toBe(401);
+    expect((await anonymous.delete("/api/auth/sessions/x")).status).toBe(401);
+    expect((await anonymous.post("/api/auth/sessions/revoke-others")).status).toBe(401);
+  });
+});
+
 describe("request guards", () => {
   it("blocks state-changing requests from other origins", async () => {
     const response = await t.client().post("/api/auth/register", alice, { origin: "https://evil.example" });

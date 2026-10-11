@@ -15,7 +15,8 @@ import { PeriodHeader } from "../periods/PeriodHeader.tsx";
 import { PeriodSettingsDialog } from "../periods/PeriodSettingsDialog.tsx";
 import { PeriodSummary } from "../periods/PeriodSummary.tsx";
 import type { Transaction } from "../../../shared/transactions.ts";
-import { useSetTransactionStatus } from "../transactions/api.ts";
+import { useReorderTransactions, useSetTransactionStatus } from "../transactions/api.ts";
+import { mergeOrder } from "../transactions/optimistic.ts";
 import { TransactionDialog } from "../transactions/TransactionDialog.tsx";
 import { TransactionSection } from "../transactions/TransactionSection.tsx";
 
@@ -41,6 +42,7 @@ export function HomePage() {
   const period = usePeriodView(periodId);
   const budget = useBudget();
   const setStatus = useSetTransactionStatus();
+  const reorderTransactions = useReorderTransactions();
   // `transaction` is kept after closing so the dialog doesn't change its title while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; transaction?: Transaction }>({ open: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -78,6 +80,12 @@ export function HomePage() {
     const toggle = (transaction: Transaction) =>
       setStatus.mutate({ id: transaction.id, status: transaction.status === "paid" ? "upcoming" : "paid" });
 
+    // A section reorders only its own rows; the other section's rows at the same moment keep their places.
+    const reorder = (occursAt: string, sectionOrder: string[]) => {
+      const group = view.transactions.filter((transaction) => transaction.occursAt === occursAt).map((transaction) => transaction.id);
+      reorderTransactions.mutate(mergeOrder(group, sectionOrder));
+    };
+
     content = (
       <>
         <PeriodHeader view={view} today={today} onOpenSettings={() => setSettingsOpen(true)} />
@@ -93,6 +101,7 @@ export function HomePage() {
               description: "Add a transaction with the + button.",
             }}
             onToggle={toggle}
+            onReorder={reorder}
             onEdit={(transaction) => setDialog({ open: true, transaction })}
           />
           <TransactionSection
@@ -101,6 +110,7 @@ export function HomePage() {
             totalCents={view.totals.paidCents}
             empty={{ icon: CircleCheck, title: "Nothing paid yet", description: "Items you mark as paid move here." }}
             onToggle={toggle}
+            onReorder={reorder}
             onEdit={(transaction) => setDialog({ open: true, transaction })}
           />
         </div>

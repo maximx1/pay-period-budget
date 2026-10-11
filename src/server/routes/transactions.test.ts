@@ -386,6 +386,91 @@ describe("carrying leftover forward", () => {
   });
 });
 
+describe("manual order among transactions at the same date and time", () => {
+  const names = async () => (await viewOfSeq(2)).transactions.map((tx) => tx.name);
+  const add = async (name: string, overrides: Record<string, unknown> = {}) => (await create(ann, expense({ name, ...overrides }))).transaction;
+
+  it("puts each new transaction after the ones already at that moment", async () => {
+    await add("first");
+    await add("second");
+    await add("third");
+
+    expect(await names()).toEqual(["first", "second", "third"]);
+    expect((await viewOfSeq(2)).transactions.map((tx) => tx.sortOrder)).toEqual([0, 1, 2]);
+  });
+
+  it("saves a new order and returns it with the period", async () => {
+    const [a, b, c] = [await add("a"), await add("b"), await add("c")];
+
+    expect((await ann.put("/api/transactions/order", { ids: [c.id, a.id, b.id] })).status).toBe(204);
+    expect(await names()).toEqual(["c", "a", "b"]);
+
+    // A later arrival still goes to the end.
+    await add("d");
+    expect(await names()).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("never reorders across different times", async () => {
+    const early = await add("early", { occursAt: "2026-01-20T08:00" });
+    const late = await add("late", { occursAt: "2026-01-20T09:00" });
+
+    const response = await ann.put("/api/transactions/order", { ids: [late.id, early.id] });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("ids");
+    expect(await names()).toEqual(["early", "late"]);
+  });
+
+  it("joins the end of the queue when moved to another date and time", async () => {
+    const [a, b] = [await add("a"), await add("b")];
+    const mover = await add("mover", { occursAt: "2026-01-21T00:00" });
+    await ann.put("/api/transactions/order", { ids: [b.id, a.id] });
+
+    await patch(ann, mover.id, { occursAt: IN_P2 });
+    expect(await names()).toEqual(["b", "a", "mover"]);
+
+    // Editing something other than the time leaves its place alone.
+    await patch(ann, b.id, { name: "b renamed", amountCents: 1 });
+    expect(await names()).toEqual(["b renamed", "a", "mover"]);
+  });
+
+  it("keeps recurring bills that land on the same day in a stable, adjustable order", async () => {
+    for (const name of ["Electric", "Internet", "Water"]) {
+      const response = await ann.post("/api/recurring", {
+        name,
+        kind: "expense",
+        defaultAmountCents: 1000,
+        recurrenceUnit: "month",
+        firstDueDate: "2026-01-20",
+      });
+      expect(response.status).toBe(201);
+    }
+    const rows = (await viewOfSeq(2)).transactions;
+    expect(rows.map((tx) => tx.name)).toEqual(["Electric", "Internet", "Water"]);
+    expect(rows.map((tx) => tx.sortOrder)).toEqual([0, 1, 2]);
+
+    await ann.put("/api/transactions/order", { ids: [rows[2]!.id, rows[0]!.id, rows[1]!.id] });
+    expect(await names()).toEqual(["Water", "Electric", "Internet"]);
+  });
+
+  it.each([
+    ["no ids", { ids: [] }],
+    ["a repeated id", { ids: ["x", "x"] }],
+    ["an unknown id", { ids: ["nope"] }],
+    ["a missing list", {}],
+  ])("rejects %s", async (_label, body) => {
+    expect((await ann.put("/api/transactions/order", body)).status).toBe(400);
+  });
+
+  it("requires a session and refuses another user's transactions", async () => {
+    const [a, b] = [await add("a"), await add("b")];
+    expect((await t.client().put("/api/transactions/order", { ids: [b.id, a.id] })).status).toBe(401);
+
+    const bob = await signUp("bob", 0);
+    expect((await bob.put("/api/transactions/order", { ids: [b.id, a.id] })).status).toBe(400);
+    expect(await names()).toEqual(["a", "b"]);
+  });
+});
+
 describe("access control", () => {
   it("requires a session", async () => {
     const anonymous = t.client();

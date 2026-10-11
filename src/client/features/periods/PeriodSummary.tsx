@@ -24,7 +24,7 @@ function Stat({ label, cents, net = false, marker }: StatProps) {
         {label}
         {marker}
       </dt>
-      <dd className="mt-0.5 text-sm font-semibold break-words text-fg tabular-nums sm:text-base">
+      <dd className="mt-0.5 text-sm font-semibold whitespace-nowrap text-fg tabular-nums sm:text-base">
         {formatCents(cents, { showPlus: net })}
       </dd>
     </div>
@@ -74,7 +74,8 @@ export function PeriodSummary({ view }: { view: PeriodView }) {
         </p>
       </div>
 
-      <dl className="grid grid-cols-3 gap-4 lg:gap-10">
+      {/* Wraps rather than squeezes: a large amount takes the room it needs and the rest move down. */}
+      <dl className="flex flex-wrap gap-x-8 gap-y-3 lg:gap-x-10">
         <Stat
           label="Starting"
           cents={period.startingCents}

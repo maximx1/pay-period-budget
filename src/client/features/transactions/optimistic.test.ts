@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PeriodView } from "../../../shared/budget.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
-import { withStatus } from "./optimistic.ts";
+import { mergeOrder, withOrder, withStatus } from "./optimistic.ts";
 
 const tx = (id: string, amountCents: number, status: Transaction["status"]): Transaction => ({
   id,
@@ -83,5 +83,45 @@ describe("withStatus", () => {
   it("returns the view untouched when there is nothing to do", () => {
     expect(withStatus(view, "missing", "paid", NOW)).toBe(view);
     expect(withStatus(view, "rent", "paid", NOW)).toBe(view);
+  });
+});
+
+describe("mergeOrder", () => {
+  it("rearranges one section's rows and leaves the others where they were", () => {
+    // a and c are upcoming, b and d are paid; the user swaps a and c.
+    expect(mergeOrder(["a", "b", "c", "d"], ["c", "a"])).toEqual(["c", "b", "a", "d"]);
+  });
+
+  it("handles a group that is entirely one section", () => {
+    expect(mergeOrder(["a", "b", "c"], ["b", "c", "a"])).toEqual(["b", "c", "a"]);
+  });
+
+  it("leaves the group alone when given nothing to rearrange", () => {
+    expect(mergeOrder(["a", "b"], [])).toEqual(["a", "b"]);
+  });
+});
+
+describe("withOrder", () => {
+  const sameMoment: PeriodView = {
+    ...view,
+    transactions: [
+      { ...tx("early", -100, "upcoming"), occursAt: "2026-01-19T00:00" },
+      { ...tx("a", -100, "upcoming"), sortOrder: 0 },
+      { ...tx("b", -100, "upcoming"), sortOrder: 1 },
+      { ...tx("c", -100, "upcoming"), sortOrder: 2 },
+      { ...tx("late", -100, "upcoming"), occursAt: "2026-01-21T00:00" },
+    ],
+  };
+
+  it("reorders within the moment and keeps other times in place", () => {
+    const next = withOrder(sameMoment, ["c", "a", "b"]);
+    expect(next.transactions.map((t) => t.id)).toEqual(["early", "c", "a", "b", "late"]);
+    expect(next.transactions.slice(1, 4).map((t) => t.sortOrder)).toEqual([0, 1, 2]);
+    expect(next.totals).toBe(sameMoment.totals);
+  });
+
+  it("does not mutate the view it was given", () => {
+    withOrder(sameMoment, ["c", "a", "b"]);
+    expect(sameMoment.transactions.map((t) => t.id)).toEqual(["early", "a", "b", "c", "late"]);
   });
 });

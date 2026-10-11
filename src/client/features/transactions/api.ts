@@ -9,7 +9,7 @@ import type {
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
-import { withStatus } from "./optimistic.ts";
+import { withOrder, withStatus } from "./optimistic.ts";
 
 // A transaction changes its own period's totals and the starting amount of every period
 // after it, so each of these refreshes all cached periods rather than just one.
@@ -68,6 +68,37 @@ export function useSetTransactionStatus() {
     onSettled: () => {
       // While more taps are still saving, their optimistic state is newer than the server's.
       if (queryClient.isMutating({ mutationKey: STATUS_MUTATION_KEY }) === 1) {
+        return queryClient.invalidateQueries({ queryKey: periodKeys.all });
+      }
+    },
+  });
+}
+
+const ORDER_MUTATION_KEY = ["transaction-order"] as const;
+
+/** Saves a new order for transactions sharing one date and time, showing it at once. */
+export function useReorderTransactions() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  return useMutation({
+    mutationKey: ORDER_MUTATION_KEY,
+    mutationFn: (ids: string[]) => api.put<void>("/api/transactions/order", { ids }),
+
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: periodKeys.all });
+      const previous = queryClient.getQueriesData<PeriodView>({ queryKey: periodKeys.all });
+      queryClient.setQueriesData<PeriodView>({ queryKey: periodKeys.all }, (view) => view && withOrder(view, ids));
+      return { previous };
+    },
+
+    onError: (_error, _ids, context) => {
+      for (const [key, view] of context?.previous ?? []) queryClient.setQueryData(key, view);
+      toast("Couldn't save that order. Try again.", { variant: "error" });
+    },
+
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey: ORDER_MUTATION_KEY }) === 1) {
         return queryClient.invalidateQueries({ queryKey: periodKeys.all });
       }
     },

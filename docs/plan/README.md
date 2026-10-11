@@ -34,8 +34,8 @@ different app.
 | [4](phase-04-transactions.md) | Transactions and the home view | Done | n/a |
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
-| [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready | Sonnet |
-| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready after 7 | Sonnet for 8.1 to 8.3, Opus for 8.4 |
+| [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Done, except date search (tabled) | n/a |
+| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready (see its prerequisites) | Sonnet for 8.1 to 8.3, Opus for 8.4 |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, deploy, iOS | Not planned in detail | n/a |
 
 ### What phases 0 and 1 delivered
@@ -110,6 +110,16 @@ different app.
   `POST …/starting/revert`, `POST …/recalculate`.
 - Period settings dialog behind a button in the period header.
 
+### What phase 7 delivered
+
+- Manual ordering of transactions that share a date and time (`PUT /api/transactions/order`,
+  a per-day "Reorder" toggle on the home screen).
+- Settings page: profile, budget details with a time-zone setting, light / dark / system
+  appearance, change password, and signed-in devices with sign-out.
+- Tab titles, no-cache HTML in production, on-demand loading of secondary pages, and a pass
+  over every screen from 360px to 2560px.
+- Not built: date search (decision 6).
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -128,8 +138,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 7.2 from
-> docs/plan/phase-07-polish.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 8.1 from
+> docs/plan/phase-08-android.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

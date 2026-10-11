@@ -45,3 +45,23 @@ export type PublicUser = {
 export type AuthResponse = {
   user: PublicUser;
 };
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password").max(PASSWORD_MAX_LENGTH),
+  newPassword: passwordSchema,
+});
+export type ChangePasswordInput = z.output<typeof changePasswordSchema>;
+
+/** One place the account is signed in. */
+export type SessionInfo = {
+  id: string;
+  /** "Chrome on Mac" and the like. */
+  device: string;
+  /** ISO instants. `lastSeenAt` is only refreshed about once an hour. */
+  createdAt: string;
+  lastSeenAt: string;
+  /** The session making this request. */
+  current: boolean;
+};
+
+export type SessionListResponse = { sessions: SessionInfo[] };

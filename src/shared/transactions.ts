@@ -44,6 +44,15 @@ export const transactionPatchSchema = z
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type TransactionPatch = z.output<typeof transactionPatchSchema>;
 
+/** A new order for transactions that share the same date and time. */
+export const transactionOrderSchema = z.object({
+  ids: z
+    .array(z.string().min(1))
+    .min(1, "Nothing to reorder")
+    .max(200)
+    .refine((ids) => new Set(ids).size === ids.length, "Each transaction may appear only once"),
+});
+
 export type Transaction = {
   id: string;
   name: string;

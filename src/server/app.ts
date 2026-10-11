@@ -11,6 +11,7 @@ import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
 import { recurringRoutes } from "./routes/recurring.ts";
+import { settingsRoutes } from "./routes/settings.ts";
 import { transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
@@ -49,6 +50,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   api.route("/periods", periodRoutes({ periods, authed }));
   api.route("/transactions", transactionRoutes({ transactions, authed }));
   api.route("/recurring", recurringRoutes({ recurring, authed }));
+  api.route("/settings", settingsRoutes({ periods, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });
@@ -70,6 +72,11 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
     app.use("/assets/*", async (c, next) => {
       await next();
       if (c.res.ok) c.header("Cache-Control", "public, max-age=31536000, immutable");
+    });
+    // The HTML names the current hashed assets, so it must be revalidated on every visit.
+    app.use(async (c, next) => {
+      await next();
+      if (c.res.headers.get("content-type")?.startsWith("text/html")) c.header("Cache-Control", "no-cache");
     });
     app.use(serveStatic({ root: staticDir }));
     // Client-side routes all resolve to the SPA shell.

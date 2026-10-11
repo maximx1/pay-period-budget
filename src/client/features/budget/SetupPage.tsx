@@ -12,6 +12,7 @@ import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
+import { useDocumentTitle } from "../../lib/useDocumentTitle.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import { useLogout } from "../auth/session.ts";
 import { useSetupBudget } from "./api.ts";
@@ -32,6 +33,7 @@ const setupFormSchema = z.object({
 type SetupValues = z.infer<typeof setupFormSchema>;
 
 export function SetupPage() {
+  useDocumentTitle("Set up your budget");
   const navigate = useNavigate();
   const setup = useSetupBudget();
   const logout = useLogout();

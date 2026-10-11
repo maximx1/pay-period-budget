@@ -37,6 +37,7 @@ export function requireAuth(auth: AuthService, config: CookieConfig) {
     }
     if (session.renewedUntil) setSessionCookie(c, config, token, session.renewedUntil);
     c.set("user", session.user);
+    c.set("sessionId", session.sessionId);
     await next();
   });
 }

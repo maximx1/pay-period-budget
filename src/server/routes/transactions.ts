@@ -2,6 +2,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import {
   type TransactionResponse,
   transactionInputSchema,
+  transactionOrderSchema,
   transactionPatchSchema,
 } from "../../shared/transactions.ts";
 import { type AppEnv, parseJson } from "../http.ts";
@@ -15,6 +16,13 @@ export function transactionRoutes(deps: { transactions: TransactionService; auth
   routes.post("/", async (c) => {
     const input = await parseJson(c, transactionInputSchema);
     return c.json<TransactionResponse>(await transactions.create(c.var.user.id, input), 201);
+  });
+
+  // Registered before "/:id" routes so "order" is never taken for an id.
+  routes.put("/order", async (c) => {
+    const { ids } = await parseJson(c, transactionOrderSchema);
+    await transactions.reorder(c.var.user.id, ids);
+    return c.body(null, 204);
   });
 
   routes.patch("/:id", async (c) => {

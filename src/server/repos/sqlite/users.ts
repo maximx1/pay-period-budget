@@ -18,6 +18,9 @@ export function createUserRepo(db: Db): UserRepo {
       const [row] = await db.select().from(users).where(eq(users.email, email)).limit(1);
       return row ?? null;
     },
+    async updatePasswordHash(id, passwordHash, now) {
+      await db.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, id));
+    },
     async create({ now, ...user }) {
       const record = { ...user, createdAt: now, updatedAt: now };
       await db.insert(users).values(record).catch(rethrowConstraint);

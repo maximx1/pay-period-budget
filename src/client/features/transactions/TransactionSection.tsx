@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { useId } from "react";
-import { dateOf, formatDay, type LocalDate } from "../../../shared/dates.ts";
+import { useId, useState } from "react";
+import { dateOf, formatDay, type LocalDate, type LocalDateTime } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { Card } from "../../components/ui/Card.tsx";
@@ -15,6 +15,8 @@ type TransactionSectionProps = {
   empty: { icon: LucideIcon; title: string; description: string };
   onToggle: (transaction: Transaction) => void;
   onEdit: (transaction: Transaction) => void;
+  /** Called with this section's rows at one date and time, in their new order. */
+  onReorder: (occursAt: LocalDateTime, orderedIds: string[]) => void;
 };
 
 function groupByDay(transactions: Transaction[]): Array<[LocalDate, Transaction[]]> {
@@ -29,8 +31,18 @@ function groupByDay(transactions: Transaction[]): Array<[LocalDate, Transaction[
 }
 
 /** "Upcoming" or "Paid": a running total in the header and the rows grouped under their day. */
-export function TransactionSection({ title, transactions, totalCents, empty, onToggle, onEdit }: TransactionSectionProps) {
+export function TransactionSection({
+  title,
+  transactions,
+  totalCents,
+  empty,
+  onToggle,
+  onEdit,
+  onReorder,
+}: TransactionSectionProps) {
   const headingId = useId();
+  // The day whose rows are showing move buttons, if any.
+  const [reorderingDay, setReorderingDay] = useState<LocalDate | null>(null);
 
   return (
     <Card padding="none" role="region" aria-labelledby={headingId}>
@@ -46,21 +58,57 @@ export function TransactionSection({ title, transactions, totalCents, empty, onT
         <EmptyState {...empty} />
       ) : (
         <div className="pb-2">
-          {groupByDay(transactions).map(([day, items]) => (
-            <div key={day}>
-              <p className="px-4 pt-3 pb-1 text-xs font-semibold tracking-wide text-muted uppercase">{formatDay(day)}</p>
-              <ul>
-                {items.map((transaction) => (
-                  <TransactionRow
-                    key={transaction.id}
-                    transaction={transaction}
-                    onToggle={() => onToggle(transaction)}
-                    onEdit={() => onEdit(transaction)}
-                  />
-                ))}
-              </ul>
-            </div>
-          ))}
+          {groupByDay(transactions).map(([day, items]) => {
+            // Order can only be chosen among rows at exactly the same date and time.
+            const sameMoment = (occursAt: LocalDateTime) => items.filter((item) => item.occursAt === occursAt);
+            const canReorder = items.some((item) => sameMoment(item.occursAt).length > 1);
+            const reordering = canReorder && reorderingDay === day;
+
+            return (
+              <div key={day}>
+                <div className="flex min-h-9 items-end justify-between px-4 pt-2 pb-1">
+                  <p className="text-xs font-semibold tracking-wide text-muted uppercase">{formatDay(day)}</p>
+                  {canReorder && (
+                    <button
+                      type="button"
+                      aria-pressed={reordering}
+                      onClick={() => setReorderingDay(reordering ? null : day)}
+                      className="-my-2 -mr-2 min-h-9 rounded-lg px-2 text-sm font-semibold text-primary hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {reordering ? "Done" : "Reorder"}
+                    </button>
+                  )}
+                </div>
+                <ul>
+                  {items.map((transaction) => {
+                    const peers = sameMoment(transaction.occursAt);
+                    const index = peers.indexOf(transaction);
+                    const swapWith = (other: number) => () => {
+                      const ids = peers.map((peer) => peer.id);
+                      [ids[index], ids[other]] = [ids[other]!, ids[index]!];
+                      onReorder(transaction.occursAt, ids);
+                    };
+                    return (
+                      <TransactionRow
+                        key={transaction.id}
+                        transaction={transaction}
+                        onToggle={() => onToggle(transaction)}
+                        onEdit={() => onEdit(transaction)}
+                        reorder={
+                          reordering && peers.length > 1
+                            ? {
+                                onUp: index > 0 ? swapWith(index - 1) : undefined,
+                                onDown: index < peers.length - 1 ? swapWith(index + 1) : undefined,
+                              }
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>

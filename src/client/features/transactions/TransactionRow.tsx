@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, Repeat } from "lucide-react";
+import { ChevronDown, ChevronUp, Circle, CircleCheck, Repeat } from "lucide-react";
 import { formatTime } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
@@ -9,10 +9,12 @@ type TransactionRowProps = {
   transaction: Transaction;
   onToggle: () => void;
   onEdit: () => void;
+  /** When set, the row shows move buttons in place of the paid switch. Undefined ends of the range are disabled. */
+  reorder?: { onUp?: () => void; onDown?: () => void };
 };
 
 /** One transaction: a paid/upcoming switch on the left, the rest of the row opens it for editing. */
-export function TransactionRow({ transaction, onToggle, onEdit }: TransactionRowProps) {
+export function TransactionRow({ transaction, onToggle, onEdit, reorder }: TransactionRowProps) {
   const { name, amountCents, occursAt, note } = transaction;
   const paid = transaction.status === "paid";
   const income = amountCents > 0;
@@ -22,14 +24,25 @@ export function TransactionRow({ transaction, onToggle, onEdit }: TransactionRow
 
   return (
     <li className="flex items-center gap-1 pr-2 pl-1">
-      <IconButton
-        label={paid ? `Move ${name} back to upcoming` : `Mark ${name} paid`}
-        aria-pressed={paid}
-        onClick={onToggle}
-        className={paid ? "text-primary hover:text-primary" : undefined}
-      >
-        {paid ? <CircleCheck className="size-6" aria-hidden /> : <Circle className="size-6" aria-hidden />}
-      </IconButton>
+      {reorder ? (
+        <div className="flex shrink-0">
+          <IconButton label={`Move ${name} up`} disabled={!reorder.onUp} onClick={reorder.onUp}>
+            <ChevronUp className="size-5" aria-hidden />
+          </IconButton>
+          <IconButton label={`Move ${name} down`} disabled={!reorder.onDown} onClick={reorder.onDown}>
+            <ChevronDown className="size-5" aria-hidden />
+          </IconButton>
+        </div>
+      ) : (
+        <IconButton
+          label={paid ? `Move ${name} back to upcoming` : `Mark ${name} paid`}
+          aria-pressed={paid}
+          onClick={onToggle}
+          className={paid ? "text-primary hover:text-primary" : undefined}
+        >
+          {paid ? <CircleCheck className="size-6" aria-hidden /> : <Circle className="size-6" aria-hidden />}
+        </IconButton>
+      )}
 
       <button
         type="button"

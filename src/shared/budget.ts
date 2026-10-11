@@ -19,6 +19,10 @@ function isTimeZone(value: string): boolean {
   }
 }
 
+export const timezoneSchema = z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone");
+
+export const settingsPatchSchema = z.object({ timezone: timezoneSchema });
+
 export const budgetSetupSchema = z.object({
   type: z.enum(SCHEDULE_TYPES, "Choose how often you are paid"),
   /** First day of the first period; usually the most recent payday. */
@@ -29,7 +33,7 @@ export const budgetSetupSchema = z.object({
     .min(-MAX_OPENING_CENTS, "That amount is too large")
     .max(MAX_OPENING_CENTS, "That amount is too large")
     .default(0),
-  timezone: z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone"),
+  timezone: timezoneSchema,
 });
 export type BudgetSetupInput = z.output<typeof budgetSetupSchema>;
 
