@@ -1,0 +1,100 @@
+# Pay Period Budget
+
+A budgeting app organised around pay periods instead of calendar months. React single-page
+app + small JSON API over SQLite. The same client build will later be wrapped with Capacitor
+for Android.
+
+The roadmap, domain rules and task breakdown live in `docs/plan/`. Read
+`docs/plan/README.md` before starting any feature work, and `docs/plan/domain.md` before
+touching periods, transactions or recurring items.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | API on :8787 (`tsx watch`) + Vite on :5173, which proxies `/api` |
+| `npm run check` | Typecheck + all tests. Must pass before a task is done |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts` |
+| `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
+| `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
+
+Migrations are applied automatically when the server (or a test) opens the database.
+The dev database is `data/app.db` (gitignored); delete the `data/` folder to start clean.
+
+## Layout
+
+```
+src/shared/   Code used by both sides: zod schemas, API types, pure domain logic. No I/O, no Node or DOM APIs.
+src/server/   Hono API
+  app.ts        builds the app from its dependencies (what tests drive)
+  index.ts      process entry point
+  routes/       HTTP only: parse input, call a service, shape the response
+  services/     business rules; depend on repo interfaces, never on drizzle
+  repos/        data-access boundary: types.ts = interfaces, sqlite/ = implementation
+  db/           drizzle schema, migrations, connection
+  middleware/, lib/
+  testing.ts    createTestApp(): real app + temp SQLite file + fake clock + cookie client
+src/client/   React app
+  router.tsx    all routes
+  features/<name>/   screens, hooks and components for one feature
+  components/ui/     shared presentational primitives
+  lib/api.ts    the only place that calls fetch
+```
+
+## Rules that keep the codebase consistent
+
+**Server**
+- Only `src/server/repos/sqlite/` and `src/server/db/` import drizzle or the driver. Add a
+  method to the interface in `repos/types.ts`, implement it, then use it from a service.
+  This boundary is what lets the database be swapped later.
+- Every repo method that reads or writes user data takes `userId` and filters by it. A
+  record belonging to someone else is a 404, never a 403.
+- Multi-step writes go through `store.transaction(async (repos) => ...)`.
+- Validate request bodies with a zod schema from `src/shared/` via `parseJson`. Throw
+  `AppError` for anything the client should see; never build error JSON by hand.
+- Take the current time from the injected `now()`; never call `new Date()` / `Date.now()`
+  in services or routes. Tests control the clock.
+- New routers mount in `app.ts` behind `requireAuth`.
+
+**Data conventions**
+- IDs: `crypto.randomUUID()` text. Instants: integer milliseconds (`timestamp_ms`).
+- Money: integer cents, signed (expenses negative, income positive). No floats, ever.
+- Calendar dates: `"YYYY-MM-DD"` text. Date-times of transactions: `"YYYY-MM-DDTHH:mm"`
+  local wall-clock text. Do date math with the helpers in `src/shared/dates.ts`, not with
+  `new Date(string)`.
+
+**Client**
+- Server state lives in TanStack Query; talk to the API only through `lib/api.ts`.
+- Forms use react-hook-form with the shared zod schema; map server field errors with
+  `applyApiError`.
+- Style with the semantic colour utilities defined in `styles.css` (`bg-surface`,
+  `text-muted`, `border-border`, `bg-primary`, ...). No raw palette classes like
+  `bg-green-600`; they break dark mode.
+- Every screen must work from 360px wide up to ultrawide. Touch targets are at least 44px
+  (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
+- Inside authenticated routes get the user with `useCurrentUser()`.
+
+**Tests**
+- Colocated `*.test.ts`. API behaviour is tested through `createTestApp()` and its
+  cookie-keeping client; pure logic in `src/shared/` gets table-driven unit tests.
+- Every endpoint that touches user data needs a test proving another user can't reach it.
+
+**Dependencies**
+- Do not add packages that compile native code on install (`better-sqlite3`, `bcrypt`,
+  `sqlite3`, ...). This machine's Xcode command line tools are broken, so they fail to
+  install; that is what killed the previous version of this project. Prebuilt-binary
+  packages (`@libsql/client`, `@node-rs/argon2`) are fine.
+- Ask before adding any dependency a plan task doesn't name.
+
+## Other notes
+
+- Relative imports include the file extension (`./thing.ts`, `./Thing.tsx`). No path aliases.
+- In development the API listens on `API_PORT` (default 8787), not `PORT`; tooling sets
+  `PORT` for the web dev server.
+
+- Recurring bills and income are **recurring items** (`recurring_items`, `/api/recurring`,
+  `features/recurring`). Never name them "accounts": that word is reserved for a future
+  feature (savings accounts, payees) described in `docs/plan/backlog.md`.
+- `../ever-givin-pod` is an unrelated project. Do not modify it.
+- Commit only when asked.

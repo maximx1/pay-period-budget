@@ -1,0 +1,41 @@
+import { z } from "zod";
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // API_PORT wins. PORT is honoured only in production, where the API is the one server;
+  // in development PORT tends to be set by tooling and means the web dev server.
+  API_PORT: z.coerce.number().int().positive().optional(),
+  PORT: z.coerce.number().int().positive().optional(),
+  DATABASE_URL: z.string().min(1).default("file:./data/app.db"),
+  APP_ORIGINS: z.string().default("http://localhost:5173"),
+  SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  TRUST_PROXY: z.enum(["true", "false"]).default("false"),
+  COOKIE_SECURE: z.enum(["true", "false"]).optional(),
+});
+
+export type AppConfig = {
+  isProduction: boolean;
+  port: number;
+  databaseUrl: string;
+  /** Browser origins allowed to make state-changing requests. */
+  appOrigins: string[];
+  sessionTtlMs: number;
+  trustProxy: boolean;
+  /** Whether the session cookie is HTTPS-only. Defaults to on in production. */
+  cookieSecure: boolean;
+};
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const parsed = envSchema.parse(env);
+  return {
+    isProduction: parsed.NODE_ENV === "production",
+    port: parsed.API_PORT ?? (parsed.NODE_ENV === "production" ? parsed.PORT : undefined) ?? 8787,
+    databaseUrl: parsed.DATABASE_URL,
+    appOrigins: parsed.APP_ORIGINS.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+    sessionTtlMs: parsed.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    trustProxy: parsed.TRUST_PROXY === "true",
+    cookieSecure: parsed.COOKIE_SECURE ? parsed.COOKIE_SECURE === "true" : parsed.NODE_ENV === "production",
+  };
+}

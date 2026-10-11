@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.DS_Store
+coverage/
+# Capacitor (added in the Android phase)
+android/app/build/
+android/.gradle/
