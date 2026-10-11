@@ -4,6 +4,9 @@ A budgeting app organised around pay periods instead of calendar months. React s
 app + small JSON API over SQLite. The same client build will later be wrapped with Capacitor
 for Android.
 
+**Picking this project up in a new session? Read `docs/plan/HANDOFF.md` first**: current
+state, what is left, what has to be installed, and how the owner likes to work.
+
 Running, configuring and deploying it: `README.md` and `docs/deploy.md`.
 
 The roadmap, domain rules and task breakdown live in `docs/plan/`. Read

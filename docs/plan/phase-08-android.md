@@ -21,11 +21,15 @@ brief needs it; revisit only if the wrapped app feels wrong in daily use.
 
 ## Before starting
 
-- Android Studio and a JDK installed; a Pixel or emulator available.
+- A **current** Android Studio (it bundles the JDK), with SDK Platform 36 and Build-Tools
+  36 installed through its SDK Manager; a Pixel with USB debugging on, or an API 36
+  emulator. `HANDOFF.md` lists what was found on the development machine and what to
+  install.
 - The API reachable from the phone over **HTTPS** (a reverse proxy with a certificate, or a
   private network such as Tailscale with HTTPS enabled). Android blocks plain HTTP by
   default and the session cookie/token should never travel unencrypted.
-- Check the current Capacitor major version and its Node requirement before installing.
+- Capacitor was at 8.5 on 2026-10-10: Node 22+, JDK 21, compile and target SDK 36,
+  minimum SDK 24. Check again before installing.
 
 ## Tasks
 

@@ -1,6 +1,7 @@
 # Roadmap
 
-Last updated 2026-10-10.
+Last updated 2026-10-10. For where things stand right now and what to do next, see
+[HANDOFF.md](HANDOFF.md).
 
 ## Goal
 
