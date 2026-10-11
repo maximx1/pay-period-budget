@@ -1,5 +1,6 @@
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
+import { isLocked, noteAppHidden, noteAppShown } from "./sessionStore.ts";
 
 // Behaviour only the Android app needs. Loaded on demand from main.tsx so none of it, nor
 // the plugins it imports, ends up in what a browser downloads.
@@ -20,6 +21,8 @@ export function dismissTopModal(root: ParentNode = document): boolean {
 /** Hardware back: close what is open, else go back a screen, else leave the app. */
 function handleBackButton() {
   void App.addListener("backButton", ({ canGoBack }) => {
+    // Nothing behind the lock screen should move; Back just leaves.
+    if (isLocked()) return void App.minimizeApp();
     if (dismissTopModal()) return;
     if (canGoBack) window.history.back();
     else void App.exitApp();
@@ -49,7 +52,16 @@ function keepSystemBarsInStepWithTheme() {
   new MutationObserver(apply).observe(document.documentElement, { attributeFilter: ["data-theme"] });
 }
 
+/** With biometric unlock on, coming back after a while away asks for the fingerprint again. */
+function lockAfterTimeAway() {
+  void App.addListener("appStateChange", ({ isActive }) => {
+    if (isActive) noteAppShown();
+    else noteAppHidden();
+  });
+}
+
 export function initNativeShell() {
   handleBackButton();
   keepSystemBarsInStepWithTheme();
+  lockAfterTimeAway();
 }

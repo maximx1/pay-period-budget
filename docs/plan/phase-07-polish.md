@@ -10,13 +10,13 @@ independent of each other and can be done in any order.
 
 ## Tasks
 
-### 7.1 Date search (tabled)
+### 7.1 Date search
 
-- [ ] Done
+- [x] Done
 
-**Do not build yet.** What this page should do is undecided (decision 6 in `README.md`).
-The outline below is one candidate, kept for when it is picked up; confirm with the owner
-first. Until then the page stays a placeholder.
+Built 2026-10-11 to the owner's brief, which replaced the outline below: not its own page,
+opened by tapping the date range at the top of a period, and limited to periods that
+already exist. See the implementation notes. The outline is kept for the record.
 
 **Files:** `src/client/features/search/DateSearchPage.tsx`,
 `src/client/features/periods/api.ts`, `src/client/features/home/HomePage.tsx`.
@@ -106,8 +106,21 @@ Write up anything that needs a decision rather than fixing it silently.
 
 ## Implementation notes
 
-7.2, 7.3 and 7.4 completed 2026-10-10. 7.1 (date search) is still tabled and unbuilt.
+7.2, 7.3 and 7.4 completed 2026-10-10; 7.1 on 2026-10-11.
 Where the build differs from the task text above, this section wins.
+
+**7.1 Date search**
+- The period's date range in `PeriodHeader` is a button that opens `GoToDateDialog`
+  ("Go to a date"). The `/search` page and its menu entry are gone.
+- `GET /api/periods` lists every existing period (`id`, `startDate`, `endDate`), oldest
+  first, and creates nothing. The dialog fetches it when opened.
+- `findPeriodForDate` in `src/shared/periodSearch.ts` matches the date against that list.
+  A date outside it is an error that says how far the budget goes ("That's before your
+  budget started on ...", "Your pay periods only go up to ... so far"). Searching never
+  generates a period; the next-period arrow still does.
+- "Go to period" navigates to the period with `?date=YYYY-MM-DD`. The home view scrolls
+  that day's group into view and outlines it, or says "Nothing on <day>." when the day has
+  no transactions. The outline lasts until the user navigates again.
 
 **7.2 Manual ordering**
 - `PUT /api/transactions/order` answers 204. Another user's id is reported the same way as

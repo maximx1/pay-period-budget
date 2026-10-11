@@ -3,6 +3,7 @@ import {
   type LocateResponse,
   locateSchema,
   type PeriodDatesResponse,
+  type PeriodListResponse,
   type PeriodView,
   periodDatesSchema,
   startingAmountSchema,
@@ -15,12 +16,16 @@ export function periodRoutes(deps: { periods: PeriodService; authed: MiddlewareH
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
 
+  routes.get("/", async (c) => c.json<PeriodListResponse>({ periods: await periods.list(c.var.user.id) }));
+
   routes.get("/current", async (c) => c.json<PeriodView>(await periods.getCurrent(c.var.user.id)));
 
   routes.post("/locate", async (c) => {
     const { date } = await parseJson(c, locateSchema);
     return c.json<LocateResponse>({ periodId: await periods.locate(c.var.user.id, date) });
   });
+
+  routes.post("/earlier", async (c) => c.json<LocateResponse>({ periodId: await periods.addEarlier(c.var.user.id) }));
 
   routes.get("/:id", async (c) => c.json<PeriodView>(await periods.getView(c.var.user.id, c.req.param("id"))));
 

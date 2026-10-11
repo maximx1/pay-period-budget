@@ -25,6 +25,11 @@ export async function projectedLeftover(repos: Repos, period: PeriodRecord): Pro
  *
  * Working in differences (rather than recalculating) is deliberate: a period marked stale
  * keeps following new transactions while still holding the gap the user chose not to carry.
+ *
+ * A period before the budget began (negative seq) is history, worked backwards from the
+ * first period's starting amount, which stays fixed. There a change does not move what
+ * came after: it moves what the period itself, and everything earlier, must have started
+ * with for the history to still end on that fixed amount.
  */
 export async function applyLeftoverDelta(
   repos: Repos,
@@ -34,8 +39,27 @@ export async function applyLeftoverDelta(
   now: Date,
 ): Promise<void> {
   if (deltaCents === 0) return;
+  if (afterSeq < 0) {
+    for (const period of await repos.periods.listAll(userId)) {
+      if (period.seq > afterSeq) return;
+      await repos.periods.update(userId, period.id, { startingCents: period.startingCents - deltaCents }, now);
+    }
+    return;
+  }
   for (const period of await repos.periods.listFromSeq(userId, afterSeq + 1)) {
     if (period.startingMode === "manual") return;
+    await repos.periods.update(userId, period.id, { startingCents: period.startingCents + deltaCents }, now);
+  }
+}
+
+/**
+ * The first period's starting amount changed by `deltaCents`: the history before it is
+ * worked backwards from that amount, so every earlier period moves with it.
+ */
+export async function shiftHistory(repos: Repos, userId: string, deltaCents: number, now: Date): Promise<void> {
+  if (deltaCents === 0) return;
+  for (const period of await repos.periods.listAll(userId)) {
+    if (period.seq >= 0) return;
     await repos.periods.update(userId, period.id, { startingCents: period.startingCents + deltaCents }, now);
   }
 }

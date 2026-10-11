@@ -6,12 +6,13 @@ import {
   type PeriodDateChange,
   type PeriodDatesInput,
   type PeriodDatesResponse,
+  type PeriodSummary,
   type PeriodView,
 } from "../../shared/budget.ts";
 import { addDays, diffDays, type LocalDate, todayIn } from "../../shared/dates.ts";
-import { horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
+import { earliestSeq, horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
 import { AppError } from "../lib/errors.ts";
-import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain } from "./carry.ts";
+import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain, shiftHistory } from "./carry.ts";
 import { planDateChange } from "./periodDates.ts";
 import { toTransaction } from "./transactionMapper.ts";
 import {
@@ -29,6 +30,8 @@ type LoadedBudget = { schedule: ScheduleRecord; timezone: string };
 const dateError = (message: string) => new AppError(400, "validation", message, { date: message });
 const anchorError = (message: string) => new AppError(400, "validation", message, { anchorDate: message });
 const noBudget = () => new AppError(409, "conflict", "Set up your budget first");
+const historyIsDerived = () =>
+  new AppError(409, "conflict", "Amounts before your budget started are worked out from its first period");
 
 export function createPeriodService(deps: {
   store: DataStore;
@@ -57,10 +60,13 @@ export function createPeriodService(deps: {
     today: LocalDate,
   ): Promise<void> {
     let last = await repos.periods.findLast(userId);
-    const first = await repos.periods.findBySeq(userId, 0);
+    const first = await repos.periods.findFirst(userId);
     if (!last || !first) throw noBudget();
 
-    if (date < first.startDate) throw dateError("That's before your budget started");
+    // Earlier periods are only ever added on purpose, one at a time (see addEarlier).
+    if (date < first.startDate) {
+      throw dateError(first.seq < 0 ? "That's before your earliest pay period" : "That's before your budget started");
+    }
     const maxSeq = horizonSeq(schedule, today);
     if (date > nominalPeriod(schedule, maxSeq).end) throw dateError("That's more than a year ahead");
 
@@ -114,9 +120,10 @@ export function createPeriodService(deps: {
     today: LocalDate,
   ): Promise<PeriodView> {
     const userId = period.userId;
-    const prev = period.seq > 0 ? await repos.periods.findBySeq(userId, period.seq - 1) : null;
+    const prev = await repos.periods.findBySeq(userId, period.seq - 1);
     const next = await repos.periods.findBySeq(userId, period.seq + 1);
     const canGenerateNext = period.seq + 1 <= horizonSeq(budget.schedule, today);
+    const canAddPrevious = !prev && period.seq - 1 >= earliestSeq(budget.schedule, today);
 
     const records = await repos.transactions.listInRange(userId, period.startDate, period.endDate);
     let paidCents = 0;
@@ -149,6 +156,7 @@ export function createPeriodService(deps: {
       transactions: records.map(toTransaction),
       nav: {
         prevId: prev?.id ?? null,
+        canAddPrevious,
         nextId: next?.id ?? null,
         nextDate: !next && canGenerateNext ? addDays(period.endDate, 1) : null,
       },
@@ -174,7 +182,7 @@ export function createPeriodService(deps: {
     return store.transaction(async (repos) => {
       const { budget, period, today } = await loadForEdit(repos, userId, periodId);
       const { schedule } = budget;
-      const previous = period.seq > 0 ? await repos.periods.findBySeq(userId, period.seq - 1) : null;
+      const previous = await repos.periods.findBySeq(userId, period.seq - 1);
       let next = await repos.periods.findBySeq(userId, period.seq + 1);
 
       // If the next period hasn't been generated yet but may be, plan against the dates it
@@ -291,6 +299,7 @@ export function createPeriodService(deps: {
     ): Promise<PeriodView> {
       return store.transaction(async (repos) => {
         const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (period.seq < 0) throw historyIsDerived();
         const updatedAt = now();
         const deltaCents = input.startingCents - period.startingCents;
 
@@ -302,6 +311,8 @@ export function createPeriodService(deps: {
         );
         if (input.carryForward) await applyLeftoverDelta(repos, userId, period.seq, deltaCents, updatedAt);
         else if (deltaCents !== 0) await markStaleAfter(repos, userId, period.seq, updatedAt);
+        // The history before the budget is anchored on the first period's starting amount.
+        if (period.seq === 0) await shiftHistory(repos, userId, deltaCents, updatedAt);
 
         return viewAfterEdit(repos, budget, periodId, today);
       });
@@ -311,12 +322,16 @@ export function createPeriodService(deps: {
     revertStarting(userId: string, periodId: string): Promise<PeriodView> {
       return store.transaction(async (repos) => {
         const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (period.seq < 0) throw historyIsDerived();
         if (period.startingMode !== "manual") {
           throw new AppError(409, "conflict", "This starting amount is already the calculated one");
         }
         const updatedAt = now();
         await repos.periods.update(userId, period.id, { startingMode: "auto" }, updatedAt);
         await recomputeChain(repos, userId, period.seq, budget.schedule.openingCents, updatedAt);
+        if (period.seq === 0) {
+          await shiftHistory(repos, userId, budget.schedule.openingCents - period.startingCents, updatedAt);
+        }
         return viewAfterEdit(repos, budget, periodId, today);
       });
     },
@@ -440,6 +455,62 @@ export function createPeriodService(deps: {
       const period = await store.periods.findById(userId, periodId);
       if (!period) throw new AppError(404, "not_found", "No such period");
       return buildView(store, budget, period, todayIn(budget.timezone, now()));
+    },
+
+    /**
+     * Adds the period before the earliest one and returns its id. It is history: its
+     * starting amount is whatever makes it end on what the next period started with, so
+     * nothing from the first period onward changes, now or when transactions are added to it.
+     */
+    addEarlier(userId: string): Promise<string> {
+      return store.transaction(async (repos) => {
+        const { schedule, timezone } = await loadBudget(repos, userId);
+        const first = await repos.periods.findFirst(userId);
+        if (!first) throw noBudget();
+
+        const seq = first.seq - 1;
+        if (seq < earliestSeq(schedule, todayIn(timezone, now()))) {
+          throw new AppError(400, "validation", "That's more than a year back");
+        }
+
+        const nominal = nominalPeriod(schedule, seq);
+        // End where the next period really starts (its start may have been moved by hand),
+        // but start on schedule, mirroring how periods are generated forwards.
+        const endDate = addDays(first.startDate, -1);
+        const createdAt = now();
+        const period: PeriodRecord = {
+          id: randomUUID(),
+          userId,
+          scheduleId: schedule.id,
+          seq,
+          startDate: nominal.start > endDate ? endDate : nominal.start,
+          endDate,
+          nominalStart: nominal.start,
+          nominalEnd: nominal.end,
+          startingCents: first.startingCents,
+          startingMode: "auto",
+          carryStale: false,
+          createdAt,
+          updatedAt: createdAt,
+        };
+        await repos.periods.create(period);
+        await onPeriodCreated(repos, period);
+
+        // Recurring items due in it have just been added; back the starting amount off by them.
+        const { paidCents, upcomingCents } = await repos.transactions.sumInRange(userId, period.startDate, period.endDate);
+        const netCents = paidCents + upcomingCents;
+        if (netCents !== 0) {
+          await repos.periods.update(userId, period.id, { startingCents: first.startingCents - netCents }, createdAt);
+        }
+        return period.id;
+      });
+    },
+
+    /** Every period that exists, oldest first. Creates nothing. */
+    async list(userId: string): Promise<PeriodSummary[]> {
+      await loadBudget(store, userId);
+      const periods = await store.periods.listAll(userId);
+      return periods.map(({ id, startDate, endDate }) => ({ id, startDate, endDate }));
     },
 
     /** Id of the period containing `date`, generating forward to it when it is within the horizon. */

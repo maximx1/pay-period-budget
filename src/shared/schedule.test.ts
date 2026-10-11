@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "./dates.ts";
-import { horizonSeq, nominalPeriod, nominalStart, type Schedule, SCHEDULE_TYPES, seqForDate } from "./schedule.ts";
+import { earliestSeq, horizonSeq, nominalPeriod, nominalStart, type Schedule, SCHEDULE_TYPES, seqForDate } from "./schedule.ts";
 
 const weekly: Schedule = { type: "weekly", anchorDate: "2026-01-02" };
 const biweekly: Schedule = { type: "biweekly", anchorDate: "2026-01-02" };
 const monthly: Schedule = { type: "monthly", anchorDate: "2026-01-15" };
+const monthEnd: Schedule = { type: "monthly", anchorDate: "2026-01-31" };
 
 describe("nominalPeriod", () => {
   it.each([
@@ -90,9 +91,30 @@ describe("seqForDate", () => {
     }
   });
 
-  it("refuses dates before the anchor", () => {
-    expect(() => seqForDate(biweekly, "2026-01-01")).toThrow(RangeError);
-    expect(() => seqForDate(monthly, "2025-12-31")).toThrow(RangeError);
+  it("numbers the periods before the anchor downwards from -1", () => {
+    for (const schedule of [weekly, biweekly, monthly, monthEnd]) {
+      for (let seq = -1; seq >= -30; seq -= 1) {
+        const { start, end } = nominalPeriod(schedule, seq);
+        expect(seqForDate(schedule, start), `${schedule.type} ${seq} start`).toBe(seq);
+        expect(seqForDate(schedule, end), `${schedule.type} ${seq} end`).toBe(seq);
+        // Back to back with the period after it.
+        expect(addDays(end, 1)).toBe(nominalPeriod(schedule, seq + 1).start);
+      }
+    }
+  });
+});
+
+describe("earliestSeq", () => {
+  it.each([
+    // today 2026-01-15, so the earliest period is the one containing 2025-01-15
+    [weekly, -51],
+    [biweekly, -26],
+    [monthly, -12],
+  ])("%o allows adding back to period %i", (schedule, expected) => {
+    const seq = earliestSeq(schedule, "2026-01-15");
+    expect(seq).toBe(expected);
+    const { start, end } = nominalPeriod(schedule, seq);
+    expect(start <= "2025-01-15" && "2025-01-15" <= end).toBe(true);
   });
 });
 

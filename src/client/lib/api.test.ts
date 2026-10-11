@@ -14,6 +14,11 @@ async function load(platform: "web" | "native") {
       remove: async ({ key }: { key: string }) => void device.delete(key),
     },
   }));
+  vi.doMock("@capgo/capacitor-native-biometric", () => ({
+    AccessControl: {},
+    BiometricAuthError: {},
+    NativeBiometric: { deleteData: async () => undefined },
+  }));
   const store = await import("./sessionStore.ts");
   const { api, setUnauthenticatedHandler } = await import("./api.ts");
   return { api, setUnauthenticatedHandler, store };

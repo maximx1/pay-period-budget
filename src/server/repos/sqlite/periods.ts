@@ -30,6 +30,15 @@ export function createPeriodRepo(db: Db): PeriodRepo {
         .limit(1);
       return row ?? null;
     },
+    async findFirst(userId) {
+      const [row] = await db
+        .select()
+        .from(periods)
+        .where(eq(periods.userId, userId))
+        .orderBy(asc(periods.seq))
+        .limit(1);
+      return row ?? null;
+    },
     async findLast(userId) {
       const [row] = await db
         .select()
@@ -45,6 +54,9 @@ export function createPeriodRepo(db: Db): PeriodRepo {
         .from(periods)
         .where(and(eq(periods.userId, userId), gte(periods.seq, fromSeq)))
         .orderBy(asc(periods.seq));
+    },
+    async listAll(userId) {
+      return db.select().from(periods).where(eq(periods.userId, userId)).orderBy(asc(periods.seq));
     },
     async create(period) {
       await db.insert(periods).values(period).catch(rethrowConstraint);

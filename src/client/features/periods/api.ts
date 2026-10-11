@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { LocateResponse, PeriodDatesResponse, PeriodView } from "../../../shared/budget.ts";
+import type { LocateResponse, PeriodDatesResponse, PeriodListResponse, PeriodView } from "../../../shared/budget.ts";
 import type { LocalDate } from "../../../shared/dates.ts";
 import { ApiError, api } from "../../lib/api.ts";
 
@@ -26,12 +26,32 @@ export function usePeriodView(periodId: string | undefined) {
   });
 }
 
+/** Every period that exists, oldest first. Fetched only while something needs it. */
+export function usePeriodList(enabled: boolean) {
+  return useQuery({
+    // Under the `period` prefix, so anything that adds or moves a period refreshes it too.
+    queryKey: [...periodKeys.all, "list"] as const,
+    queryFn: async () => (await api.get<PeriodListResponse>("/api/periods")).periods,
+    enabled,
+  });
+}
+
 /** Finds the period containing a date, creating periods up to it when allowed. */
 export function useLocatePeriod() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (date: LocalDate) => api.post<LocateResponse>("/api/periods/locate", { date }),
     // New periods may now exist, which changes the "next" link of the one before them.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+  });
+}
+
+/** Adds the period before the earliest one. */
+export function useAddEarlierPeriod() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<LocateResponse>("/api/periods/earlier"),
+    // The period that was first now has a "previous" link.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
   });
 }

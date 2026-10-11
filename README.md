@@ -111,6 +111,10 @@ APP_ORIGINS=https://budget.example.com,https://localhost
 3. `npm run open:android` opens the project in Android Studio; press Run. Or, from
    `android/`, `./gradlew installDebug` installs on the connected device.
 
+**Fingerprint unlock.** On a phone with a fingerprint or face enrolled, the app offers once
+to unlock that way. After that the password is only needed if you log out, the session
+ends, or every fingerprint is removed from the phone. Settings → App lock turns it on or off.
+
 **Against the API on this machine.** A debug build may use plain HTTP to reach the
 development server; a release build never can. Put `https://localhost` in `APP_ORIGINS` in
 `.env`, start `npm run dev`, and set `VITE_API_BASE_URL` to `http://10.0.2.2:8787` for an

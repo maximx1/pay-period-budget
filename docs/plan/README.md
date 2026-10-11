@@ -35,8 +35,10 @@ different app.
 | [4](phase-04-transactions.md) | Transactions and the home view | Done | n/a |
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
-| [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Done, except date search (tabled) | n/a |
-| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 to 8.3 done (8.3 on an emulator against the dev API); 8.4 next | Sonnet for 8.2 and 8.3, Opus for 8.4 |
+| [7](phase-07-polish.md) | Manual ordering, settings, polish, date search | Done | n/a |
+| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 to 8.3 done (8.3 on an emulator against the dev API); 8.4 written, fingerprint path not yet run | Sonnet for 8.2 and 8.3, Opus for 8.4 |
+| [9](phase-09-reset-starting.md) | Resetting a modified starting amount | Planned; scope to confirm with the owner | Opus |
+| [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -120,7 +122,7 @@ different app.
   appearance, change password, and signed-in devices with sign-out.
 - Tab titles, no-cache HTML in production, on-demand loading of secondary pages, and a pass
   over every screen from 360px to 2560px.
-- Not built: date search (decision 6).
+- Date search (decision 6), added 2026-10-11: see the notes in `phase-07-polish.md`.
 
 ### Since phase 7
 
@@ -179,8 +181,9 @@ unless marked otherwise.
    first day.
 5. **Setup asks for an opening balance** (default 0) that becomes the first period's
    starting amount.
-6. **Date search is tabled.** The side panel keeps a placeholder page. Nothing is built
-   until what it should do is decided (task 7.1).
+6. **Date search is a dialog, not a page** (decided 2026-10-11). Tapping the date range at
+   the top of a period opens "Go to a date". Only periods that already exist can be
+   reached; searching never creates one (task 7.1).
 7. **A new recurring item appears from the period containing its first due date onward**,
    in every period that already exists. Usually that is only the current period. A first
    due date in the past back-fills earlier periods, which changes their leftover and every
@@ -195,3 +198,9 @@ unless marked otherwise.
     and income) are *recurring items* in the app and the code. *Accounts* will be a later
     feature: savings accounts, other checking accounts and people you send money to, which
     a transaction can point at. See `backlog.md`.
+12. **Periods can be added before the first one, and today's numbers stay fixed** (decided
+    2026-10-11). The previous-period arrow at the earliest period adds the one before it,
+    up to a year back. Those periods are history worked backwards from the first period's
+    starting amount: adding old transactions changes what the *earlier* period started
+    with, never a balance from the first period onward. See "Periods before the budget
+    began" in `domain.md`.

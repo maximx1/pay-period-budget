@@ -77,6 +77,8 @@ export type PeriodView = {
   transactions: Transaction[];
   nav: {
     prevId: string | null;
+    /** With no previous period: whether one may be added before this one (up to a year back). */
+    canAddPrevious: boolean;
     /** Set when the next period already exists. */
     nextId: string | null;
     /** When there is no next period yet: the date to `locate` to create it, or null at the horizon. */
@@ -85,6 +87,17 @@ export type PeriodView = {
 };
 
 export type LocateResponse = { periodId: string };
+
+/** Just enough of a period to find it by date. */
+export type PeriodSummary = {
+  id: string;
+  startDate: LocalDate;
+  /** Inclusive. */
+  endDate: LocalDate;
+};
+
+/** Every period that exists, oldest first. */
+export type PeriodListResponse = { periods: PeriodSummary[] };
 
 const MAX_STARTING_CENTS = MAX_OPENING_CENTS;
 

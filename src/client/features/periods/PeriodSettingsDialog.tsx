@@ -57,6 +57,8 @@ function describeEffects({ changes, movedTransactions }: PeriodDatesResponse): s
 
 function PeriodSettingsForm({ onClose, view }: Omit<PeriodSettingsDialogProps, "open">) {
   const { period } = view;
+  // History before the budget began: its amounts are derived, never typed.
+  const beforeBudget = period.seq < 0;
   const changeDates = useChangePeriodDates();
   const setStarting = useSetStartingAmount();
   const revertStarting = useRevertStartingAmount();
@@ -180,43 +182,53 @@ function PeriodSettingsForm({ onClose, view }: Omit<PeriodSettingsDialogProps, "
         )}
       </section>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-5">
-        <h3 className="font-semibold text-fg">Starting amount</h3>
-        <TextField
-          label="Amount this period starts with"
-          inputMode="decimal"
-          autoComplete="off"
-          value={startingText}
-          onChange={(event) => setStartingText(event.target.value)}
-          error={startingCents === null ? "Enter an amount like 1250.00" : undefined}
-          hint={
-            period.startingMode === "manual"
-              ? "Set by hand. Changes in earlier periods no longer affect it."
-              : "Calculated from the period before. Typing a different amount pins it."
-          }
-        />
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-fg">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-5 shrink-0 accent-primary"
-            checked={carryForward}
-            onChange={(event) => setCarryForward(event.target.checked)}
+      {beforeBudget ? (
+        <section className="flex flex-col gap-2 border-t border-border pt-5">
+          <h3 className="font-semibold text-fg">Starting amount</h3>
+          <p className="text-sm text-muted">
+            This period is before your budget started. Its starting amount is worked back from your first
+            period, so it can't be set here.
+          </p>
+        </section>
+      ) : (
+        <section className="flex flex-col gap-3 border-t border-border pt-5">
+          <h3 className="font-semibold text-fg">Starting amount</h3>
+          <TextField
+            label="Amount this period starts with"
+            inputMode="decimal"
+            autoComplete="off"
+            value={startingText}
+            onChange={(event) => setStartingText(event.target.value)}
+            error={startingCents === null ? "Enter an amount like 1250.00" : undefined}
+            hint={
+              period.startingMode === "manual"
+                ? "Set by hand. Changes in earlier periods no longer affect it."
+                : "Calculated from the period before. Typing a different amount pins it."
+            }
           />
-          <span>
-            <span className="font-medium">Carry this change into later periods</span>
-            <span className="block text-muted">
-              {carryForward
-                ? "Later periods move by the same difference."
-                : "Later periods keep their current starting amounts and will be marked as possibly out of date."}
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-fg">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 shrink-0 accent-primary"
+              checked={carryForward}
+              onChange={(event) => setCarryForward(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Carry this change into later periods</span>
+              <span className="block text-muted">
+                {carryForward
+                  ? "Later periods move by the same difference."
+                  : "Later periods keep their current starting amounts and will be marked as possibly out of date."}
+              </span>
             </span>
-          </span>
-        </label>
-        {period.startingMode === "manual" && (
-          <Button variant="secondary" className="self-start" onClick={revertToCalculated} loading={revertStarting.isPending}>
-            Use calculated amount
-          </Button>
-        )}
-      </section>
+          </label>
+          {period.startingMode === "manual" && (
+            <Button variant="secondary" className="self-start" onClick={revertToCalculated} loading={revertStarting.isPending}>
+              Use calculated amount
+            </Button>
+          )}
+        </section>
+      )}
 
       <DialogActions>
         <Button variant="ghost" onClick={onClose}>

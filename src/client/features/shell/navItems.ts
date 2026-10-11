@@ -1,10 +1,9 @@
-import { CalendarSearch, House, type LucideIcon, Repeat, Settings } from "lucide-react";
+import { House, type LucideIcon, Repeat, Settings } from "lucide-react";
 
 export type NavItem = { to: string; label: string; icon: LucideIcon };
 
 export const navItems: readonly NavItem[] = [
   { to: "/", label: "Home", icon: House },
-  { to: "/search", label: "Date search", icon: CalendarSearch },
   { to: "/recurring", label: "Recurring", icon: Repeat },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

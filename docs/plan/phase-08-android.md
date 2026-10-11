@@ -240,3 +240,57 @@ Left for later:
   it would let it say "Android app".
 - The start-up screen follows the device's theme, not the app's own setting, so a user
   who forces the other theme sees one frame of the wrong background.
+
+**8.4 written 2026-10-11; not ticked.** Unit-tested, and run on the emulator only as far as
+a phone with no fingerprint goes. **No biometric prompt has ever been shown by this app.**
+The emulator had no screen lock or fingerprint; enrolling one is the owner's to do.
+
+The owner's brief: this is only an easy way to skip the password. After one password
+sign-in the fingerprint alone opens the app.
+
+- Plugin: `@capgo/capacitor-native-biometric` 8.8.1. Its Android source was read before
+  choosing it. `setData` with an access-control level encrypts under an AES key wrapped by
+  an Android Keystore RSA key created with `setUserAuthenticationRequired(true)` and
+  `AUTH_BIOMETRIC_STRONG`; `getSecureData` unwraps it through a `BiometricPrompt`
+  `CryptoObject`. Storing needs no prompt; reading always does.
+- Rejected: `@aparajita/capacitor-biometric-auth` with `capacitor-secure-storage`, and the
+  original `capacitor-native-biometric` (Capacitor 3, last published 2023). Neither binds
+  the stored secret to a biometric check; they return a yes/no to JavaScript.
+- `AccessControl.BIOMETRY_ANY`, not `BIOMETRY_CURRENT_SET`: adding a fingerprint later does
+  not send the owner back to the password. The cost is that someone who knows the phone's
+  PIN could enrol their own fingerprint and open the app.
+- All of it is in `src/client/lib/sessionStore.ts`: where the token lives (preferences or
+  the vault), the lock state, `unlock()`, `lock()`, turning the feature on and off, the
+  one-time offer and the five-minute rule. `sessionStore.test.ts` covers it against a fake
+  phone.
+- Turning it on stores the token, then reads it back through one prompt before deleting
+  the plain copy. If that check fails or is cancelled, nothing changes.
+- `BiometricGate` (in `main.tsx`, around the router) shows the lock screen instead of the
+  app while locked, so nothing behind it is mounted and no request is made. It prompts at
+  once; cancel leaves "Unlock" and "Use password instead".
+- "Use password instead" forgets the token on the phone. It cannot sign the session out on
+  the server, because doing so needs the token; the session stays listed under Signed-in
+  devices until it expires or is signed out there.
+- The password is asked for again only when: the user logs out, the session is signed out
+  from another device or expires (30 days unused; it is extended while in use), or every
+  fingerprint is removed from the phone.
+- The offer (`BiometricOffer`, mounted by `RequireAuth` in the app only) appears once per
+  phone. Settings has an "App lock" section, shown in the app only.
+- Hardware Back on the lock screen minimises the app.
+
+Checked on the emulator with no fingerprint enrolled: the build includes the plugin and
+runs, no offer appears, and Settings shows App lock disabled with "Add a fingerprint or
+face in the phone's settings to use this."
+
+Still to check, with a fingerprint enrolled (emulator first, then the Pixel):
+
+1. After a password sign-in the offer appears once; "Turn on" shows one prompt.
+2. Force-stop and reopen: lock screen, prompt, straight into the app with no password.
+3. Cancel the prompt: lock screen stays; "Unlock" prompts again; "Use password instead"
+   shows the sign-in form.
+4. More than five minutes in the background locks it; less does not.
+5. With it on, `shared_prefs/CapacitorStorage.xml` holds no `session.token`, and the
+   plugin's preferences hold only ciphertext (`run-as` on a debug build).
+6. Signing the phone out from the web's Settings forces a password sign-in.
+7. Turning it off in Settings: reopening goes straight in with no prompt.
+

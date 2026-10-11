@@ -1,6 +1,8 @@
 import { Navigate, Outlet, useLocation } from "react-router";
 import { LoadErrorPage } from "../../components/LoadErrorPage.tsx";
 import { FullPageSpinner } from "../../components/ui/FullPageSpinner.tsx";
+import { isNative } from "../../lib/platform.ts";
+import { BiometricOffer } from "./BiometricOffer.tsx";
 import { CurrentUserProvider, useSession } from "./session.ts";
 
 type RedirectState = { from?: string } | null;
@@ -18,6 +20,7 @@ export function RequireAuth() {
   return (
     <CurrentUserProvider value={session.data}>
       <Outlet />
+      {isNative && <BiometricOffer />}
     </CurrentUserProvider>
   );
 }

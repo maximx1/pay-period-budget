@@ -169,3 +169,22 @@ Completed 2026-10-10. Where the build differs from the task text above, this sec
   day arriving in the next period, "dates edited" in the header, a hand-set amount without
   carrying forward, the out-of-date notice and Recalculate on the following period, and
   "Use calculated amount".
+
+**Added 2026-10-11: periods before the first one.** Not part of the original phase; built
+at the owner's request, who chose "keep today's numbers fixed".
+
+- `POST /api/periods/earlier` (`addEarlier` in `services/periods.ts`); the rules are in
+  "Periods before the budget began" in `domain.md`. `seq` goes negative; `seqForDate` no
+  longer throws before the anchor, and `earliestSeq` is the limit (a year back).
+- `applyLeftoverDelta` handles a negative `seq` by moving that period and the ones before
+  it; `shiftHistory` follows a change to period 0's starting amount. Both in `carry.ts`.
+- New repo methods `findFirst` and `listAll`. Code that meant "every period" and listed
+  from `seq` 0 (recurring back-fill and preview, the period list) now uses `listAll`.
+- Client: the previous arrow at the earliest period adds one (`canAddPrevious` in the
+  view's `nav`). Such a period says "Before your budget started" in the header and the
+  summary card, and its starting amount is not editable in Period settings.
+- Tests: `routes/periods.earlier.test.ts`.
+- Not built: setting or resetting a starting amount in these periods (phase 9), and
+  adding them by dating a transaction early or from the date search (owner chose the
+  arrow only).
+

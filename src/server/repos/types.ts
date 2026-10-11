@@ -103,10 +103,14 @@ export interface PeriodRepo {
   findBySeq(userId: string, seq: number): Promise<PeriodRecord | null>;
   /** The period whose start..end (inclusive) covers `date`. */
   findContaining(userId: string, date: LocalDate): Promise<PeriodRecord | null>;
+  /** The period with the lowest seq: the earliest one. */
+  findFirst(userId: string): Promise<PeriodRecord | null>;
   /** The period with the highest seq. */
   findLast(userId: string): Promise<PeriodRecord | null>;
   /** Periods with seq >= fromSeq, ascending. */
   listFromSeq(userId: string, fromSeq: number): Promise<PeriodRecord[]>;
+  /** Every period, ascending by seq. */
+  listAll(userId: string): Promise<PeriodRecord[]>;
   /** Throws UniqueConstraintError on a duplicate seq or start date. */
   create(period: PeriodRecord): Promise<PeriodRecord>;
   update(userId: string, id: string, patch: PeriodPatch, now: Date): Promise<void>;

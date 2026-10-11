@@ -1,4 +1,4 @@
-import { PencilLine, TriangleAlert } from "lucide-react";
+import { History, PencilLine, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { formatCents } from "../../../shared/money.ts";
@@ -91,6 +91,15 @@ export function PeriodSummary({ view }: { view: PeriodView }) {
         <Stat label="Upcoming" cents={totals.upcomingCents} net />
       </dl>
 
+      {period.seq < 0 && (
+        <div className="flex items-start gap-x-2 border-t border-border pt-3 text-sm text-muted lg:col-span-2">
+          <History className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p className="min-w-0">
+            Before your budget started. The starting amount is worked back from your first period, so nothing
+            added here changes a later balance.
+          </p>
+        </div>
+      )}
       {stale && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-3 text-sm text-fg lg:col-span-2">
           <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden />

@@ -6,7 +6,6 @@ import { PublicOnly, RequireAuth } from "./features/auth/guards.tsx";
 import { RequireBudget, RequireNoBudget } from "./features/budget/guards.tsx";
 import { SetupPage } from "./features/budget/SetupPage.tsx";
 import { HomePage } from "./features/home/HomePage.tsx";
-import { DateSearchPage } from "./features/search/DateSearchPage.tsx";
 import { AppShell } from "./features/shell/AppShell.tsx";
 
 // Only reachable from the dev server; the import is dropped from production builds.
@@ -47,7 +46,6 @@ export const router = createBrowserRouter([
                 children: [
                   { path: "/", element: <HomePage /> },
                   { path: "/periods/:periodId", element: <HomePage /> },
-                  { path: "/search", element: <DateSearchPage /> },
                   // Loaded on first visit, to keep them out of the bundle the home screen needs.
                   {
                     path: "/recurring",

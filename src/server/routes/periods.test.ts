@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { BudgetSetupInput, PeriodView } from "../../shared/budget.ts";
+import type { BudgetSetupInput, PeriodListResponse, PeriodView } from "../../shared/budget.ts";
 import { addDays } from "../../shared/dates.ts";
 import { horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
@@ -258,10 +258,10 @@ describe("navigation", () => {
     await setUp(client);
     const [first, second, third] = await allPeriods("ann");
 
-    expect((await view(client, first!.id)).nav).toEqual({ prevId: null, nextId: second!.id, nextDate: null });
-    expect((await view(client, second!.id)).nav).toEqual({ prevId: first!.id, nextId: third!.id, nextDate: null });
+    expect((await view(client, first!.id)).nav).toEqual({ prevId: null, canAddPrevious: true, nextId: second!.id, nextDate: null });
+    expect((await view(client, second!.id)).nav).toEqual({ prevId: first!.id, canAddPrevious: false, nextId: third!.id, nextDate: null });
     // The last generated period has no next yet, but offers the date that would create it.
-    expect((await view(client, third!.id)).nav).toEqual({ prevId: second!.id, nextId: null, nextDate: "2026-01-27" });
+    expect((await view(client, third!.id)).nav).toEqual({ prevId: second!.id, canAddPrevious: false, nextId: null, nextDate: "2026-01-27" });
   });
 
   it("locate returns an existing period without creating any", async () => {
@@ -336,12 +336,61 @@ describe("navigation", () => {
   });
 });
 
+describe("listing periods", () => {
+  const list = async (client: Client) => (await (await client.get("/api/periods")).json()) as PeriodListResponse;
+
+  it("returns every existing period, oldest first, and creates none", async () => {
+    const client = await signUp("ann");
+    await setUp(client);
+    const before = await allPeriods("ann");
+
+    const { periods } = await list(client);
+
+    expect(periods).toEqual(before.map(({ id, startDate, endDate }) => ({ id, startDate, endDate })));
+    expect(periods.length).toBeGreaterThan(1);
+    expect(periods.map((period) => period.startDate)).toEqual(periods.map((period) => period.startDate).toSorted());
+    expect(await allPeriods("ann")).toHaveLength(before.length);
+  });
+
+  it("includes a period generated later", async () => {
+    const client = await signUp("ann");
+    await setUp(client);
+    const { periods: before } = await list(client);
+
+    const target = addDays(before.at(-1)!.endDate, 1);
+    const { periodId } = await (await client.post("/api/periods/locate", { date: target })).json();
+
+    const { periods: after } = await list(client);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)!.id).toBe(periodId);
+  });
+
+  it("is a conflict before the budget is set up", async () => {
+    const client = await signUp("ann");
+    expect((await client.get("/api/periods")).status).toBe(409);
+  });
+
+  it("lists only the signed-in user's periods", async () => {
+    const ann = await signUp("ann");
+    await setUp(ann);
+    const bob = await signUp("bob");
+    await setUp(bob, { anchorDate: TODAY });
+
+    const annIds = (await list(ann)).periods.map((period) => period.id);
+    const bobIds = (await list(bob)).periods.map((period) => period.id);
+
+    expect(bobIds).toHaveLength(1);
+    expect(annIds.some((id) => bobIds.includes(id))).toBe(false);
+  });
+});
+
 describe("access control", () => {
   it("requires a session", async () => {
     const anonymous = t.client();
     expect((await anonymous.get("/api/budget")).status).toBe(401);
     expect((await anonymous.post("/api/budget", biweekly)).status).toBe(401);
     expect((await anonymous.get("/api/periods/current")).status).toBe(401);
+    expect((await anonymous.get("/api/periods")).status).toBe(401);
     expect((await anonymous.post("/api/periods/locate", { date: TODAY })).status).toBe(401);
   });
 

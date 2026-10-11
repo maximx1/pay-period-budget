@@ -82,7 +82,7 @@ export const periods = sqliteTable(
     scheduleId: text("schedule_id")
       .notNull()
       .references(() => budgetSchedules.id, { onDelete: "cascade" }),
-    /** 0, 1, 2, ... per user with no holes. */
+    /** Consecutive per user with no holes. 0 starts on the anchor; negative ones were added before it. */
     seq: integer("seq").notNull(),
     startDate: text("start_date").notNull(),
     /** Inclusive. */

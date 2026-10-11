@@ -73,7 +73,7 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
         const record = await repos.recurring.create(draft(userId, input, createdAt));
 
         // Ascending, so each period's change has reached the later ones before they add their own.
-        for (const period of await repos.periods.listFromSeq(userId, 0)) {
+        for (const period of await repos.periods.listAll(userId)) {
           const { sumCents } = await materializeInPeriod(repos, record, period, createdAt);
           await applyLeftoverDelta(repos, userId, period.seq, sumCents, createdAt);
         }
@@ -87,7 +87,7 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
       const record = draft(userId, input, now());
       const preview: RecurringPreview = { transactions: 0, periods: 0, pastPeriods: 0, earliestDate: null };
 
-      for (const period of await store.periods.listFromSeq(userId, 0)) {
+      for (const period of await store.periods.listAll(userId)) {
         const { count, dates } = await materializeInPeriod(store, record, period, record.createdAt, { dryRun: true });
         if (count === 0) continue;
         preview.transactions += count;

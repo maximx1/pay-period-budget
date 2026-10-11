@@ -44,7 +44,9 @@ date arithmetic goes through `src/shared/dates.ts`.
 
 Types in scope: `weekly`, `biweekly`, `monthly`. (Semi-monthly and custom rules are backlog.)
 
-A schedule defines **nominal periods** by index (`seq`, starting at 0):
+A schedule defines **nominal periods** by index (`seq`). Period 0 starts on the anchor.
+Negative indexes are the periods before it (see "Periods before the budget began"); the
+same formulas give their dates:
 
 - `weekly`: nominal start = anchor + 7 × seq days
 - `biweekly`: nominal start = anchor + 14 × seq days
@@ -59,16 +61,18 @@ Setup rules: the anchor date must be today or earlier, and no more than 366 days
 
 Invariants (must hold after every write):
 
-1. A user's periods are numbered `seq` 0, 1, 2 … with no holes.
+1. A user's periods are numbered by consecutive `seq` with no holes. Period 0 always exists;
+   any before it are −1, −2, ….
 2. They are **contiguous**: `period[n+1].startDate = period[n].endDate + 1 day`.
 3. Every period is at least one day long.
 4. There is always a period containing today (created on demand).
 
 ### Generation
 
-Periods are created lazily and only at the tail. `ensureThrough(userId, date)`:
+Periods are created lazily at the tail by `ensureThrough(userId, date)`, and one at a time
+at the head by `addEarlier` (next section). `ensureThrough`:
 
-- Rejects a date before the first period's start.
+- Rejects a date before the earliest period's start.
 - Rejects a date beyond the **horizon**: the nominal end of the period that contains
   today + 1 year.
 - Otherwise creates each missing period in order, inside one transaction:
@@ -83,7 +87,38 @@ Periods are created lazily and only at the tail. `ensureThrough(userId, date)`:
   - then materialise recurring occurrences for the new period (see Recurring items)
 
 Generation is always validated and performed on the server. The client only asks for a
-period by id, for "current", or for "the period containing date X".
+period by id, for "current", for "the period containing date X", or for "the one before
+the earliest".
+
+### Periods before the budget began
+
+Decided 2026-10-11: **today's numbers stay fixed.** The first period's starting amount is
+the truth the user entered at setup. Anything before it is history, and history is worked
+*backwards* from that amount.
+
+`addEarlier(userId)` creates the period before the earliest one:
+
+- `seq` = earliest − 1. Rejected ("That's more than a year back") below `earliestSeq`: the
+  nominal period containing today − 1 year. This mirrors the horizon.
+- `endDate` = the earliest period's `startDate` − 1 day (so a moved boundary is respected);
+  `startDate` = the nominal start for this `seq`; nominal dates stored as usual.
+- recurring occurrences due in it are materialised, like any new period;
+- `startingCents` = the next period's `startingCents` − the net of the transactions in it.
+
+The invariant for every period with `seq` < 0:
+**its projected leftover equals the next period's starting amount.** It is kept by:
+
+- A change of `d` in the leftover of the period at `seq` s < 0 (a transaction created,
+  edited, deleted or moved; days changing hands): subtract `d` from the starting amount of
+  that period and of every period before it. Nothing after it moves. `applyLeftoverDelta`
+  does this when given a negative `seq`.
+- A change of `d` in period 0's starting amount (set by hand, or reverted): add `d` to the
+  starting amount of every period before it (`shiftHistory`).
+
+Periods before the budget are always `auto` and never stale. Their starting amount cannot
+be set or reverted (409). Their dates can be edited like any other period's. Only the
+previous-period arrow adds them; dating a transaction before the earliest period is still
+rejected, and the date search still only finds periods that exist.
 
 ### Which transactions belong to a period
 
@@ -298,7 +333,9 @@ POST   /api/auth/sessions/revoke-others
 PATCH  /api/settings                   { timezone }
 GET    /api/budget                     → { budget | null }
 POST   /api/budget                     setup; 409 if one exists
+GET    /api/periods                    every existing period, oldest first → { periods }
 GET    /api/periods/current            ensures a period for today → PeriodView
+POST   /api/periods/earlier            adds the period before the earliest → { periodId }
 GET    /api/periods/:id                → PeriodView
 POST   /api/periods/locate   { date }  ensures through date → { periodId }
 PATCH  /api/periods/:id/dates          { startDate?, endDate?, preview? }
@@ -329,9 +366,12 @@ POST   /api/recurring/:id/end
   },
   totals: { paidCents, upcomingCents, leftoverCents, projectedCents },
   transactions: Transaction[],          // ordered; empty until phase 4
-  nav: { prevId: string | null, nextId: string | null, nextDate: LocalDate | null },
+  nav: { prevId: string | null, canAddPrevious: boolean, nextId: string | null, nextDate: LocalDate | null },
 }
 ```
+
+`nav.canAddPrevious` is true when there is no previous period but one may be added
+(`POST /api/periods/earlier`).
 
 `nav.nextId` is set when the next period already exists. Otherwise `nav.nextDate` is the
 day after this period ends if that is within the horizon (the client calls `locate` with

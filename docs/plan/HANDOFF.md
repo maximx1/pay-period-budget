@@ -12,7 +12,7 @@ Kick-off prompt for the next session:
 ## Where things stand
 
 - Repository: `github.com/maximx1/pay-period-budget` (public), branch `main`.
-- `npm run check` passes: 509 tests, 20 files. `npm run build` is clean.
+- `npm run check` passes: 569 tests, 23 files. `npm run build` is clean.
 - The web app is complete for daily use: accounts and sign-in, budget setup, pay periods,
   transactions, recurring bills and income, period adjustments, manual ordering, settings.
 - It has only ever run on the development machine. Nothing is deployed.
@@ -20,11 +20,14 @@ Kick-off prompt for the next session:
 | Piece | State |
 | --- | --- |
 | Phases 0 to 7 | Done. Each phase file ends with implementation notes; where they differ from the task text, the notes win |
-| 7.1 Date search | **Not built.** Tabled until the owner decides what it should do. The side-panel entry is a placeholder |
+| 7.1 Date search | Done 2026-10-11 as a dialog opened from the period's date range |
 | 8.1 Token sign-in and CORS | Done |
 | 8.2 Client session transport | Done 2026-10-11 |
 | 8.3 Capacitor project | Done 2026-10-11 on the emulator against the dev API. Not yet on a real phone, against a deployed server, or as a release build |
-| 8.4 Biometric unlock | **Not started** |
+| 8.4 Biometric unlock | **Written and unit-tested 2026-10-11; the fingerprint path has never run.** Needs a device or emulator with a fingerprint enrolled |
+| Periods before the first one | Done 2026-10-11 (decision 12). The back arrow adds them; today's numbers stay fixed |
+| 9 Resetting a modified starting amount | **Planned only.** The owner asked for the phase; what it covers needs confirming first |
+| 10 Projections tab | **Planned only** |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 
@@ -35,10 +38,9 @@ Kick-off prompt for the next session:
 `docs/deploy.md` is the walkthrough. The phone app cannot be tested against anything real
 until this exists, so it comes before phase 8.
 
-The owner has to choose how the server is reached over HTTPS. The guide covers three ways:
-an existing reverse proxy, the bundled Caddy profile (needs a public domain), or Tailscale
-(private, recommended for a personal budget, and it also solves reaching it from the phone).
-**Ask which one before tailoring anything.**
+**Decided 2026-10-11:** the owner already runs nginx on a server, so this is the "existing
+reverse proxy" route in the guide. Deployment waits until the app is complete; the owner
+said not to work on it from the Mac.
 
 After the first account exists: set `ALLOW_REGISTRATION=false`.
 
@@ -85,7 +87,12 @@ What was built, decided and checked is in the implementation notes of
   default; that needs a debug-only cleartext allowance. Using the deployed HTTPS server
   avoids the whole problem, which is another reason to deploy first.
 
-### 4. Phase 8.4: biometric unlock
+### 4. Phase 8.4: biometric unlock (written 2026-10-11, fingerprint path not yet run)
+
+State, decisions and what is left to check are in the implementation notes of
+`phase-08-android.md`. The owner's brief: it is only a way to skip the password. After one
+password sign-in the fingerprint alone must open the app, with no credentials after it.
+The paragraph below is the original note.
 
 Use the stronger model for this one. The requirement that matters: the token is held in
 the Android Keystore and released only after an OS-enforced biometric check, not merely
@@ -95,8 +102,6 @@ fingerprint enrolled; an emulator can simulate one but is not proof.
 
 ### 5. Open decisions (none block the above)
 
-- **Date search (7.1):** what should it do? The spec has one candidate: pick a date, jump
-  to its period.
 - **Paycheck when a period's start moves later:** an "every pay period" transaction dated
   on the old first day falls into the previous period, because transactions belong to
   whichever period covers their date. The preview warns; fixing the transaction's date

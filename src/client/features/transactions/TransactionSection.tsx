@@ -5,6 +5,7 @@ import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { Card } from "../../components/ui/Card.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
+import { cn } from "../../lib/cn.ts";
 import { TransactionRow } from "./TransactionRow.tsx";
 
 type TransactionSectionProps = {
@@ -17,6 +18,8 @@ type TransactionSectionProps = {
   onEdit: (transaction: Transaction) => void;
   /** Called with this section's rows at one date and time, in their new order. */
   onReorder: (occursAt: LocalDateTime, orderedIds: string[]) => void;
+  /** A day to point out, when the user arrived by searching for a date. */
+  highlightDay?: LocalDate | null;
 };
 
 function groupByDay(transactions: Transaction[]): Array<[LocalDate, Transaction[]]> {
@@ -39,6 +42,7 @@ export function TransactionSection({
   onToggle,
   onEdit,
   onReorder,
+  highlightDay,
 }: TransactionSectionProps) {
   const headingId = useId();
   // The day whose rows are showing move buttons, if any.
@@ -65,9 +69,20 @@ export function TransactionSection({
             const reordering = canReorder && reorderingDay === day;
 
             return (
-              <div key={day}>
+              <div
+                key={day}
+                data-day={day}
+                className={cn(day === highlightDay && "rounded-lg ring-2 ring-ring ring-inset")}
+              >
                 <div className="flex min-h-9 items-end justify-between px-4 pt-2 pb-1">
-                  <p className="text-xs font-semibold tracking-wide text-muted uppercase">{formatDay(day)}</p>
+                  <p
+                    className={cn(
+                      "text-xs font-semibold tracking-wide uppercase",
+                      day === highlightDay ? "text-primary" : "text-muted",
+                    )}
+                  >
+                    {formatDay(day)}
+                  </p>
                   {canReorder && (
                     <button
                       type="button"

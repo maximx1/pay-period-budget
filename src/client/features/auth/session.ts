@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import type {
   AuthConfigResponse,
@@ -82,6 +82,14 @@ export function useRegister() {
   });
 }
 
+/** Makes the app signed out on this device: the screens unmount, then their cached data goes. */
+export function dropSessionData(queryClient: QueryClient) {
+  // Signing out first unmounts the app; then drop its cached data so none of it
+  // outlives the session.
+  queryClient.setQueryData(SESSION_QUERY_KEY, null);
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== SESSION_QUERY_KEY[0] });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -89,10 +97,7 @@ export function useLogout() {
     onSettled: async () => {
       // Dropped even if the server could not be reached, so the phone is signed out either way.
       await clearToken().catch(() => undefined);
-      // Signing out first unmounts the app; then drop its cached data so none of it
-      // outlives the session.
-      queryClient.setQueryData(SESSION_QUERY_KEY, null);
-      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== SESSION_QUERY_KEY[0] });
+      dropSessionData(queryClient);
     },
   });
 }
