@@ -12,6 +12,7 @@ import { ApiError } from "../../lib/api.ts";
 import { useBudget } from "../budget/api.ts";
 import { usePeriodView } from "../periods/api.ts";
 import { PeriodHeader } from "../periods/PeriodHeader.tsx";
+import { PeriodSettingsDialog } from "../periods/PeriodSettingsDialog.tsx";
 import { PeriodSummary } from "../periods/PeriodSummary.tsx";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { useSetTransactionStatus } from "../transactions/api.ts";
@@ -42,6 +43,7 @@ export function HomePage() {
   const setStatus = useSetTransactionStatus();
   // `transaction` is kept after closing so the dialog doesn't change its title while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; transaction?: Transaction }>({ open: false });
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const timezone = budget.data?.timezone ?? "UTC";
 
   let content: ReactNode;
@@ -78,7 +80,7 @@ export function HomePage() {
 
     content = (
       <>
-        <PeriodHeader view={view} today={today} />
+        <PeriodHeader view={view} today={today} onOpenSettings={() => setSettingsOpen(true)} />
         <PeriodSummary view={view} />
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <TransactionSection
@@ -103,6 +105,7 @@ export function HomePage() {
           />
         </div>
 
+        <PeriodSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} view={view} />
         <TransactionDialog
           open={dialog.open}
           onClose={() => setDialog((current) => ({ ...current, open: false }))}

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { LocateResponse, PeriodView } from "../../../shared/budget.ts";
+import type { LocateResponse, PeriodDatesResponse, PeriodView } from "../../../shared/budget.ts";
 import type { LocalDate } from "../../../shared/dates.ts";
 import { ApiError, api } from "../../lib/api.ts";
 
@@ -33,5 +33,58 @@ export function useLocatePeriod() {
     mutationFn: (date: LocalDate) => api.post<LocateResponse>("/api/periods/locate", { date }),
     // New periods may now exist, which changes the "next" link of the one before them.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+  });
+}
+
+type DateChange = { startDate: LocalDate; endDate: LocalDate };
+
+/** What moving a period's dates would do, without doing it. Pass null when there is nothing to check. */
+export function usePeriodDatesPreview(periodId: string, change: DateChange | null) {
+  return useQuery({
+    queryKey: ["period-dates-preview", periodId, change],
+    queryFn: () => api.patch<PeriodDatesResponse>(`/api/periods/${periodId}/dates`, { ...change, preview: true }),
+    enabled: change !== null,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+// Each of these can change the starting amount, dates or transactions of several periods,
+// so they all refresh every cached period.
+function useRefreshPeriods() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: periodKeys.all });
+}
+
+export function useChangePeriodDates() {
+  return useMutation({
+    mutationFn: ({ periodId, ...change }: DateChange & { periodId: string }) =>
+      api.patch<PeriodDatesResponse>(`/api/periods/${periodId}/dates`, change),
+    onSuccess: useRefreshPeriods(),
+  });
+}
+
+export function useSetStartingAmount() {
+  return useMutation({
+    mutationFn: ({ periodId, ...body }: { periodId: string; startingCents: number; carryForward: boolean }) =>
+      api.patch<PeriodView>(`/api/periods/${periodId}/starting`, body),
+    onSuccess: useRefreshPeriods(),
+  });
+}
+
+/** Back to the calculated starting amount. */
+export function useRevertStartingAmount() {
+  return useMutation({
+    mutationFn: (periodId: string) => api.post<PeriodView>(`/api/periods/${periodId}/starting/revert`),
+    onSuccess: useRefreshPeriods(),
+  });
+}
+
+/** Brings a "may be out of date" starting amount, and the run it belongs to, up to date. */
+export function useRecalculateStartingAmount() {
+  return useMutation({
+    mutationFn: (periodId: string) => api.post<PeriodView>(`/api/periods/${periodId}/recalculate`),
+    onSuccess: useRefreshPeriods(),
   });
 }

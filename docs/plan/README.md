@@ -33,7 +33,7 @@ different app.
 | [3](phase-03-periods.md) | Budget setup and the period engine | Done | n/a |
 | [4](phase-04-transactions.md) | Transactions and the home view | Done | n/a |
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
-| [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready | Opus, or Sonnet with Opus review |
+| [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready | Sonnet |
 | [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready after 7 | Sonnet for 8.1 to 8.3, Opus for 8.4 |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, deploy, iOS | Not planned in detail | n/a |
@@ -99,6 +99,17 @@ different app.
   with clickable links.
 - Read the implementation notes at the bottom of `phase-05-recurring.md` before phase 6.
 
+### What phase 6 delivered
+
+- Moving a period's start or end, with the neighbouring period's shared boundary following
+  and transactions on the affected days moving with them; preview before saving; reset to
+  schedule.
+- Setting a starting amount by hand, carried forward or not; "may be out of date" marking;
+  recalculate; revert to the calculated amount.
+- `PATCH /api/periods/:id/dates`, `POST …/dates/revert`, `PATCH …/starting`,
+  `POST …/starting/revert`, `POST …/recalculate`.
+- Period settings dialog behind a button in the period header.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -117,8 +128,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 6.1 from
-> docs/plan/phase-06-period-adjustments.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 7.2 from
+> docs/plan/phase-07-polish.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

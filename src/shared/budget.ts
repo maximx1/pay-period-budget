@@ -81,3 +81,41 @@ export type PeriodView = {
 };
 
 export type LocateResponse = { periodId: string };
+
+const MAX_STARTING_CENTS = MAX_OPENING_CENTS;
+
+export const startingAmountSchema = z.object({
+  startingCents: z
+    .number("Enter an amount")
+    .int("Enter a whole number of cents")
+    .min(-MAX_STARTING_CENTS, "That amount is too large")
+    .max(MAX_STARTING_CENTS, "That amount is too large"),
+  /** Apply the difference to later periods too, or leave them as they are and flag them. */
+  carryForward: z.boolean(),
+});
+
+export const periodDatesSchema = z
+  .object({
+    startDate: localDateSchema.optional(),
+    endDate: localDateSchema.optional(),
+    /** Report what would happen without changing anything. */
+    preview: z.boolean().optional(),
+  })
+  .refine((input) => input.startDate !== undefined || input.endDate !== undefined, "Nothing to change");
+export type PeriodDatesInput = z.output<typeof periodDatesSchema>;
+
+/** One period whose dates a change touches: the one being edited or a neighbour sharing a boundary. */
+export type PeriodDateChange = {
+  role: "previous" | "this" | "next";
+  startDate: LocalDate;
+  endDate: LocalDate;
+  previousStartDate: LocalDate;
+  previousEndDate: LocalDate;
+};
+
+export type PeriodDatesResponse = {
+  view: PeriodView;
+  changes: PeriodDateChange[];
+  /** Transactions that fall in a different period as a result. */
+  movedTransactions: number;
+};

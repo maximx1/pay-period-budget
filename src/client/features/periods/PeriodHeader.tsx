@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { formatDateRange } from "../../../shared/dates.ts";
@@ -7,13 +7,19 @@ import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { useLocatePeriod } from "./api.ts";
 
-function describe({ isCurrent, startDate, endDate }: PeriodView["period"], today: string) {
-  if (isCurrent) return "Current period";
-  return endDate < today ? "Past period" : startDate > today ? "Upcoming period" : "";
+function describe({ isCurrent, startDate, endDate, datesEdited }: PeriodView["period"], today: string) {
+  const when = isCurrent ? "Current period" : endDate < today ? "Past period" : startDate > today ? "Upcoming period" : "";
+  return datesEdited ? `${when} · dates edited` : when;
 }
 
-/** The period's date range with controls to step to its neighbours and back to today. */
-export function PeriodHeader({ view, today }: { view: PeriodView; today: string }) {
+/** The period's date range with controls to step to its neighbours, adjust it, and return to today. */
+type PeriodHeaderProps = {
+  view: PeriodView;
+  today: string;
+  onOpenSettings: () => void;
+};
+
+export function PeriodHeader({ view, today, onOpenSettings }: PeriodHeaderProps) {
   const { period, nav } = view;
   const navigate = useNavigate();
   const locate = useLocatePeriod();
@@ -56,6 +62,9 @@ export function PeriodHeader({ view, today }: { view: PeriodView; today: string 
           onClick={goNext}
         >
           <ChevronRight className="size-5" aria-hidden />
+        </IconButton>
+        <IconButton label="Period settings" aria-haspopup="dialog" onClick={onOpenSettings}>
+          <Settings2 className="size-5" aria-hidden />
         </IconButton>
       </div>
 

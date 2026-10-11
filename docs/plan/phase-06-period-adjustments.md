@@ -19,7 +19,7 @@ and "Editing period dates".
 
 ### 6.1 Starting amount: service and endpoints
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/budget.ts`, `src/server/services/carry.ts`,
 `src/server/services/periods.ts`, `src/server/routes/periods.ts`,
@@ -56,7 +56,7 @@ P0..P5):
 
 ### 6.2 Period dates: service and endpoints
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/budget.ts`, `src/server/services/periods.ts`,
 `src/server/routes/periods.ts`, new `src/server/routes/periods.dates.test.ts`.
@@ -94,7 +94,7 @@ P0..P5):
 
 ### 6.3 Period settings dialog
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/periods/PeriodSettingsDialog.tsx`,
 `src/client/features/periods/api.ts`, `PeriodHeader.tsx`, `PeriodSummary.tsx`.
@@ -128,4 +128,44 @@ driven from the UI.
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+Completed 2026-10-10. Where the build differs from the task text above, this section wins.
+
+- **Date changes report `role`, not `periodId`:** each entry in `changes` is
+  `{ role: "previous" | "this" | "next", startDate, endDate, previousStartDate,
+  previousEndDate }`. A preview can describe a next period that hasn't been generated yet,
+  which has no id.
+- **Editing the end of the last generated period generates the next one** (when the
+  horizon allows) so the shared boundary always has two sides and days given up have
+  somewhere to go. A preview describes that period without creating it.
+- **Extra limits beyond the task text** (all in `domain.md` now): the new dates must share
+  a day with the old ones; days given up with no period to receive them must be empty.
+- **The planning is a pure function**, `planDateChange` in `services/periodDates.ts`:
+  given the period, its neighbours and the requested dates it returns either a plan (new
+  boundaries plus the runs of days that change hands) or the field and message to reject
+  with. The service turns day runs into transaction counts and leftover deltas.
+- **A reverted or recalculated amount inherits "out of date" from the period before it**
+  rather than always being cleared. Clearing it unconditionally would have hidden a real
+  discrepancy.
+- **Reverting a calculated amount, or recalculating one that isn't flagged, is a 409.**
+- **`projectedLeftover(repos, period)`** moved to `services/carry.ts`, next to
+  `applyLeftoverDelta`, `markStaleAfter` and `recomputeChain`.
+- **`buildView` takes `repos`** so adjustments can return the updated view from inside
+  their transaction.
+- **Dialog:** "Reset to schedule" fills the date inputs with the scheduled dates and goes
+  through the same preview and Save as any other change (the revert endpoint exists too).
+  Save is disabled until the preview for the dates currently typed has come back clean.
+  Dates are saved before the starting amount, so a typed amount has the last word.
+- **Summary card:** instead of icons crammed beside "Starting", a small marker sits next
+  to the label and a full-width line at the foot of the card explains it and offers the
+  action ("Use calculated amount" / "Recalculate").
+- **Known consequence of date-based membership:** moving a period's start *later* hands
+  its first days to the previous period, including a "every pay period" paycheck dated on
+  the old first day. The preview says a transaction will move; the fix is to change that
+  transaction's date. Generated transactions are deliberately not rewritten when periods
+  change (owner's rule). If this proves annoying in use, the option is to have pay-period
+  transactions follow their period's start.
+- Checked in the browser at 375px and 1024px, dark and light: end moved a day early with
+  the preview sentences, the limit message for a date too far, the bill on the old last
+  day arriving in the next period, "dates edited" in the header, a hand-set amount without
+  carrying forward, the out-of-date notice and Recalculate on the following period, and
+  "Use calculated amount".

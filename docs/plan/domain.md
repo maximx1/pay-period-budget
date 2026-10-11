@@ -131,11 +131,12 @@ known amount:
 | Paid ↔ upcoming | none; leftover is unchanged |
 | Period boundary moved (phase 6) | for each transaction that changed period: as "date edited" |
 
-**`recomputeChain(userId, fromSeq)`** (phase 6): walk forward from `fromSeq`. For each
-period: if `startingMode = manual` and it is not the first one visited, stop. Otherwise set
-`startingCents` to the previous period's actual leftover (or the opening balance for
-`seq` 0), set `carryStale = false`, continue. Used by "revert to calculated" and
-"recalculate".
+**`recomputeChain(userId, fromSeq)`**: walk forward from `fromSeq`. For each period: if
+`startingMode = manual` and it is not the first one visited, stop. Otherwise set
+`startingCents` to the previous period's projected leftover (or the opening balance for
+`seq` 0), and set `carryStale` to whether that previous period is itself flagged (a manual
+one never is). A recalculated amount is only as trustworthy as what it was calculated from.
+Used by "revert to calculated" and "recalculate".
 
 Using deltas for everyday changes means a period flagged stale keeps tracking new
 transactions correctly while still preserving the discrepancy the user chose not to carry
@@ -143,15 +144,17 @@ forward.
 
 ### Manual starting amount (phase 6)
 
-- Setting a starting amount by hand sets `startingMode = manual` on that period. It is
-  pinned: neither operation above overwrites a manual value.
+- Setting a starting amount by hand sets `startingMode = manual` on that period and clears
+  its own `carryStale`. It is pinned: neither operation above overwrites a manual value.
 - With **carry forward on**: apply `(new − old)` as a delta after this period.
 - With **carry forward off**: change nothing downstream, but set `carryStale = true` on
   every following period up to (not including) the next manual one. Those periods show a
-  "may be out of date" marker.
-- **Revert**: set `startingMode = auto` and run `recomputeChain` from this period.
+  "may be out of date" marker. (If the typed amount equals the current one there is no
+  difference to carry, so nothing is flagged.)
+- **Revert**: set `startingMode = auto` and run `recomputeChain` from this period. If the
+  period before it is flagged, the reverted amount stays flagged too.
 - **Recalculate** (offered on a stale period): run `recomputeChain` from the first stale
-  period in that run.
+  period in that run, found by walking back while the previous period is flagged.
 - A period generated after a stale one inherits `carryStale`.
 
 ### Editing period dates (phase 6)
@@ -159,8 +162,15 @@ forward.
 See decision 1 in `README.md`; the rules below assume the default.
 
 - A period's start and/or end may be moved. The neighbour's shared boundary moves with it.
-- Limits: every affected period stays at least one day long; the first period's start and
-  the last generated period's end may move freely within that rule.
+- Limits:
+  - every affected period stays at least one day long;
+  - the new dates must share at least one day with the old ones (a period can't jump clear
+    of itself);
+  - days a period gives up must have a period to go to, or be empty. If the next period
+    doesn't exist yet but is within the horizon, it is generated as part of the change. The
+    first period's start can move later, and the last allowed period's end earlier, only
+    past days with no transactions;
+  - the last allowed period's end must stay before the *following* nominal end.
 - `nominalStart` / `nominalEnd` never change. A period is "edited" when its actual dates
   differ from nominal; "revert dates" restores nominal and moves the neighbours back.
 - Transactions are not rewritten; they fall into whichever period now covers their date.

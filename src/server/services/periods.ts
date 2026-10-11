@@ -3,11 +3,16 @@ import {
   type Budget,
   type BudgetSetupInput,
   MAX_ANCHOR_AGE_DAYS,
+  type PeriodDateChange,
+  type PeriodDatesInput,
+  type PeriodDatesResponse,
   type PeriodView,
 } from "../../shared/budget.ts";
 import { addDays, diffDays, type LocalDate, todayIn } from "../../shared/dates.ts";
 import { horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
 import { AppError } from "../lib/errors.ts";
+import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain } from "./carry.ts";
+import { planDateChange } from "./periodDates.ts";
 import { toTransaction } from "./transactionMapper.ts";
 import {
   type DataStore,
@@ -41,19 +46,6 @@ export function createPeriodService(deps: {
     const settings = await repos.settings.get(userId);
     if (!schedule || !settings) throw noBudget();
     return { schedule, timezone: settings.timezone };
-  }
-
-  /**
-   * Projected leftover: the starting amount plus every transaction in the period, paid or
-   * not. It is what the period is expected to end with, and so what the next one starts with.
-   */
-  async function projectedOf(repos: Repos, period: PeriodRecord): Promise<number> {
-    const { paidCents, upcomingCents } = await repos.transactions.sumInRange(
-      period.userId,
-      period.startDate,
-      period.endDate,
-    );
-    return period.startingCents + paidCents + upcomingCents;
   }
 
   /** Creates every missing period up to the one containing `date`. Call inside a transaction. */
@@ -90,7 +82,7 @@ export function createPeriodService(deps: {
         endDate: nominal.end < startDate ? startDate : nominal.end,
         nominalStart: nominal.start,
         nominalEnd: nominal.end,
-        startingCents: await projectedOf(repos, last),
+        startingCents: await projectedLeftover(repos, last),
         startingMode: "auto",
         carryStale: last.carryStale,
         createdAt,
@@ -115,13 +107,18 @@ export function createPeriodService(deps: {
     });
   }
 
-  async function buildView(budget: LoadedBudget, period: PeriodRecord, today: LocalDate): Promise<PeriodView> {
+  async function buildView(
+    repos: Repos,
+    budget: LoadedBudget,
+    period: PeriodRecord,
+    today: LocalDate,
+  ): Promise<PeriodView> {
     const userId = period.userId;
-    const prev = period.seq > 0 ? await store.periods.findBySeq(userId, period.seq - 1) : null;
-    const next = await store.periods.findBySeq(userId, period.seq + 1);
+    const prev = period.seq > 0 ? await repos.periods.findBySeq(userId, period.seq - 1) : null;
+    const next = await repos.periods.findBySeq(userId, period.seq + 1);
     const canGenerateNext = period.seq + 1 <= horizonSeq(budget.schedule, today);
 
-    const records = await store.transactions.listInRange(userId, period.startDate, period.endDate);
+    const records = await repos.transactions.listInRange(userId, period.startDate, period.endDate);
     let paidCents = 0;
     let upcomingCents = 0;
     for (const record of records) {
@@ -158,7 +155,205 @@ export function createPeriodService(deps: {
     };
   }
 
+  /** Loads what every adjustment needs, inside its transaction. */
+  async function loadForEdit(repos: Repos, userId: string, periodId: string) {
+    const budget = await loadBudget(repos, userId);
+    const period = await repos.periods.findById(userId, periodId);
+    if (!period) throw new AppError(404, "not_found", "No such period");
+    return { budget, period, today: todayIn(budget.timezone, now()) };
+  }
+
+  /** The view of a period as it stands after an adjustment made in this transaction. */
+  async function viewAfterEdit(repos: Repos, budget: LoadedBudget, periodId: string, today: LocalDate) {
+    const period = await repos.periods.findById(budget.schedule.userId, periodId);
+    if (!period) throw new Error("Period vanished during its own update");
+    return buildView(repos, budget, period, today);
+  }
+
+  function changeDates(userId: string, periodId: string, input: PeriodDatesInput): Promise<PeriodDatesResponse> {
+    return store.transaction(async (repos) => {
+      const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+      const { schedule } = budget;
+      const previous = period.seq > 0 ? await repos.periods.findBySeq(userId, period.seq - 1) : null;
+      let next = await repos.periods.findBySeq(userId, period.seq + 1);
+
+      // If the next period hasn't been generated yet but may be, plan against the dates it
+      // will get, so days this period gives up always have somewhere to go.
+      const nextNominal = nominalPeriod(schedule, period.seq + 1);
+      const nextCanBeGenerated = !next && period.seq + 1 <= horizonSeq(schedule, today);
+      const upcomingStart = addDays(period.endDate, 1);
+      const nextBounds = next
+        ? next
+        : nextCanBeGenerated
+          ? {
+              seq: period.seq + 1,
+              startDate: upcomingStart,
+              endDate: nextNominal.end < upcomingStart ? upcomingStart : nextNominal.end,
+            }
+          : null;
+
+      const plan = planDateChange({
+        period,
+        previous,
+        next: nextBounds,
+        latestEndWithoutNext: addDays(nextNominal.end, -1),
+        startDate: input.startDate,
+        endDate: input.endDate,
+      });
+      if ("message" in plan) throw new AppError(400, "validation", plan.message, { [plan.field]: plan.message });
+
+      // Transactions are tied to dates, not periods, so the ones on days that change hands
+      // move with those days. Days nobody takes over must be empty.
+      const moves: Array<{ fromSeq: number; toSeq: number; sumCents: number }> = [];
+      let movedTransactions = 0;
+      for (const transfer of plan.transfers) {
+        const rows = await repos.transactions.listInRange(userId, transfer.from, transfer.to);
+        if (rows.length === 0) continue;
+        if (transfer.toSeq === null) {
+          const message =
+            transfer.field === "startDate"
+              ? "There are transactions before that date and no earlier period to hold them"
+              : "There are transactions after that date and no later period to hold them yet";
+          throw new AppError(400, "validation", message, { [transfer.field]: message });
+        }
+        movedTransactions += rows.length;
+        const sumCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
+        moves.push({ fromSeq: transfer.fromSeq, toSeq: transfer.toSeq, sumCents });
+      }
+
+      const changes: PeriodDateChange[] = [];
+      if (previous && plan.previousEnd) {
+        changes.push({
+          role: "previous",
+          startDate: previous.startDate,
+          endDate: plan.previousEnd,
+          previousStartDate: previous.startDate,
+          previousEndDate: previous.endDate,
+        });
+      }
+      if (plan.startDate !== period.startDate || plan.endDate !== period.endDate) {
+        changes.push({
+          role: "this",
+          startDate: plan.startDate,
+          endDate: plan.endDate,
+          previousStartDate: period.startDate,
+          previousEndDate: period.endDate,
+        });
+      }
+      if (nextBounds && plan.nextStart) {
+        changes.push({
+          role: "next",
+          startDate: plan.nextStart,
+          endDate: nextBounds.endDate,
+          previousStartDate: nextBounds.startDate,
+          previousEndDate: nextBounds.endDate,
+        });
+      }
+
+      if (input.preview || changes.length === 0) {
+        return { view: await buildView(repos, budget, period, today), changes, movedTransactions };
+      }
+
+      const updatedAt = now();
+      if (plan.nextStart && !next) {
+        // Bring the next period into existence on its scheduled dates, then move its start.
+        await ensureThroughIn(repos, userId, schedule, upcomingStart, today);
+        next = await repos.periods.findBySeq(userId, period.seq + 1);
+      }
+      if (previous && plan.previousEnd) {
+        await repos.periods.update(userId, previous.id, { endDate: plan.previousEnd }, updatedAt);
+      }
+      await repos.periods.update(userId, period.id, { startDate: plan.startDate, endDate: plan.endDate }, updatedAt);
+      if (next && plan.nextStart) {
+        await repos.periods.update(userId, next.id, { startDate: plan.nextStart }, updatedAt);
+      }
+
+      // Same bookkeeping as changing a transaction's date: it leaves one period and joins another.
+      for (const move of moves) {
+        await applyLeftoverDelta(repos, userId, move.fromSeq, -move.sumCents, updatedAt);
+        await applyLeftoverDelta(repos, userId, move.toSeq, move.sumCents, updatedAt);
+      }
+
+      return { view: await viewAfterEdit(repos, budget, periodId, today), changes, movedTransactions };
+    });
+  }
+
   return {
+    /**
+     * Sets a period's starting amount by hand, which pins it: nothing upstream will change
+     * it again. `carryForward` chooses between moving later periods by the same difference
+     * and leaving them alone but flagged as possibly out of date.
+     */
+    setStarting(
+      userId: string,
+      periodId: string,
+      input: { startingCents: number; carryForward: boolean },
+    ): Promise<PeriodView> {
+      return store.transaction(async (repos) => {
+        const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        const updatedAt = now();
+        const deltaCents = input.startingCents - period.startingCents;
+
+        await repos.periods.update(
+          userId,
+          period.id,
+          { startingCents: input.startingCents, startingMode: "manual", carryStale: false },
+          updatedAt,
+        );
+        if (input.carryForward) await applyLeftoverDelta(repos, userId, period.seq, deltaCents, updatedAt);
+        else if (deltaCents !== 0) await markStaleAfter(repos, userId, period.seq, updatedAt);
+
+        return viewAfterEdit(repos, budget, periodId, today);
+      });
+    },
+
+    /** Goes back to the calculated starting amount and brings later periods into line with it. */
+    revertStarting(userId: string, periodId: string): Promise<PeriodView> {
+      return store.transaction(async (repos) => {
+        const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (period.startingMode !== "manual") {
+          throw new AppError(409, "conflict", "This starting amount is already the calculated one");
+        }
+        const updatedAt = now();
+        await repos.periods.update(userId, period.id, { startingMode: "auto" }, updatedAt);
+        await recomputeChain(repos, userId, period.seq, budget.schedule.openingCents, updatedAt);
+        return viewAfterEdit(repos, budget, periodId, today);
+      });
+    },
+
+    /** Clears "may be out of date" by recalculating the whole flagged run this period is part of. */
+    recalculate(userId: string, periodId: string): Promise<PeriodView> {
+      return store.transaction(async (repos) => {
+        const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (!period.carryStale) {
+          throw new AppError(409, "conflict", "This starting amount is already up to date");
+        }
+        // The run began right after the hand-set amount that wasn't carried forward.
+        let fromSeq = period.seq;
+        while (fromSeq > 0) {
+          const before = await repos.periods.findBySeq(userId, fromSeq - 1);
+          if (!before || !before.carryStale || before.startingMode === "manual") break;
+          fromSeq -= 1;
+        }
+        await recomputeChain(repos, userId, fromSeq, budget.schedule.openingCents, now());
+        return viewAfterEdit(repos, budget, periodId, today);
+      });
+    },
+
+    /**
+     * Moves a period's start and/or end. The neighbour sharing each moved boundary follows,
+     * and transactions on days that change hands go with them. With `preview`, reports the
+     * effect without changing anything.
+     */
+    changeDates,
+
+    /** Puts a period back on its scheduled dates (and the shared boundaries with it). */
+    async revertDates(userId: string, periodId: string): Promise<PeriodDatesResponse> {
+      const period = await store.periods.findById(userId, periodId);
+      if (!period) throw new AppError(404, "not_found", "No such period");
+      return changeDates(userId, periodId, { startDate: period.nominalStart, endDate: period.nominalEnd });
+    },
+
     async getBudget(userId: string): Promise<Budget | null> {
       const schedule = await store.schedules.getForUser(userId);
       const settings = await store.settings.get(userId);
@@ -229,14 +424,14 @@ export function createPeriodService(deps: {
       const budget = await loadBudget(store, userId);
       const today = todayIn(budget.timezone, now());
       const period = await containingOrCreate(userId, budget, today, today);
-      return buildView(budget, period, today);
+      return buildView(store, budget, period, today);
     },
 
     async getView(userId: string, periodId: string): Promise<PeriodView> {
       const budget = await loadBudget(store, userId);
       const period = await store.periods.findById(userId, periodId);
       if (!period) throw new AppError(404, "not_found", "No such period");
-      return buildView(budget, period, todayIn(budget.timezone, now()));
+      return buildView(store, budget, period, todayIn(budget.timezone, now()));
     },
 
     /** Id of the period containing `date`, generating forward to it when it is within the horizon. */
