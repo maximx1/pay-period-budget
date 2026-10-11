@@ -1,12 +1,72 @@
+# ---- dependencies and build output ----
 node_modules/
 dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.cache/
+
+# ---- local data: never commit the database or copies of it ----
 data/
+backups/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---- environment files and secrets ----
 .env
 .env.*
 !.env.example
-*.tsbuildinfo
+!.env.docker.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+secrets/
+
+# ---- logs and scratch ----
+*.log
+npm-debug.log*
+logs/
+tmp/
+*.tmp
+
+# ---- operating systems ----
 .DS_Store
-coverage/
-# Capacitor (added in the Android phase)
-android/app/build/
+.AppleDouble
+._*
+Thumbs.db
+Desktop.ini
+*~
+
+# ---- editors ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# ---- assistant tooling: keep shared config, ignore per-machine state ----
+.claude/settings.local.json
+.claude/worktrees/
+.claude/*.local.*
+
+# ---- Android / Capacitor (phase 8) ----
 android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/local.properties
+android/captures/
+android/app/google-services.json
+*.apk
+*.aab
