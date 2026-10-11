@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
 
 // Conventions: text UUID primary keys, instants as integer milliseconds (timestamp_ms),
 // money as integer cents, calendar dates as "YYYY-MM-DD" text.
@@ -38,5 +39,66 @@ export const sessions = sqliteTable(
   (t) => [
     uniqueIndex("sessions_token_hash_unique").on(t.tokenHash),
     index("sessions_user_id_idx").on(t.userId),
+  ],
+);
+
+export const userSettings = sqliteTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** IANA zone the budget lives in; decides what "today" is, wherever the device is. */
+  timezone: text("timezone").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const budgetSchedules = sqliteTable(
+  "budget_schedules",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type", { enum: SCHEDULE_TYPES }).notNull(),
+    /** Start of period 0; every nominal period is derived from it. */
+    anchorDate: text("anchor_date").notNull(),
+    /** Starting amount of period 0. */
+    openingCents: integer("opening_cents").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  // One schedule per user for now; changing schedules later means dropping this.
+  (t) => [uniqueIndex("budget_schedules_user_id_unique").on(t.userId)],
+);
+
+export const periods = sqliteTable(
+  "periods",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => budgetSchedules.id, { onDelete: "cascade" }),
+    /** 0, 1, 2, ... per user with no holes. */
+    seq: integer("seq").notNull(),
+    startDate: text("start_date").notNull(),
+    /** Inclusive. */
+    endDate: text("end_date").notNull(),
+    /** The dates the schedule gave this period; never change after creation. */
+    nominalStart: text("nominal_start").notNull(),
+    nominalEnd: text("nominal_end").notNull(),
+    startingCents: integer("starting_cents").notNull(),
+    startingMode: text("starting_mode", { enum: ["auto", "manual"] })
+      .notNull()
+      .default("auto"),
+    carryStale: integer("carry_stale", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("periods_user_seq_unique").on(t.userId, t.seq),
+    uniqueIndex("periods_user_start_unique").on(t.userId, t.startDate),
+    index("periods_user_end_idx").on(t.userId, t.endDate),
   ],
 );

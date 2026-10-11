@@ -10,17 +10,22 @@ const MONEY_RE = /^(\d*)(?:\.(\d{0,2}))?$/;
 
 /**
  * Parses what a person types into an amount field into integer cents: "27" → 2700,
- * "1,234.56" → 123456, "$5" → 500. Returns null for anything that isn't a non-negative
- * amount with at most two decimals. Works on the digits as text so no float rounding occurs.
+ * "1,234.56" → 123456, "$5" → 500. Returns null for anything that isn't an amount with at
+ * most two decimals. Negative amounts ("-40", "-$40") are accepted only with `allowNegative`.
+ * Works on the digits as text so no float rounding occurs.
  */
-export function parseMoneyInput(text: string): number | null {
-  const cleaned = text.trim().replace(/^\$/, "").replace(/,/g, "").trim();
+export function parseMoneyInput(text: string, opts: { allowNegative?: boolean } = {}): number | null {
+  let cleaned = text.trim();
+  const negative = Boolean(opts.allowNegative) && cleaned.startsWith("-");
+  if (negative) cleaned = cleaned.slice(1);
+  cleaned = cleaned.trim().replace(/^\$/, "").replace(/,/g, "").trim();
+
   const match = MONEY_RE.exec(cleaned);
   if (!match) return null;
-
   const [, whole = "", fraction = ""] = match;
   if (whole === "" && fraction === "") return null;
 
   const cents = Number(whole || "0") * 100 + Number(fraction.padEnd(2, "0"));
-  return Number.isSafeInteger(cents) ? cents : null;
+  if (!Number.isSafeInteger(cents)) return null;
+  return negative && cents !== 0 ? -cents : cents;
 }

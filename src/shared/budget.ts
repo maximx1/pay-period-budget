@@ -1,0 +1,80 @@
+import { z } from "zod";
+import { isLocalDate, type LocalDate } from "./dates.ts";
+import { SCHEDULE_TYPES, type ScheduleType } from "./schedule.ts";
+
+/** How far back the first period may start, in days. */
+export const MAX_ANCHOR_AGE_DAYS = 366;
+
+const MAX_OPENING_CENTS = 10_000_000_000; // $100 million either way
+
+export const localDateSchema = z.string().refine(isLocalDate, "Enter a valid date");
+
+function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const budgetSetupSchema = z.object({
+  type: z.enum(SCHEDULE_TYPES, "Choose how often you are paid"),
+  /** First day of the first period; usually the most recent payday. */
+  anchorDate: localDateSchema,
+  openingCents: z
+    .number()
+    .int("Enter a whole number of cents")
+    .min(-MAX_OPENING_CENTS, "That amount is too large")
+    .max(MAX_OPENING_CENTS, "That amount is too large")
+    .default(0),
+  timezone: z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone"),
+});
+export type BudgetSetupInput = z.output<typeof budgetSetupSchema>;
+
+export const locateSchema = z.object({ date: localDateSchema });
+
+export type Budget = {
+  type: ScheduleType;
+  anchorDate: LocalDate;
+  openingCents: number;
+  timezone: string;
+};
+
+export type BudgetResponse = { budget: Budget | null };
+
+export type PeriodView = {
+  period: {
+    id: string;
+    seq: number;
+    startDate: LocalDate;
+    /** Inclusive. */
+    endDate: LocalDate;
+    nominalStart: LocalDate;
+    nominalEnd: LocalDate;
+    /** True when the dates were moved off the schedule by hand. */
+    datesEdited: boolean;
+    /** True when the period contains today in the budget's time zone. */
+    isCurrent: boolean;
+    startingCents: number;
+    startingMode: "auto" | "manual";
+    carryStale: boolean;
+  };
+  totals: {
+    paidCents: number;
+    upcomingCents: number;
+    /** Leftover so far: starting amount + paid. */
+    leftoverCents: number;
+    /** Projected leftover: starting amount + paid + upcoming. This is what carries forward. */
+    projectedCents: number;
+  };
+  nav: {
+    prevId: string | null;
+    /** Set when the next period already exists. */
+    nextId: string | null;
+    /** When there is no next period yet: the date to `locate` to create it, or null at the horizon. */
+    nextDate: LocalDate | null;
+  };
+};
+
+export type LocateResponse = { periodId: string };

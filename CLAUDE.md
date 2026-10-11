@@ -50,12 +50,17 @@ src/client/   React app
   This boundary is what lets the database be swapped later.
 - Every repo method that reads or writes user data takes `userId` and filters by it. A
   record belonging to someone else is a 404, never a 403.
-- Multi-step writes go through `store.transaction(async (repos) => ...)`.
+- Multi-step writes go through `store.transaction(async (repos) => ...)`. Inside the
+  callback use only that `repos` argument: touching `store` there, or nesting another
+  transaction, throws. A service function that must run inside a caller's transaction
+  takes `repos` as its first parameter. Keep transactions short; all database access is
+  queued behind an open one.
 - Validate request bodies with a zod schema from `src/shared/` via `parseJson`. Throw
   `AppError` for anything the client should see; never build error JSON by hand.
 - Take the current time from the injected `now()`; never call `new Date()` / `Date.now()`
   in services or routes. Tests control the clock.
-- New routers mount in `app.ts` behind `requireAuth`.
+- New routers mount in `app.ts`, take the shared `authed` middleware and apply it with
+  `routes.use(deps.authed)`, as `routes/periods.ts` does.
 
 **Data conventions**
 - IDs: `crypto.randomUUID()` text. Instants: integer milliseconds (`timestamp_ms`).
@@ -74,6 +79,8 @@ src/client/   React app
 - Every screen must work from 360px wide up to ultrawide. Touch targets are at least 44px
   (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
 - Inside authenticated routes get the user with `useCurrentUser()`.
+- "Today" on the client is `todayIn(budget.timezone, new Date())` using `useBudget()`, never
+  the device's own date.
 - Build screens from the primitives in `components/ui/` (`Button`, `IconButton`,
   `TextField`, `Dialog`, `Card`, `PageHeader`, `EmptyState`, `Fab`, `useToast`, ...) before
   writing new markup. `/dev/ui` on the dev server shows them all; add new ones there.

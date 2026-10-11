@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { ErrorPage } from "./components/ErrorPage.tsx";
 import { AuthPage } from "./features/auth/AuthPage.tsx";
 import { PublicOnly, RequireAuth } from "./features/auth/guards.tsx";
+import { RequireBudget, RequireNoBudget } from "./features/budget/guards.tsx";
+import { SetupPage } from "./features/budget/SetupPage.tsx";
 import { HomePage } from "./features/home/HomePage.tsx";
 import { RecurringPage } from "./features/recurring/RecurringPage.tsx";
 import { DateSearchPage } from "./features/search/DateSearchPage.tsx";
@@ -33,13 +35,23 @@ export const router = createBrowserRouter([
         element: <RequireAuth />,
         children: [
           {
-            element: <AppShell />,
+            element: <RequireNoBudget />,
+            children: [{ path: "/setup", element: <SetupPage /> }],
+          },
+          {
+            element: <RequireBudget />,
             children: [
-              { path: "/", element: <HomePage /> },
-              { path: "/search", element: <DateSearchPage /> },
-              { path: "/recurring", element: <RecurringPage /> },
-              { path: "/settings", element: <SettingsPage /> },
-              ...devRoutes,
+              {
+                element: <AppShell />,
+                children: [
+                  { path: "/", element: <HomePage /> },
+                  { path: "/periods/:periodId", element: <HomePage /> },
+                  { path: "/search", element: <DateSearchPage /> },
+                  { path: "/recurring", element: <RecurringPage /> },
+                  { path: "/settings", element: <SettingsPage /> },
+                  ...devRoutes,
+                ],
+              },
             ],
           },
         ],

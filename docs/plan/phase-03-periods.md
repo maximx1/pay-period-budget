@@ -16,7 +16,7 @@ because every later phase builds on it.
 
 ### 3.1 Schedule math (pure)
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/shared/schedule.ts`, `src/shared/schedule.test.ts`.
 
@@ -43,7 +43,7 @@ span; `horizonSeq` for each type.
 
 ### 3.2 Tables and repositories
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/server/db/schema.ts`, new migration via `npm run db:generate -- --name budget_periods`,
 `src/server/repos/types.ts`, new `src/server/repos/sqlite/settings.ts`, `schedules.ts`,
@@ -73,7 +73,7 @@ a second user cannot read the first user's period by id.
 
 ### 3.3 Period service and endpoints
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/shared/budget.ts` (zod schemas + response types), new
 `src/server/services/periods.ts`, `src/server/routes/budget.ts`,
@@ -126,7 +126,7 @@ Routes, all behind `requireAuth`: `GET /api/budget`, `POST /api/budget`,
 
 ### 3.4 Setup screen
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/budget/api.ts` (query + mutation hooks),
 `SetupPage.tsx`, `RequireBudget.tsx`; `src/client/router.tsx`.
@@ -153,7 +153,7 @@ complete, and afterwards never sees `/setup` again (typing the URL redirects hom
 
 ### 3.5 Home view: the period frame
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/periods/api.ts`, `PeriodHeader.tsx`,
 `PeriodSummary.tsx`; `src/client/features/home/HomePage.tsx`; `src/client/router.tsx`.
@@ -185,4 +185,43 @@ period; reloading on `/periods/<id>` shows the same period.
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+Completed 2026-10-10. Where the build differs from the task text above, this section wins.
+
+- **All database access is queued** (`src/server/repos/sqlite/index.ts`). This SQLite
+  driver waits for a locked database *synchronously*: a write attempted while a transaction
+  is open froze the whole server for five seconds and then failed. The store now runs every
+  repo call and every transaction one at a time, which also makes "check, then create"
+  inside a transaction race-free. Two rules follow, both enforced with a clear error:
+  inside `store.transaction()` use only the repos passed to the callback, and never start a
+  transaction inside another. Services that need to take part in someone else's
+  transaction accept `repos` as a parameter instead (see `ensureThrough` below).
+- **`periods.ensureThrough(repos, userId, date)`** is the entry point for phase 4: call it
+  inside the transaction that saves a transaction, and let its 400 (`fields.date`) surface
+  as the error on `occursAt`.
+- **`projectedOf(repos, period)`** in `services/periods.ts` is the single place phase 4
+  adds the period's transaction sum. `buildView` has the two zero totals to replace.
+- **`onPeriodCreated(repos, period)`** is the hook for phase 5. It already runs for period
+  0 during setup as well as for generated periods, and before the next period is derived.
+- **`PeriodView` has no `transactions` field yet.** Phase 4 adds it together with the
+  `Transaction` type rather than this phase inventing a placeholder type.
+- **Routers take `authed`** (the `requireAuth` middleware built once in `app.ts`) and call
+  `routes.use(deps.authed)` themselves, so a router can't be mounted unprotected.
+- **Generation never produces a zero-length period:** if the previous period's end was
+  moved past the next nominal end, the new period is one day long. Phase 6 should still
+  refuse such an edit (the last period's end must stay before the next nominal end).
+- **Client "today"** comes from the budget's time zone (`useBudget().data.timezone`), not
+  the device's. `PeriodHeader` takes `today` as a prop for that reason.
+- **Guards:** `RequireBudget` wraps the shell; `RequireNoBudget` wraps `/setup`. Both live
+  in `features/budget/guards.tsx`. `components/LoadErrorPage.tsx` is the shared "can't
+  reach the server" screen.
+- **Setup form:** schedule choices are stacked full-width radio rows (three across wrapped
+  the labels). The starting balance accepts a negative amount; `parseMoneyInput` gained an
+  `allowNegative` option for it.
+- **Test tip:** sessions last 30 days, so a test that moves the clock further must keep
+  the session alive on the way. See `advanceDays` in `routes/periods.test.ts`.
+- **`UniqueConstraintError`** now carries every column of the violated index in
+  `columns`; `field` is the last one (`seq` for `(user_id, seq)`).
+- Checked in the browser at 375px and 1024px: new account is sent to `/setup` from any URL,
+  validation errors, successful setup, 26 steps forward to the horizon (next disabled
+  there), back to the first period (previous disabled), Today, reload on a period URL,
+  `/setup` redirecting home afterwards, and an unknown period id.

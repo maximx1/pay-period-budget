@@ -30,8 +30,8 @@ different app.
 | 0 | Project foundation | Done | n/a |
 | 1 | Register, sign in, sessions | Done | n/a |
 | [2](phase-02-app-shell.md) | App shell: side panel, routing, UI primitives | Done | n/a |
-| [3](phase-03-periods.md) | Budget setup and the period engine | Ready | Sonnet, Opus review of 3.3 |
-| [4](phase-04-transactions.md) | Transactions and the home view | Ready after 3 | Sonnet |
+| [3](phase-03-periods.md) | Budget setup and the period engine | Done | n/a |
+| [4](phase-04-transactions.md) | Transactions and the home view | Ready | Sonnet |
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Ready after 4 | Sonnet, Opus review of 5.3 |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready after 5 | Opus, or Sonnet with Opus review |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready after 5 | Sonnet |
@@ -64,6 +64,19 @@ different app.
 - Read the implementation notes at the bottom of `phase-02-app-shell.md` before building
   UI in later phases.
 
+### What phase 3 delivered
+
+- Pay-schedule maths for weekly, biweekly and monthly budgets (`src/shared/schedule.ts`).
+- `user_settings`, `budget_schedules` and `periods` tables.
+- `GET`/`POST /api/budget`, `GET /api/periods/current`, `GET /api/periods/:id`,
+  `POST /api/periods/locate`. Periods are generated on demand, server-side only, up to the
+  one containing the day a year from today.
+- First-run setup screen, and a home screen showing one period with its leftover figures
+  and previous / next / today navigation.
+- A queue in the SQLite store that serialises database access (see the phase 3
+  implementation notes for why this matters).
+- Read the implementation notes at the bottom of `phase-03-periods.md` before phase 4.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -82,8 +95,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 3.1 from
-> docs/plan/phase-03-periods.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 4.1 from
+> docs/plan/phase-04-transactions.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

@@ -47,4 +47,18 @@ describe("parseMoneyInput", () => {
       expect(parseMoneyInput(text)).toBeNull();
     },
   );
+
+  it.each([
+    ["-40", -4000],
+    ["-$40.50", -4050],
+    [" - 1,000 ", -100000],
+    ["-0", 0],
+    ["25", 2500],
+  ])("parses %j as %i cents when negatives are allowed", (text, expected) => {
+    expect(parseMoneyInput(text, { allowNegative: true })).toBe(expected);
+  });
+
+  it.each(["--5", "-", "-abc", "5-"])("still rejects %j when negatives are allowed", (text) => {
+    expect(parseMoneyInput(text, { allowNegative: true })).toBeNull();
+  });
 });

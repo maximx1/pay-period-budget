@@ -67,8 +67,9 @@ P0..P5):
      neighbour (previous period's `endDate` = new start − 1; next period's `startDate` =
      new end + 1).
   2. Validate: this period and each affected neighbour stay at least one day long; if the
-     period is the last generated one, moving its end is allowed (the next period will
-     start after it when generated). Violations are field errors on `startDate` /
+     period is the last generated one, moving its end is allowed as long as it stays
+     before the *next* period's nominal end (so the period generated after it is still at
+     least one day long). Violations are field errors on `startDate` /
      `endDate` with a message naming the limit ("Can't be earlier than Dec 12, the day
      after the previous period starts").
   3. Find every transaction whose date sits in a day that changed owner and apply the

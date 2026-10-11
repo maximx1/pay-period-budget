@@ -6,8 +6,12 @@ import type { AppConfig } from "./env.ts";
 import { type AppEnv, originGuard } from "./http.ts";
 import { AppError } from "./lib/errors.ts";
 import type { DataStore } from "./repos/types.ts";
+import { requireAuth } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { budgetRoutes } from "./routes/budget.ts";
+import { periodRoutes } from "./routes/periods.ts";
 import { createAuthService } from "./services/auth.ts";
+import { createPeriodService } from "./services/periods.ts";
 
 export type AppDeps = {
   store: DataStore;
@@ -19,13 +23,17 @@ export type AppDeps = {
 
 export function createApp({ store, config, now, staticDir }: AppDeps) {
   const auth = createAuthService({ store, sessionTtlMs: config.sessionTtlMs, now });
+  const periods = createPeriodService({ store, now });
+  const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
   api.use(originGuard(config.appOrigins));
   api.use(bodyLimit({ maxSize: 100 * 1024 }));
   api.get("/health", (c) => c.json({ ok: true }));
   api.route("/auth", authRoutes({ auth, config, now }));
-  // New feature routers mount here. Put requireAuth(auth, config) in front of everything but /auth.
+  // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
+  api.route("/budget", budgetRoutes({ periods, authed }));
+  api.route("/periods", periodRoutes({ periods, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });
