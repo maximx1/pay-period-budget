@@ -39,7 +39,7 @@ later phases need. No budget logic yet.
 
 ### 2.1 Layout and routes
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/client/router.tsx`, new `src/client/features/shell/AppShell.tsx`,
 `SidePanel.tsx`, `TopBar.tsx`, `navItems.ts`; new placeholder pages
@@ -70,7 +70,7 @@ later phases need. No budget logic yet.
 
 ### 2.2 Dialog primitive
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/components/ui/Dialog.tsx`.
 
@@ -101,7 +101,7 @@ the button. Remove the demo before finishing, or leave it out of the commit.
 
 ### 2.3 Small primitives
 
-- [ ] Done
+- [x] Done
 
 **Files:** new files under `src/client/components/ui/`: `IconButton.tsx`, `Fab.tsx`,
 `PageHeader.tsx`, `EmptyState.tsx`, `Card.tsx`, `Toaster.tsx`.
@@ -126,7 +126,7 @@ an `EmptyState` on Recurring and a `PageHeader` everywhere), and `npm run check`
 
 ### 2.4 Shared formatting helpers
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/shared/money.ts`, `src/shared/money.test.ts`, `src/shared/dates.ts`,
 `src/shared/dates.test.ts`.
@@ -162,4 +162,34 @@ year rollover, negative `addDays`, `todayIn` on both sides of midnight for
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+Completed 2026-10-10. Where the build differs from the task text above, this section wins.
+
+- **Drawer and Dialog share `useModal`** (`components/ui/useModal.ts`), a thin controller
+  over the native `<dialog>`. The small-screen side panel is a `Drawer`
+  (`components/ui/Drawer.tsx`), itself a modal dialog, so it gets focus trapping, Escape
+  and focus return the same way.
+- **Initial focus in a dialog:** put `data-autofocus` on the field that should get it.
+  React's `autoFocus` does not work here, because the field mounts before the dialog is
+  shown. Dialog children are mounted only while open, so forms start fresh each time.
+- **`Fab` is sticky, not fixed.** It must be the last element a page returns, as a direct
+  child of the page column (pages return fragments, not a wrapper `div`). That keeps it at
+  the right edge of the capped content column on wide screens, and it reserves its own
+  space so the last row is never covered.
+- **Scrolling happens in `<main data-scroll-root>`**, not on the body. Anything that needs
+  the scroll position (phase 7.1's scroll-into-view, for example) should use that element.
+  It is locked while any dialog is open.
+- **Active nav item** comes from `navItemForPath()` in `features/shell/navItems.ts`, which
+  treats every path outside the other sections as Home. `/periods/:id` in phase 3 will
+  therefore highlight Home with no extra work.
+- **`/dev/ui`** (development server only) shows every primitive on one page inside the
+  real shell. Use it to check new or changed primitives in both colour schemes; add new
+  primitives to it. It replaces the "use each primitive on a placeholder page" idea in 2.3.
+- **New colour token `danger-fg`** (text on a `bg-danger` fill); white was unreadable on
+  the dark-mode danger colour.
+- **Toasts render under an open dialog.** Show errors that happen inside a dialog inline
+  in the dialog; use toasts for feedback after it closes.
+- The nav label is "Recurring" at `/recurring` (see decision 11 in `README.md`).
+- Checked in the browser at 375, 1024, 1280 and 2560px wide, dark and light: navigation
+  without page loads, reload on a deep link, unknown-path redirect, drawer open/close by
+  menu button, Escape, backdrop and link click, dialog focus/trap/Escape/backdrop/return,
+  bottom-sheet layout on phones, toasts, floating button while scrolling, log out + Back.

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
+import { ToastProvider } from "./components/ui/Toaster.tsx";
 import { SESSION_QUERY_KEY } from "./features/auth/session.ts";
 import { setUnauthenticatedHandler } from "./lib/api.ts";
 import { router } from "./router.tsx";
@@ -19,7 +20,9 @@ setUnauthenticatedHandler(() => queryClient.setQueryData(SESSION_QUERY_KEY, null
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

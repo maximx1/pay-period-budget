@@ -1,22 +1,20 @@
-import { LogOut } from "lucide-react";
-import { Button } from "../../components/ui/Button.tsx";
-import { useCurrentUser, useLogout } from "../auth/session.ts";
+import { Wallet } from "lucide-react";
+import { Card } from "../../components/ui/Card.tsx";
+import { EmptyState } from "../../components/ui/EmptyState.tsx";
+import { PageHeader } from "../../components/ui/PageHeader.tsx";
 
-// Placeholder landing screen. Phase 2 replaces this with the app shell (side panel + routed pages).
+// Placeholder. Phase 3 puts the current pay period here; phase 4 adds its transactions.
 export function HomePage() {
-  const user = useCurrentUser();
-  const logout = useLogout();
-
   return (
-    <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 text-center">
-      <h1 className="text-2xl font-bold">You're signed in</h1>
-      <p className="text-muted">
-        {user.username} · {user.email}
-      </p>
-      <Button variant="secondary" onClick={() => logout.mutate()} loading={logout.isPending}>
-        <LogOut className="size-4" aria-hidden />
-        Sign out
-      </Button>
-    </main>
+    <>
+      <PageHeader title="Home" />
+      <Card>
+        <EmptyState
+          icon={Wallet}
+          title="Your pay period will show here"
+          description="Coming in phase 3: budget setup and the current period."
+        />
+      </Card>
+    </>
   );
 }

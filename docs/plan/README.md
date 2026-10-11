@@ -29,8 +29,8 @@ different app.
 | --- | --- | --- | --- |
 | 0 | Project foundation | Done | n/a |
 | 1 | Register, sign in, sessions | Done | n/a |
-| [2](phase-02-app-shell.md) | App shell: side panel, routing, UI primitives | Ready | Sonnet |
-| [3](phase-03-periods.md) | Budget setup and the period engine | Ready after 2 | Sonnet, Opus review of 3.3 |
+| [2](phase-02-app-shell.md) | App shell: side panel, routing, UI primitives | Done | n/a |
+| [3](phase-03-periods.md) | Budget setup and the period engine | Ready | Sonnet, Opus review of 3.3 |
 | [4](phase-04-transactions.md) | Transactions and the home view | Ready after 3 | Sonnet |
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Ready after 4 | Sonnet, Opus review of 5.3 |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready after 5 | Opus, or Sonnet with Opus review |
@@ -52,6 +52,18 @@ different app.
   placeholder signed-in page at `/` that phase 2 replaces.
 - 24 tests covering all of the above.
 
+### What phase 2 delivered
+
+- The signed-in frame: side panel with account summary, navigation and log out; a top bar
+  and slide-in drawer below 1024px; a page column capped in width for ultrawide screens.
+- Routed placeholder pages for Home, Date search, Recurring and Settings.
+- UI primitives: `Dialog` (bottom sheet on phones), `Drawer`, `IconButton`, `Fab`,
+  `PageHeader`, `EmptyState`, `Card`, toasts. All shown together at `/dev/ui` on the dev
+  server.
+- `src/shared/money.ts` and `src/shared/dates.ts` with 104 tests.
+- Read the implementation notes at the bottom of `phase-02-app-shell.md` before building
+  UI in later phases.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -70,8 +82,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 2.1 from
-> docs/plan/phase-02-app-shell.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 3.1 from
+> docs/plan/phase-03-periods.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

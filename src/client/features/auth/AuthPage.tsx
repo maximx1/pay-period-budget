@@ -1,5 +1,6 @@
 import { Wallet } from "lucide-react";
 import { NavLink } from "react-router";
+import { Card } from "../../components/ui/Card.tsx";
 import { cn } from "../../lib/cn.ts";
 import { LoginForm } from "./LoginForm.tsx";
 import { RegisterForm } from "./RegisterForm.tsx";
@@ -23,7 +24,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           <p className="text-sm text-muted">Budget from payday to payday.</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+        <Card padding="lg" className="shadow-sm">
           <nav className="mb-6 flex border-b border-border" aria-label="Sign in or create an account">
             <NavLink to="/login" replace className={tabClass}>
               Sign in
@@ -33,7 +34,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
             </NavLink>
           </nav>
           {mode === "login" ? <LoginForm /> : <RegisterForm />}
-        </div>
+        </Card>
       </div>
     </main>
   );

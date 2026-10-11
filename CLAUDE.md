@@ -74,6 +74,12 @@ src/client/   React app
 - Every screen must work from 360px wide up to ultrawide. Touch targets are at least 44px
   (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
 - Inside authenticated routes get the user with `useCurrentUser()`.
+- Build screens from the primitives in `components/ui/` (`Button`, `IconButton`,
+  `TextField`, `Dialog`, `Card`, `PageHeader`, `EmptyState`, `Fab`, `useToast`, ...) before
+  writing new markup. `/dev/ui` on the dev server shows them all; add new ones there.
+- A page inside the shell returns a fragment whose children sit directly in the page
+  column: `<PageHeader>` first, `<Fab>` (if any) last.
+- In a `Dialog`, mark the field to focus with `data-autofocus`, not `autoFocus`.
 
 **Tests**
 - Colocated `*.test.ts`. API behaviour is tested through `createTestApp()` and its

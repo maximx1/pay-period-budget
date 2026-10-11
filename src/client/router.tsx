@@ -1,8 +1,22 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { ErrorPage } from "./components/ErrorPage.tsx";
 import { AuthPage } from "./features/auth/AuthPage.tsx";
 import { PublicOnly, RequireAuth } from "./features/auth/guards.tsx";
 import { HomePage } from "./features/home/HomePage.tsx";
+import { RecurringPage } from "./features/recurring/RecurringPage.tsx";
+import { DateSearchPage } from "./features/search/DateSearchPage.tsx";
+import { SettingsPage } from "./features/settings/SettingsPage.tsx";
+import { AppShell } from "./features/shell/AppShell.tsx";
+
+// Only reachable from the dev server; the import is dropped from production builds.
+const devRoutes: RouteObject[] = import.meta.env.DEV
+  ? [
+      {
+        path: "/dev/ui",
+        lazy: async () => ({ Component: (await import("./features/dev/UiKitPage.tsx")).UiKitPage }),
+      },
+    ]
+  : [];
 
 export const router = createBrowserRouter([
   {
@@ -17,7 +31,18 @@ export const router = createBrowserRouter([
       },
       {
         element: <RequireAuth />,
-        children: [{ path: "/", element: <HomePage /> }],
+        children: [
+          {
+            element: <AppShell />,
+            children: [
+              { path: "/", element: <HomePage /> },
+              { path: "/search", element: <DateSearchPage /> },
+              { path: "/recurring", element: <RecurringPage /> },
+              { path: "/settings", element: <SettingsPage /> },
+              ...devRoutes,
+            ],
+          },
+        ],
       },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
