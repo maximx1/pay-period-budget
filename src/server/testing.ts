@@ -11,11 +11,12 @@ import type { AppEnv } from "./http.ts";
 import { SESSION_COOKIE } from "./middleware/session.ts";
 import { createSqliteStore } from "./repos/sqlite/index.ts";
 
-export async function createTestApp() {
+/** @param env extra environment settings for the app's configuration, e.g. `{ ALLOW_REGISTRATION: "false" }` */
+export async function createTestApp(env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ppb-test-"));
   const { db, close } = await openDatabase(`file:${join(dir, "test.db")}`);
   const store = createSqliteStore(db);
-  const config = loadConfig({ NODE_ENV: "test" });
+  const config = loadConfig({ NODE_ENV: "test", ...env });
 
   let current = new Date("2026-01-15T12:00:00Z");
   const clock = {
@@ -64,11 +65,11 @@ export function createTestClient(app: Hono<AppEnv>) {
   }
 
   return {
-    get: (path: string) => send("GET", path),
+    get: (path: string, headers?: Record<string, string>) => send("GET", path, undefined, headers),
     post: (path: string, body?: unknown, headers?: Record<string, string>) => send("POST", path, body, headers),
     patch: (path: string, body?: unknown) => send("PATCH", path, body),
     put: (path: string, body?: unknown) => send("PUT", path, body),
-    delete: (path: string) => send("DELETE", path),
+    delete: (path: string, headers?: Record<string, string>) => send("DELETE", path, undefined, headers),
     get sessionCookie() {
       return sessionCookie;
     },

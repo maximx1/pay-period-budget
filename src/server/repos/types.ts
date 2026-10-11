@@ -200,6 +200,8 @@ export interface Repos {
 }
 
 export interface DataStore extends Repos {
+  /** Resolves if the database answers a trivial query; rejects otherwise. For health checks. */
+  ping(): Promise<void>;
   /**
    * Runs `fn` atomically. Inside it, use only the repos passed to `fn`: calling the store
    * itself (or starting another transaction) from within is an error. Keep the work short

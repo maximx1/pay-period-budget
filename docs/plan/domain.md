@@ -277,25 +277,39 @@ recurring_items    id, user_id → users, name, description, kind, default_amoun
 
 All child rows cascade when a user is deleted.
 
-## API surface (target shape)
+## API surface
 
-Everything except `/api/auth/*` and `/api/health` requires a session. Errors use the
-envelope in `src/shared/api.ts`.
+Everything except sign-in, registration, `/api/auth/config` and `/api/health` requires a
+session: either the cookie the web app gets, or `Authorization: Bearer <token>` for a
+client that signed in with `transport: "token"`. Errors use the envelope in
+`src/shared/api.ts`.
 
 ```
+GET    /api/health                     200 when the server and database are up
+GET    /api/auth/config                → { registrationOpen }
+POST   /api/auth/register              body may include transport: "cookie" | "token"
+POST   /api/auth/login                 likewise; "token" returns { user, token, expiresAt }
+POST   /api/auth/logout
+GET    /api/auth/me
+POST   /api/auth/password              { currentPassword, newPassword }
+GET    /api/auth/sessions              signed-in devices
+DELETE /api/auth/sessions/:id
+POST   /api/auth/sessions/revoke-others
+PATCH  /api/settings                   { timezone }
 GET    /api/budget                     → { budget | null }
 POST   /api/budget                     setup; 409 if one exists
 GET    /api/periods/current            ensures a period for today → PeriodView
 GET    /api/periods/:id                → PeriodView
 POST   /api/periods/locate   { date }  ensures through date → { periodId }
-PATCH  /api/periods/:id/dates          phase 6
-PATCH  /api/periods/:id/starting       phase 6
-POST   /api/periods/:id/starting/revert   phase 6
-POST   /api/periods/:id/recalculate    phase 6
+PATCH  /api/periods/:id/dates          { startDate?, endDate?, preview? }
+POST   /api/periods/:id/dates/revert
+PATCH  /api/periods/:id/starting       { startingCents, carryForward }
+POST   /api/periods/:id/starting/revert
+POST   /api/periods/:id/recalculate
 POST   /api/transactions
 PATCH  /api/transactions/:id
 DELETE /api/transactions/:id
-PUT    /api/transactions/order         phase 7
+PUT    /api/transactions/order         { ids }
 GET    /api/recurring
 POST   /api/recurring
 POST   /api/recurring/preview          what creating this item would add, without saving

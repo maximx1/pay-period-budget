@@ -1,10 +1,11 @@
 import { Wallet } from "lucide-react";
-import { NavLink } from "react-router";
+import { Navigate, NavLink } from "react-router";
 import { Card } from "../../components/ui/Card.tsx";
 import { cn } from "../../lib/cn.ts";
 import { useDocumentTitle } from "../../lib/useDocumentTitle.ts";
 import { LoginForm } from "./LoginForm.tsx";
 import { RegisterForm } from "./RegisterForm.tsx";
+import { useRegistrationOpen } from "./session.ts";
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -15,6 +16,9 @@ const tabClass = ({ isActive }: { isActive: boolean }) =>
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
   useDocumentTitle(mode === "login" ? "Sign in" : "Create account");
+  // Until the server says otherwise, assume accounts can be created.
+  const registrationClosed = useRegistrationOpen() === false;
+  if (registrationClosed && mode === "register") return <Navigate to="/login" replace />;
 
   return (
     <main className="flex min-h-full items-center justify-center px-4 py-10">
@@ -28,14 +32,18 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
         </div>
 
         <Card padding="lg" className="shadow-sm">
-          <nav className="mb-6 flex border-b border-border" aria-label="Sign in or create an account">
-            <NavLink to="/login" replace className={tabClass}>
-              Sign in
-            </NavLink>
-            <NavLink to="/register" replace className={tabClass}>
-              Create account
-            </NavLink>
-          </nav>
+          {registrationClosed ? (
+            <h2 className="mb-6 text-center text-sm font-semibold text-fg">Sign in</h2>
+          ) : (
+            <nav className="mb-6 flex border-b border-border" aria-label="Sign in or create an account">
+              <NavLink to="/login" replace className={tabClass}>
+                Sign in
+              </NavLink>
+              <NavLink to="/register" replace className={tabClass}>
+                Create account
+              </NavLink>
+            </nav>
+          )}
           {mode === "login" ? <LoginForm /> : <RegisterForm />}
         </Card>
       </div>

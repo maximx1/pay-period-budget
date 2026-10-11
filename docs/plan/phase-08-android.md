@@ -31,7 +31,7 @@ brief needs it; revisit only if the wrapped app feels wrong in daily use.
 
 ### 8.1 Bearer sessions and CORS on the API
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/auth.ts`, `src/server/services/auth.ts`, `src/server/routes/auth.ts`,
 `src/server/middleware/session.ts`, `src/server/app.ts`, `src/server/env.ts`,
@@ -138,4 +138,21 @@ password sign-in on the phone.
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+**8.1 completed 2026-10-10.** The rest of this phase is on hold at the owner's request.
+
+- `transport` is accepted by `registerRequestSchema` / `loginRequestSchema` in
+  `src/shared/auth.ts`; the form schemas (`registerInputSchema`, `loginInputSchema`) are
+  unchanged, so the web forms are unaffected.
+- `readSessionToken(c)` in `middleware/session.ts` returns the token and whether it came
+  from the header or the cookie. The header wins when both are present. A rejected header
+  token does not touch cookies.
+- A token session that gets extended reports the new expiry in `X-Session-Expires`; the
+  header is exposed through CORS along with `Retry-After`.
+- CORS allows exactly the origins in `APP_ORIGINS`, with credentials. Same-origin and
+  non-browser requests get no CORS headers and need none.
+- A token session is an ordinary row in `sessions`: it appears under Settings → Signed-in
+  devices and is revoked the same way.
+- For 8.2: the client seam is still `src/client/lib/api.ts` (`BASE_URL`, and where the
+  `Authorization` header would be added). The Android app's origin must be added to
+  `APP_ORIGINS` on the server.
+

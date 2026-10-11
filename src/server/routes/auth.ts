@@ -1,10 +1,14 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import {
+  type AuthConfigResponse,
   type AuthResponse,
   changePasswordSchema,
-  loginInputSchema,
-  registerInputSchema,
+  loginRequestSchema,
+  registerRequestSchema,
   type SessionListResponse,
+  type SessionTransport,
+  type TokenAuthResponse,
 } from "../../shared/auth.ts";
 import type { AppConfig } from "../env.ts";
 import { type AppEnv, clientIp, parseJson } from "../http.ts";
@@ -12,11 +16,11 @@ import { AppError } from "../lib/errors.ts";
 import { RateLimiter } from "../lib/rateLimit.ts";
 import {
   clearSessionCookie,
-  getSessionToken,
+  readSessionToken,
   requireAuth,
   setSessionCookie,
 } from "../middleware/session.ts";
-import type { AuthService } from "../services/auth.ts";
+import type { AuthService, IssuedSession } from "../services/auth.ts";
 
 const MINUTE = 60 * 1000;
 
@@ -36,22 +40,35 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
   const passwordByUser = new RateLimiter(10, 15 * MINUTE, clock);
   const authed = requireAuth(auth, config);
 
+  /** Hands a new session to the client the way it asked for it. */
+  function deliver(c: Context, session: IssuedSession, transport: SessionTransport): AuthResponse | TokenAuthResponse {
+    if (transport === "token") {
+      return { user: session.user, token: session.token, expiresAt: session.expiresAt.toISOString() };
+    }
+    setSessionCookie(c, config, session.token, session.expiresAt);
+    return { user: session.user };
+  }
+
   const routes = new Hono<AppEnv>();
 
+  routes.get("/config", (c) => c.json<AuthConfigResponse>({ registrationOpen: config.allowRegistration }));
+
   routes.post("/register", async (c) => {
+    if (!config.allowRegistration) {
+      throw new AppError(403, "forbidden", "New accounts can't be created on this server");
+    }
     const ip = clientIp(c, config.trustProxy);
     const retryAfter = registerByIp.retryAfterSeconds(ip);
     if (retryAfter) throw tooManyAttempts(retryAfter);
     registerByIp.hit(ip);
 
-    const input = await parseJson(c, registerInputSchema);
+    const { transport, ...input } = await parseJson(c, registerRequestSchema);
     const session = await auth.register(input, { userAgent: c.req.header("user-agent") });
-    setSessionCookie(c, config, session.token, session.expiresAt);
-    return c.json<AuthResponse>({ user: session.user }, 201);
+    return c.json(deliver(c, session, transport), 201);
   });
 
   routes.post("/login", async (c) => {
-    const input = await parseJson(c, loginInputSchema);
+    const { transport, ...input } = await parseJson(c, loginRequestSchema);
     const ipKey = clientIp(c, config.trustProxy);
     const retryAfter = Math.max(
       loginByIdentifier.retryAfterSeconds(input.identifier),
@@ -62,8 +79,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     try {
       const session = await auth.login(input, { userAgent: c.req.header("user-agent") });
       loginByIdentifier.reset(input.identifier);
-      setSessionCookie(c, config, session.token, session.expiresAt);
-      return c.json<AuthResponse>({ user: session.user });
+      return c.json(deliver(c, session, transport));
     } catch (error) {
       if (error instanceof AppError && error.code === "invalid_credentials") {
         loginByIdentifier.hit(input.identifier);
@@ -74,8 +90,8 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
   });
 
   routes.post("/logout", async (c) => {
-    const token = getSessionToken(c);
-    if (token) await auth.logout(token);
+    const carried = readSessionToken(c);
+    if (carried) await auth.logout(carried.token);
     clearSessionCookie(c);
     return c.body(null, 204);
   });

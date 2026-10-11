@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
-import type { AuthResponse, LoginInput, PublicUser, RegisterInput } from "../../../shared/auth.ts";
+import type {
+  AuthConfigResponse,
+  AuthResponse,
+  LoginInput,
+  PublicUser,
+  RegisterInput,
+} from "../../../shared/auth.ts";
 import { ApiError, api } from "../../lib/api.ts";
 
 export const SESSION_QUERY_KEY = ["session"] as const;
@@ -22,6 +28,15 @@ export function useSession() {
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
+}
+
+/** Whether this server lets new accounts be created. Undefined until known. */
+export function useRegistrationOpen(): boolean | undefined {
+  return useQuery({
+    queryKey: [SESSION_QUERY_KEY[0], "config"],
+    queryFn: () => api.get<AuthConfigResponse>("/api/auth/config"),
+    staleTime: Number.POSITIVE_INFINITY,
+  }).data?.registrationOpen;
 }
 
 const CurrentUserContext = createContext<PublicUser | null>(null);

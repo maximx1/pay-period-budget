@@ -1,0 +1,88 @@
+# Pay Period Budget on a server. See docs/deploy.md.
+#
+#   cp .env.docker.example .env     # then set APP_URL
+#   docker compose up -d --build
+#
+# Optional extras, switched on with profiles:
+#   docker compose --profile caddy up -d      # bundled HTTPS reverse proxy
+#   docker compose --profile autoheal up -d   # restart the app if it stops answering
+
+name: pay-period-budget
+
+services:
+  app:
+    build: .
+    image: pay-period-budget:latest
+    # Comes back after a crash and after the server reboots (while Docker itself is enabled).
+    restart: unless-stopped
+    # A tiny init process, so stop signals reach the server and it exits promptly.
+    init: true
+    environment:
+      # The address you type into the browser. Requests from anywhere else are refused.
+      APP_ORIGINS: ${APP_URL:?Set APP_URL in .env to the address you will open the app at, for example https://budget.example.com}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    ports:
+      # Only this machine can reach the port by default; a reverse proxy on the host does
+      # the rest. Set APP_BIND=0.0.0.0 in .env to expose it to the network directly.
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8787}:8787"
+    volumes:
+      - data:/data
+    # Nothing in the image needs to change at runtime: only /data and a scratch /tmp are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+    labels:
+      autoheal: "true"
+
+  # Automatic HTTPS for a domain that points at this server. Skip this if you already run
+  # a reverse proxy; point that at 127.0.0.1:8787 instead (see docs/deploy.md).
+  caddy:
+    profiles: [caddy]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+  # Docker restarts a container that exits, but not one that is still running and failing
+  # its health check. This does. It needs the Docker socket, which is why it is opt-in.
+  autoheal:
+    profiles: [autoheal]
+    image: willfarrell/autoheal:latest
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: "30"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

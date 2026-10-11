@@ -11,6 +11,7 @@ const envSchema = z.object({
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
   TRUST_PROXY: z.enum(["true", "false"]).default("false"),
   COOKIE_SECURE: z.enum(["true", "false"]).optional(),
+  ALLOW_REGISTRATION: z.enum(["true", "false"]).default("true"),
 });
 
 export type AppConfig = {
@@ -23,6 +24,8 @@ export type AppConfig = {
   trustProxy: boolean;
   /** Whether the session cookie is HTTPS-only. Defaults to on in production. */
   cookieSecure: boolean;
+  /** Whether new accounts can be created. Turn off once yours exists on a server others can reach. */
+  allowRegistration: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -37,5 +40,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionTtlMs: parsed.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
     trustProxy: parsed.TRUST_PROXY === "true",
     cookieSecure: parsed.COOKIE_SECURE ? parsed.COOKIE_SECURE === "true" : parsed.NODE_ENV === "production",
+    allowRegistration: parsed.ALLOW_REGISTRATION === "true",
   };
 }

@@ -1,12 +1,13 @@
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import type { AppConfig } from "./env.ts";
 import { type AppEnv, originGuard } from "./http.ts";
 import { AppError } from "./lib/errors.ts";
 import type { DataStore } from "./repos/types.ts";
-import { requireAuth } from "./middleware/session.ts";
+import { requireAuth, SESSION_EXPIRES_HEADER } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
@@ -41,9 +42,26 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
+  // Lets the listed origins (the web app when hosted elsewhere, the Android app) read
+  // responses. Same-origin requests need none of this; unlisted origins get no CORS
+  // headers, so a browser refuses to hand them the response.
+  api.use(
+    cors({
+      origin: (origin) => (config.appOrigins.includes(origin) ? origin : null),
+      credentials: true,
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      allowHeaders: ["Authorization", "Content-Type"],
+      exposeHeaders: [SESSION_EXPIRES_HEADER, "Retry-After"],
+      maxAge: 600,
+    }),
+  );
   api.use(originGuard(config.appOrigins));
   api.use(bodyLimit({ maxSize: 100 * 1024 }));
-  api.get("/health", (c) => c.json({ ok: true }));
+  // Healthy means able to serve: the process is up and the database answers.
+  api.get("/health", async (c) => {
+    await store.ping();
+    return c.json({ ok: true });
+  });
   api.route("/auth", authRoutes({ auth, config, now }));
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));

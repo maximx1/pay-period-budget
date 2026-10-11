@@ -1,0 +1,13 @@
+# Keep the build context small and keep local state and secrets out of the image.
+node_modules
+dist
+data
+backups
+.git
+.env
+.env.*
+!.env.example
+!.env.docker.example
+.claude
+docs
+*.md

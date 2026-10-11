@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import type { DataStore, Repos } from "../types.ts";
 import { createPeriodRepo } from "./periods.ts";
@@ -73,6 +74,7 @@ export function createSqliteStore(db: Db): DataStore {
 
   return {
     ...wrapRepos(createRepos(db), run),
+    ping: () => run(async () => void (await db.run(sql`select 1`))),
     transaction: (fn) =>
       run(() =>
         // A drizzle transaction exposes the same query API as the database itself.

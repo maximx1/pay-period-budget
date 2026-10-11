@@ -19,14 +19,19 @@ accounts.)
 
 ## Deployment
 
-The app can't be used from a phone until it runs somewhere reachable over HTTPS.
+Done: `Dockerfile`, `compose.yaml`, `deploy/` and `docs/deploy.md` (Docker Compose with a
+restart policy, health check, optional bundled Caddy and optional autoheal; backups with
+`VACUUM INTO`). Written without Docker available on the development machine: the image's
+file layout and start command were exercised directly, but the first real
+`docker compose up --build` on the server is the first time the Dockerfile itself runs.
 
-- Dockerfile (Node 22 slim, `npm ci`, `npm run build`, `npm start`) with `data/` as a
-  volume.
-- HTTPS in front (Caddy, a tunnel, or a private network with certificates);
-  `TRUST_PROXY=true` and `APP_ORIGINS` set to the public origin.
-- Backups of the SQLite file (`VACUUM INTO` on a timer, or Litestream).
-- Bundle the server for production instead of running it through `tsx`.
+Still open:
+
+- Bundle the server for production instead of running it through `tsx` (smaller image,
+  faster start). Node 22.18+ can also run the TypeScript directly once the few classes
+  that use constructor parameter properties are rewritten.
+- Continuous replication of the database (Litestream) rather than periodic snapshots.
+- Publishing a prebuilt image instead of building on the server.
 
 ## Sign in with Google
 

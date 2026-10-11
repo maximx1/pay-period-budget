@@ -36,6 +36,19 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.output<typeof loginInputSchema>;
 
+/**
+ * How the session is handed to the client. A browser on the app's own origin uses the
+ * httpOnly cookie. A client on another origin (the Android app) asks for the token itself
+ * and sends it back in an Authorization header.
+ */
+export const SESSION_TRANSPORTS = ["cookie", "token"] as const;
+export type SessionTransport = (typeof SESSION_TRANSPORTS)[number];
+const transportSchema = z.enum(SESSION_TRANSPORTS).default("cookie");
+
+/** What the sign-in endpoints accept: the credentials plus, optionally, the transport. */
+export const registerRequestSchema = registerInputSchema.extend({ transport: transportSchema });
+export const loginRequestSchema = loginInputSchema.extend({ transport: transportSchema });
+
 export type PublicUser = {
   id: string;
   username: string;
@@ -44,6 +57,19 @@ export type PublicUser = {
 
 export type AuthResponse = {
   user: PublicUser;
+};
+
+/** The response to a sign-in made with `transport: "token"`. */
+export type TokenAuthResponse = AuthResponse & {
+  /** Send as `Authorization: Bearer <token>`. Shown once; only its hash is stored. */
+  token: string;
+  /** ISO instant. Extended while the session is in use; see the X-Session-Expires header. */
+  expiresAt: string;
+};
+
+/** What a signed-out client needs to know to draw the sign-in screen. */
+export type AuthConfigResponse = {
+  registrationOpen: boolean;
 };
 
 export const changePasswordSchema = z.object({

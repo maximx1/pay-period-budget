@@ -35,8 +35,9 @@ different app.
 | [5](phase-05-recurring.md) | Recurring items (bills and income) | Done | n/a |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Done, except date search (tabled) | n/a |
-| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready (see its prerequisites) | Sonnet for 8.1 to 8.3, Opus for 8.4 |
-| [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, deploy, iOS | Not planned in detail | n/a |
+| [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 (API side) done; rest on hold | Sonnet for 8.2 and 8.3, Opus for 8.4 |
+| Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
+| [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
 ### What phases 0 and 1 delivered
 
@@ -120,6 +121,17 @@ different app.
   over every screen from 360px to 2560px.
 - Not built: date search (decision 6).
 
+### Since phase 7
+
+- Token sign-in for clients on another origin, and CORS for the origins in `APP_ORIGINS`
+  (phase 8, task 8.1).
+- `ALLOW_REGISTRATION` to close account creation on a deployed server; the sign-in page
+  follows it.
+- `/api/health` now checks the database.
+- Docker packaging: `Dockerfile`, `compose.yaml`, `deploy/`, `.env.docker.example`, and
+  `docs/deploy.md`. `npm run db:backup` for consistent snapshots.
+- Runtime dependencies are now only what the server needs.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -138,7 +150,7 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 8.1 from
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 8.2 from
 > docs/plan/phase-08-android.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".

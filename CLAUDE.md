@@ -4,6 +4,8 @@ A budgeting app organised around pay periods instead of calendar months. React s
 app + small JSON API over SQLite. The same client build will later be wrapped with Capacitor
 for Android.
 
+Running, configuring and deploying it: `README.md` and `docs/deploy.md`.
+
 The roadmap, domain rules and task breakdown live in `docs/plan/`. Read
 `docs/plan/README.md` before starting any feature work, and `docs/plan/domain.md` before
 touching periods, transactions or recurring items.
@@ -18,6 +20,7 @@ touching periods, transactions or recurring items.
 | `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before |
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
+| `npm run db:backup -- <file>` | Write a consistent copy of the database |
 
 Migrations are applied automatically when the server (or a test) opens the database.
 The dev database is `data/app.db` (gitignored); delete the `data/` folder to start clean.
@@ -98,10 +101,13 @@ src/client/   React app
 
 **Dependencies**
 - Do not add packages that compile native code on install (`better-sqlite3`, `bcrypt`,
-  `sqlite3`, ...). This machine's Xcode command line tools are broken, so they fail to
-  install; that is what killed the previous version of this project. Prebuilt-binary
-  packages (`@libsql/client`, `@node-rs/argon2`) are fine.
+  `sqlite3`, ...). They fail wherever a working compiler toolchain is missing, which is
+  what killed the previous version of this project, and the Docker image has none.
+  Prebuilt-binary packages (`@libsql/client`, `@node-rs/argon2`) are fine.
 - Ask before adding any dependency a plan task doesn't name.
+- `dependencies` in `package.json` is exactly what the server imports at runtime (plus
+  `tsx`, which runs it). Everything that is bundled into the web client, and all tooling,
+  goes in `devDependencies`. The Docker image installs only `dependencies`.
 
 ## Other notes
 
@@ -112,5 +118,5 @@ src/client/   React app
 - Recurring bills and income are **recurring items** (`recurring_items`, `/api/recurring`,
   `features/recurring`). Never name them "accounts": that word is reserved for a future
   feature (savings accounts, payees) described in `docs/plan/backlog.md`.
-- `../ever-givin-pod` is an unrelated project. Do not modify it.
+- Folders next to this one are unrelated projects. Do not read from or modify them.
 - Commit only when asked.

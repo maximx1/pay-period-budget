@@ -331,6 +331,199 @@ describe("signed-in devices", () => {
   });
 });
 
+describe("token sessions (for clients on another origin, such as the phone app)", () => {
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  async function tokenLogin() {
+    await t.client().post("/api/auth/register", alice);
+    const response = await t.client().post("/api/auth/login", { identifier: "alice", password: alice.password, transport: "token" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    return (await response.json()) as { user: { username: string }; token: string; expiresAt: string };
+  }
+
+  it("returns the token in the body instead of setting a cookie", async () => {
+    const session = await tokenLogin();
+
+    expect(session.user.username).toBe("alice");
+    expect(session.token.length).toBeGreaterThan(30);
+    expect(session.expiresAt).toBe("2026-02-14T12:00:00.000Z");
+    expect(await t.store.sessions.findByTokenHash(hashToken(session.token))).not.toBeNull();
+  });
+
+  it("works for registration too", async () => {
+    const response = await t.client().post("/api/auth/register", { ...alice, transport: "token" });
+    expect(response.status).toBe(201);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect((await response.json()).token).toEqual(expect.any(String));
+  });
+
+  it("authenticates requests that send the token in the Authorization header", async () => {
+    const { token } = await tokenLogin();
+    const client = t.client();
+
+    expect((await client.get("/api/auth/me", bearer(token))).status).toBe(200);
+    expect((await client.get("/api/auth/me")).status).toBe(401);
+    expect((await client.get("/api/auth/me", { cookie: `some_other_cookie=${token}` })).status).toBe(401);
+    expect((await client.get("/api/auth/me", bearer("not-a-real-token"))).status).toBe(401);
+    expect((await client.get("/api/auth/me", { authorization: token })).status).toBe(401);
+  });
+
+  it("does not try to clear a cookie when a header token is rejected", async () => {
+    const response = await t.client().get("/api/auth/me", bearer("not-a-real-token"));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("prefers the header when a request carries both a header and a cookie", async () => {
+    const { token } = await tokenLogin();
+    const bobInBrowser = t.client();
+    await bobInBrowser.post("/api/auth/register", { username: "bob", email: "bob@example.com", password: "another secret" });
+
+    const response = await bobInBrowser.get("/api/auth/me", bearer(token));
+    expect((await response.json()).user.username).toBe("alice");
+  });
+
+  it("falls back to the cookie when the Authorization header is something else", async () => {
+    const browser = t.client();
+    await browser.post("/api/auth/register", alice);
+    expect((await browser.get("/api/auth/me", { authorization: "Basic abc123" })).status).toBe(200);
+  });
+
+  it("revokes the session on logout", async () => {
+    const { token } = await tokenLogin();
+    const client = t.client();
+
+    expect((await client.post("/api/auth/logout", undefined, bearer(token))).status).toBe(204);
+    expect((await client.get("/api/auth/me", bearer(token))).status).toBe(401);
+  });
+
+  it("reports a renewed expiry in a header rather than a cookie", async () => {
+    const { token } = await tokenLogin();
+    const client = t.client();
+
+    const fresh = await client.get("/api/auth/me", bearer(token));
+    expect(fresh.headers.get("x-session-expires")).toBeNull();
+
+    t.clock.advance(20 * DAY);
+    const renewed = await client.get("/api/auth/me", bearer(token));
+    expect(renewed.status).toBe(200);
+    expect(renewed.headers.get("x-session-expires")).toBe("2026-03-06T12:00:00.000Z");
+    expect(renewed.headers.get("set-cookie")).toBeNull();
+
+    t.clock.advance(20 * DAY);
+    expect((await client.get("/api/auth/me", bearer(token))).status).toBe(200);
+  });
+
+  it("can use every other endpoint with the token", async () => {
+    const { token } = await tokenLogin();
+    const client = t.client();
+
+    const setup = await client.post(
+      "/api/budget",
+      { type: "biweekly", anchorDate: "2026-01-10", timezone: "UTC" },
+      bearer(token),
+    );
+    expect(setup.status).toBe(201);
+    expect((await client.get("/api/periods/current", bearer(token))).status).toBe(200);
+    expect((await client.get("/api/auth/sessions", bearer(token))).status).toBe(200);
+  });
+
+  it("rejects an unknown transport", async () => {
+    await t.client().post("/api/auth/register", alice);
+    const response = await t.client().post("/api/auth/login", { identifier: "alice", password: alice.password, transport: "carrier-pigeon" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("transport");
+  });
+});
+
+describe("cross-origin access", () => {
+  const allowed = "http://localhost:5173"; // the default APP_ORIGINS
+  const preflight = (origin: string) =>
+    t.app.request("/api/auth/login", {
+      method: "OPTIONS",
+      headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "authorization,content-type" },
+    });
+
+  it("answers a preflight from a listed origin", async () => {
+    const response = await preflight(allowed);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(allowed);
+    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(response.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("authorization");
+    expect(response.headers.get("access-control-allow-methods")).toContain("PATCH");
+  });
+
+  it("gives an unlisted origin no permission", async () => {
+    const response = await preflight("https://evil.example");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("lets a listed origin read responses and the session-expiry header", async () => {
+    const response = await t.client().get("/api/health", { origin: allowed });
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(allowed);
+    expect(response.headers.get("access-control-expose-headers")).toContain("X-Session-Expires");
+  });
+
+  it("adds nothing for same-origin and non-browser requests", async () => {
+    const response = await t.client().get("/api/health");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
+
+describe("closing registration", () => {
+  let closed: TestApp;
+  beforeEach(async () => {
+    closed = await createTestApp({ ALLOW_REGISTRATION: "false" });
+    await closed.auth.register(alice);
+  });
+  afterEach(() => closed.cleanup());
+
+  it("tells the sign-in screen whether accounts can be created", async () => {
+    expect(await (await t.client().get("/api/auth/config")).json()).toEqual({ registrationOpen: true });
+    expect(await (await closed.client().get("/api/auth/config")).json()).toEqual({ registrationOpen: false });
+  });
+
+  it("refuses new accounts but still signs existing ones in", async () => {
+    const attempt = await closed.client().post("/api/auth/register", {
+      username: "mallory",
+      email: "mallory@example.com",
+      password: "let me in please",
+    });
+    expect(attempt.status).toBe(403);
+    expect(await closed.store.users.findByUsername("mallory")).toBeNull();
+
+    const login = await closed.client().post("/api/auth/login", { identifier: "alice", password: alice.password });
+    expect(login.status).toBe(200);
+  });
+});
+
+describe("health check", () => {
+  it("reports healthy while the database answers", async () => {
+    const response = await t.client().get("/api/health");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  it("reports unhealthy when it does not", async () => {
+    const broken = await createTestApp();
+    broken.store.ping = () => Promise.reject(new Error("database is gone"));
+    // The failure is logged by the error handler; keep the test output clean.
+    const original = console.error;
+    console.error = () => {};
+    try {
+      const response = await broken.client().get("/api/health");
+      expect(response.status).toBe(500);
+    } finally {
+      console.error = original;
+      broken.cleanup();
+    }
+  });
+});
+
 describe("request guards", () => {
   it("blocks state-changing requests from other origins", async () => {
     const response = await t.client().post("/api/auth/register", alice, { origin: "https://evil.example" });
