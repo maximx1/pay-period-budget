@@ -15,6 +15,13 @@
       "when": 1791679909136,
       "tag": "0001_budget_periods",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791680829781,
+      "tag": "0002_transactions",
+      "breakpoints": true
     }
   ]
 }

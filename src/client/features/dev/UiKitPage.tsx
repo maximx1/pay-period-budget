@@ -10,6 +10,7 @@ import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Fab } from "../../components/ui/Fab.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { PasswordField, TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 
@@ -26,6 +27,7 @@ export function UiKitPage() {
   const toast = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  const [kind, setKind] = useState<"expense" | "income">("expense");
 
   return (
     <>
@@ -58,6 +60,15 @@ export function UiKitPage() {
           <TextField label="Amount" inputMode="decimal" hint="Dollars and cents" />
           <TextField label="With an error" defaultValue="nope" error="That doesn't look right" />
           <PasswordField label="Password" />
+          <SegmentedControl
+            label="Type"
+            options={[
+              { value: "expense", label: "Expense" },
+              { value: "income", label: "Income" },
+            ]}
+            value={kind}
+            onChange={setKind}
+          />
         </Card>
       </Section>
 

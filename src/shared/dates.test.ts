@@ -9,6 +9,7 @@ import {
   diffDays,
   formatDateRange,
   formatDay,
+  formatTime,
   isLocalDate,
   isLocalDateTime,
   nowIn,
@@ -167,5 +168,16 @@ describe("formatting", () => {
   it("formats a single day with its weekday", () => {
     expect(formatDay("2026-10-05")).toBe("Mon, Oct 5");
     expect(formatDay("2027-01-01")).toBe("Fri, Jan 1");
+  });
+
+  it.each([
+    ["2026-10-05T00:00", "12:00 AM"],
+    ["2026-10-05T08:05", "8:05 AM"],
+    ["2026-10-05T12:00", "12:00 PM"],
+    ["2026-10-05T18:45", "6:45 PM"],
+    ["2026-10-05T23:59", "11:59 PM"],
+  ])("formats the time of %s as %s", (dateTime, expected) => {
+    // Intl separates the time and AM/PM with a narrow no-break space in newer runtimes.
+    expect(formatTime(dateTime).replace(/\s/g, " ")).toBe(expected);
   });
 });

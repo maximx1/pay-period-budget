@@ -5,6 +5,7 @@ import { createPeriodRepo } from "./periods.ts";
 import { createScheduleRepo } from "./schedules.ts";
 import { createSessionRepo } from "./sessions.ts";
 import { createSettingsRepo } from "./settings.ts";
+import { createTransactionRepo } from "./transactions.ts";
 import { createUserRepo } from "./users.ts";
 
 function createRepos(db: Db): Repos {
@@ -14,6 +15,7 @@ function createRepos(db: Db): Repos {
     settings: createSettingsRepo(db),
     schedules: createScheduleRepo(db),
     periods: createPeriodRepo(db),
+    transactions: createTransactionRepo(db),
   };
 }
 

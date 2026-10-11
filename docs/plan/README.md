@@ -31,8 +31,8 @@ different app.
 | 1 | Register, sign in, sessions | Done | n/a |
 | [2](phase-02-app-shell.md) | App shell: side panel, routing, UI primitives | Done | n/a |
 | [3](phase-03-periods.md) | Budget setup and the period engine | Done | n/a |
-| [4](phase-04-transactions.md) | Transactions and the home view | Ready | Sonnet |
-| [5](phase-05-recurring.md) | Recurring items (bills and income) | Ready after 4 | Sonnet, Opus review of 5.3 |
+| [4](phase-04-transactions.md) | Transactions and the home view | Done | n/a |
+| [5](phase-05-recurring.md) | Recurring items (bills and income) | Ready | Sonnet, Opus review of 5.3 |
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Ready after 5 | Opus, or Sonnet with Opus review |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish (date search tabled) | Ready after 5 | Sonnet |
 | [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | Ready after 7 | Sonnet for 8.1 to 8.3, Opus for 8.4 |
@@ -77,6 +77,16 @@ different app.
   implementation notes for why this matters).
 - Read the implementation notes at the bottom of `phase-03-periods.md` before phase 4.
 
+### What phase 4 delivered
+
+- `transactions` table and `POST` / `PATCH` / `DELETE /api/transactions`.
+- Carry-forward: every change to a period's projected leftover moves the starting amount
+  of the periods after it, stopping at one set by hand.
+- Home screen: Upcoming and Paid sections with running totals, one-tap paid toggle, a
+  floating + button and an add / edit / delete dialog. A transaction whose date moves to
+  another period goes there, creating the period if needed.
+- Read the implementation notes at the bottom of `phase-04-transactions.md` before phase 5.
+
 ## How to work a task
 
 Each phase file is a list of numbered tasks. A task is sized to be finished in one
@@ -95,8 +105,8 @@ sitting and leaves the app working.
 
 Kick-off prompt for a fresh session:
 
-> Read CLAUDE.md and docs/plan/README.md. Then implement task 4.1 from
-> docs/plan/phase-04-transactions.md, following "How to work a task".
+> Read CLAUDE.md and docs/plan/README.md. Then implement task 5.1 from
+> docs/plan/phase-05-recurring.md, following "How to work a task".
 
 Tasks within a phase are ordered; do them in order unless marked "independent".
 

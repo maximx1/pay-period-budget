@@ -29,3 +29,9 @@ export function parseMoneyInput(text: string, opts: { allowNegative?: boolean } 
   if (!Number.isSafeInteger(cents)) return null;
   return negative && cents !== 0 ? -cents : cents;
 }
+
+/** Cents as plain text for an amount field, without sign or symbol: -2700 → "27.00". */
+export function centsToInput(cents: number): string {
+  const magnitude = Math.abs(cents);
+  return `${Math.trunc(magnitude / 100)}.${String(magnitude % 100).padStart(2, "0")}`;
+}

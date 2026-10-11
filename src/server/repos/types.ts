@@ -2,8 +2,9 @@
 // nothing outside src/server/repos and src/server/db may import drizzle or the driver.
 // Swapping the database means writing a new implementation of DataStore.
 
-import type { LocalDate } from "../../shared/dates.ts";
+import type { LocalDate, LocalDateTime } from "../../shared/dates.ts";
 import type { ScheduleType } from "../../shared/schedule.ts";
+import type { TransactionStatus } from "../../shared/transactions.ts";
 
 export type UserRecord = {
   id: string;
@@ -104,12 +105,47 @@ export interface PeriodRepo {
   update(userId: string, id: string, patch: PeriodPatch, now: Date): Promise<void>;
 }
 
+export type TransactionRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  /** Signed: negative for an expense, positive for income. */
+  amountCents: number;
+  occursAt: LocalDateTime;
+  status: TransactionStatus;
+  paidAt: Date | null;
+  sortOrder: number;
+  note: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type TransactionRecordPatch = Partial<
+  Pick<TransactionRecord, "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note">
+>;
+
+export interface TransactionRepo {
+  findById(userId: string, id: string): Promise<TransactionRecord | null>;
+  /** Transactions dated from `startDate` through `endDate` inclusive, in display order. */
+  listInRange(userId: string, startDate: LocalDate, endDate: LocalDate): Promise<TransactionRecord[]>;
+  /** Signed totals by status over the same range. */
+  sumInRange(
+    userId: string,
+    startDate: LocalDate,
+    endDate: LocalDate,
+  ): Promise<{ paidCents: number; upcomingCents: number }>;
+  create(transaction: TransactionRecord): Promise<TransactionRecord>;
+  update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;
+  delete(userId: string, id: string): Promise<void>;
+}
+
 export interface Repos {
   users: UserRepo;
   sessions: SessionRepo;
   settings: SettingsRepo;
   schedules: ScheduleRepo;
   periods: PeriodRepo;
+  transactions: TransactionRepo;
 }
 
 export interface DataStore extends Repos {

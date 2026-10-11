@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCents, parseMoneyInput } from "./money.ts";
+import { centsToInput, formatCents, parseMoneyInput } from "./money.ts";
 
 describe("formatCents", () => {
   it.each([
@@ -60,5 +60,24 @@ describe("parseMoneyInput", () => {
 
   it.each(["--5", "-", "-abc", "5-"])("still rejects %j when negatives are allowed", (text) => {
     expect(parseMoneyInput(text, { allowNegative: true })).toBeNull();
+  });
+});
+
+describe("centsToInput", () => {
+  it.each([
+    [2700, "27.00"],
+    [-2700, "27.00"],
+    [5, "0.05"],
+    [1999, "19.99"],
+    [123456, "1234.56"],
+    [0, "0.00"],
+  ])("writes %i as %s", (cents, expected) => {
+    expect(centsToInput(cents)).toBe(expected);
+  });
+
+  it("round-trips through parseMoneyInput", () => {
+    for (const cents of [1, 29, 115, 435, 1999, 100000, 99999999]) {
+      expect(parseMoneyInput(centsToInput(cents))).toBe(cents);
+    }
   });
 });

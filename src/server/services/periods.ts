@@ -8,6 +8,7 @@ import {
 import { addDays, diffDays, type LocalDate, todayIn } from "../../shared/dates.ts";
 import { horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
 import { AppError } from "../lib/errors.ts";
+import { toTransaction } from "./transactionMapper.ts";
 import {
   type DataStore,
   type PeriodRecord,
@@ -43,11 +44,16 @@ export function createPeriodService(deps: {
   }
 
   /**
-   * Projected leftover: what the period is expected to end with, and so what the next one
-   * starts with. Phase 4 adds the period's transactions to this.
+   * Projected leftover: the starting amount plus every transaction in the period, paid or
+   * not. It is what the period is expected to end with, and so what the next one starts with.
    */
-  async function projectedOf(_repos: Repos, period: PeriodRecord): Promise<number> {
-    return period.startingCents;
+  async function projectedOf(repos: Repos, period: PeriodRecord): Promise<number> {
+    const { paidCents, upcomingCents } = await repos.transactions.sumInRange(
+      period.userId,
+      period.startDate,
+      period.endDate,
+    );
+    return period.startingCents + paidCents + upcomingCents;
   }
 
   /** Creates every missing period up to the one containing `date`. Call inside a transaction. */
@@ -115,9 +121,13 @@ export function createPeriodService(deps: {
     const next = await store.periods.findBySeq(userId, period.seq + 1);
     const canGenerateNext = period.seq + 1 <= horizonSeq(budget.schedule, today);
 
-    // Phase 4 replaces these with sums over the period's transactions.
-    const paidCents = 0;
-    const upcomingCents = 0;
+    const records = await store.transactions.listInRange(userId, period.startDate, period.endDate);
+    let paidCents = 0;
+    let upcomingCents = 0;
+    for (const record of records) {
+      if (record.status === "paid") paidCents += record.amountCents;
+      else upcomingCents += record.amountCents;
+    }
 
     return {
       period: {
@@ -139,6 +149,7 @@ export function createPeriodService(deps: {
         leftoverCents: period.startingCents + paidCents,
         projectedCents: period.startingCents + paidCents + upcomingCents,
       },
+      transactions: records.map(toTransaction),
       nav: {
         prevId: prev?.id ?? null,
         nextId: next?.id ?? null,
@@ -237,7 +248,7 @@ export function createPeriodService(deps: {
 
     /**
      * Makes sure periods exist through `date`, using the caller's transaction. For services
-     * that write dated records (phase 4's transactions) and need the period to be there.
+     * that write dated records and need the period to be there.
      */
     async ensureThrough(repos: Repos, userId: string, date: LocalDate): Promise<void> {
       const budget = await loadBudget(repos, userId);

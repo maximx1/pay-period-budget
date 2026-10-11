@@ -16,7 +16,7 @@ periods.
 
 ### 4.1 Table and repository
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/server/db/schema.ts`, migration `--name transactions`,
 `src/server/repos/types.ts`, new `src/server/repos/sqlite/transactions.ts`,
@@ -44,7 +44,7 @@ status; cross-user isolation for find, update and delete.
 
 ### 4.2 Service, carry-forward and endpoints
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/shared/transactions.ts`, new `src/server/services/transactions.ts`,
 new `src/server/services/carry.ts`, `src/server/services/periods.ts`,
@@ -101,7 +101,7 @@ Routes behind `requireAuth`: `POST /api/transactions` (201), `PATCH /api/transac
 
 ### 4.3 Transaction lists on the home view
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/transactions/api.ts`, `TransactionSection.tsx`,
 `TransactionRow.tsx`; `src/client/features/home/HomePage.tsx`.
@@ -131,7 +131,7 @@ summary always agree with the rows after toggling back and forth quickly.
 
 ### 4.4 Add and edit dialog
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/transactions/TransactionDialog.tsx`,
 `src/client/features/home/HomePage.tsx`.
@@ -155,4 +155,43 @@ remain reachable).
 
 ## Implementation notes
 
-(Add notes here as tasks are completed.)
+Completed 2026-10-10. Where the build differs from the task text above, this section wins.
+
+- **Create and update respond with `{ transaction, period }`**, where `period` is
+  `{ id, startDate, endDate }` of the period the transaction now falls in. The dialog
+  compares that id with the period on screen to decide whether to say "Added to …" or
+  "Moved to …".
+- **PATCH semantics for money:** `amountCents` is always the positive magnitude and `kind`
+  the direction. Sending only `amountCents` keeps the direction; sending only `kind` flips
+  the sign. `note: ""` or `null` clears the note. A `status` equal to the current one
+  leaves `paidAt` alone.
+- **`paidAt`** is an ISO instant string in responses.
+- **`applyLeftoverDelta(repos, userId, afterSeq, deltaCents, now)`** lives in
+  `services/carry.ts` and already stops at a manual period (tested by setting the column
+  directly). Phase 6 adds `recomputeChain` beside it.
+- **`toTransaction`** is in `services/transactionMapper.ts` so both the period and the
+  transaction service can use it without importing each other.
+- **Phase 5 hooks:** recurring items insert through the same `transactions` table; add
+  `recurring_id` / `occurrence_date` there, `recurringId` to `toTransaction`, and the
+  repeat icon in `TransactionRow`.
+- **How amounts are shown:** a row shows an expense unsigned ("$27.00") and income with a
+  plus in the primary colour ("+$1,850.00"). Section headers and the summary's Paid and
+  Upcoming show the *net* of their rows, signed ("-$315.50", "+$815.88").
+- **Optimistic paid toggle:** `features/transactions/optimistic.ts` (`withStatus`, unit
+  tested) rewrites every cached period view. The refetch after saving is skipped while
+  other toggles are still in flight, so rapid tapping never shows stale server data.
+- **New primitive `SegmentedControl`** (a radio group styled as segments), also on
+  `/dev/ui`. Phase 5 can use it for Bill / Income and the All / Bills / Income filter.
+- **`HomePage` keeps the last edited transaction in state after the dialog closes** so the
+  title doesn't flip to "Add transaction" during the fade-out.
+- **Layout lesson:** a CSS grid column defaults to a minimum width of its content, so one
+  long name pushed the lists off the side of a phone. Always give a grid an explicit
+  column count (`grid-cols-1 xl:grid-cols-2`), which sets the minimum to zero.
+- **`index.html`** now sets `interactive-widget=resizes-content` so the bottom sheet's
+  buttons stay above the on-screen keyboard on Android.
+- New shared helpers: `formatTime`, `centsToInput`, and `parseMoneyInput(…, { allowNegative })`.
+- Checked in the browser at 375px and 1440px, dark and light: add by keyboard (name, Tab,
+  amount, Enter), validation messages, mark paid and back (including seven rapid toggles,
+  after which screen and server agreed), edit with prefilled values, moving to another
+  period (toast, generated on demand, later starting amounts corrected), delete with
+  confirmation, two-column layout from `xl`, and long-name truncation on a phone.

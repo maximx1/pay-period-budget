@@ -1,5 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
+import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
 
 // Conventions: text UUID primary keys, instants as integer milliseconds (timestamp_ms),
 // money as integer cents, calendar dates as "YYYY-MM-DD" text.
@@ -101,4 +102,27 @@ export const periods = sqliteTable(
     uniqueIndex("periods_user_start_unique").on(t.userId, t.startDate),
     index("periods_user_end_idx").on(t.userId, t.endDate),
   ],
+);
+
+export const transactions = sqliteTable(
+  "transactions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Signed: negative for an expense, positive for income. */
+    amountCents: integer("amount_cents").notNull(),
+    /** "YYYY-MM-DDTHH:mm" in the budget's time zone. Its date decides which period it belongs to. */
+    occursAt: text("occurs_at").notNull(),
+    status: text("status", { enum: TRANSACTION_STATUSES }).notNull(),
+    paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+    /** Manual order among transactions with the same occurs_at. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    note: text("note"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("transactions_user_occurs_idx").on(t.userId, t.occursAt)],
 );

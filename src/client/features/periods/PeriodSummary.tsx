@@ -3,11 +3,12 @@ import { formatCents } from "../../../shared/money.ts";
 import { Card } from "../../components/ui/Card.tsx";
 import { cn } from "../../lib/cn.ts";
 
-function Stat({ label, cents }: { label: string; cents: number }) {
+/** `net` marks a sum of signed amounts, shown with a + when it comes out positive. */
+function Stat({ label, cents, net = false }: { label: string; cents: number; net?: boolean }) {
   return (
     <div className="min-w-0">
       <dt className="text-sm text-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm font-semibold break-words text-fg tabular-nums sm:text-base">{formatCents(cents)}</dd>
+      <dd className="mt-0.5 text-sm font-semibold break-words text-fg tabular-nums sm:text-base">{formatCents(cents, { showPlus: net })}</dd>
     </div>
   );
 }
@@ -44,8 +45,8 @@ export function PeriodSummary({ view }: { view: PeriodView }) {
 
       <dl className="grid grid-cols-3 gap-4 lg:gap-10">
         <Stat label="Starting" cents={period.startingCents} />
-        <Stat label="Paid" cents={totals.paidCents} />
-        <Stat label="Upcoming" cents={totals.upcomingCents} />
+        <Stat label="Paid" cents={totals.paidCents} net />
+        <Stat label="Upcoming" cents={totals.upcomingCents} net />
       </dl>
     </Card>
   );

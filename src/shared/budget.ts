@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isLocalDate, type LocalDate } from "./dates.ts";
 import { SCHEDULE_TYPES, type ScheduleType } from "./schedule.ts";
+import type { Transaction } from "./transactions.ts";
 
 /** How far back the first period may start, in days. */
 export const MAX_ANCHOR_AGE_DAYS = 366;
@@ -68,6 +69,8 @@ export type PeriodView = {
     /** Projected leftover: starting amount + paid + upcoming. This is what carries forward. */
     projectedCents: number;
   };
+  /** In display order: by date-time, then manual order, then creation. */
+  transactions: Transaction[];
   nav: {
     prevId: string | null;
     /** Set when the next period already exists. */

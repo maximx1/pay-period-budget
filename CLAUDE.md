@@ -76,6 +76,9 @@ src/client/   React app
 - Style with the semantic colour utilities defined in `styles.css` (`bg-surface`,
   `text-muted`, `border-border`, `bg-primary`, ...). No raw palette classes like
   `bg-green-600`; they break dark mode.
+- Give every CSS grid an explicit column count, including the one-column case
+  (`grid-cols-1 xl:grid-cols-2`). Without it a long unbroken value widens the column past
+  the screen on phones.
 - Every screen must work from 360px wide up to ultrawide. Touch targets are at least 44px
   (`min-h-11`). Inputs use 16px text so mobile browsers don't zoom.
 - Inside authenticated routes get the user with `useCurrentUser()`.

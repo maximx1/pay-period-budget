@@ -131,3 +131,10 @@ export function formatDateRange(start: LocalDate, end: LocalDate): string {
 export function formatDay(date: LocalDate): string {
   return weekdayMonthDay.format(toUtc(date));
 }
+
+const hourMinute = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit" });
+
+/** The time part of a date-time for display: "6:45 PM". */
+export function formatTime(dateTime: LocalDateTime): string {
+  return hourMinute.format(new Date(`${dateTime}:00Z`));
+}

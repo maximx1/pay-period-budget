@@ -10,8 +10,10 @@ import { requireAuth } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
+import { transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
 import { createPeriodService } from "./services/periods.ts";
+import { createTransactionService } from "./services/transactions.ts";
 
 export type AppDeps = {
   store: DataStore;
@@ -24,6 +26,7 @@ export type AppDeps = {
 export function createApp({ store, config, now, staticDir }: AppDeps) {
   const auth = createAuthService({ store, sessionTtlMs: config.sessionTtlMs, now });
   const periods = createPeriodService({ store, now });
+  const transactions = createTransactionService({ store, periods, now });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -34,6 +37,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, authed }));
+  api.route("/transactions", transactionRoutes({ transactions, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });
