@@ -278,6 +278,14 @@ effect on starting amounts as creating them one at a time.
   the existing one is an upcoming entry a recurring item generated, the caller's answer is
   `countsToward` on the row: the real payment replaces the expected entry and keeps its
   import key. A row with `countsToward` is not reported.
+- **Recurring suggestions** are reported the same way, for rows that name neither a
+  `recurringId` nor a `countsToward`: at most one item per row, with the reason.
+  `occurrence`: the row is a possible duplicate of an upcoming entry an item generated
+  (the suggestion carries that entry's id for `countsToward`). `same_description`: a
+  transaction already tied to an item has the same note or name, compared without regard
+  to case, spacing or punctuation; when two items have shared one, the most recent use
+  decides. `name`: the item's name appears in the row's name or note as whole words; the
+  longest such name wins. The server never applies a suggestion.
 
 ## Recurring items
 

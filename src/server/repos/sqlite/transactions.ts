@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import type { Db } from "../../db/client.ts";
 import { deletedImportKeys, transactions } from "../../db/schema.ts";
@@ -125,6 +125,19 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         )
         .orderBy(desc(transactions.occursAt), desc(transactions.id))
         .limit(limit);
+    },
+    async listLinkedDescriptions(userId) {
+      const rows = await db
+        .select({
+          recurringId: transactions.recurringId,
+          name: transactions.name,
+          note: transactions.note,
+          lastUsedAt: sql<string>`max(${transactions.occursAt})`,
+        })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), isNotNull(transactions.recurringId)))
+        .groupBy(transactions.recurringId, transactions.name, transactions.note);
+      return rows.flatMap((row) => (row.recurringId === null ? [] : [{ ...row, recurringId: row.recurringId }]));
     },
     async sumForRecurring(userId, recurringId) {
       const sumWhere = (status: "paid" | "upcoming") =>

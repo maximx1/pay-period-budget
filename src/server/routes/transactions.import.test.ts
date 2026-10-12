@@ -171,6 +171,7 @@ describe("importing transactions", () => {
       ],
       possibleDuplicates: [],
       countedToward: [],
+      recurringSuggestions: [],
       current: {
         periodId: periods[2]!.id,
         leftoverBeforeCents: OPENING,
@@ -261,7 +262,14 @@ describe("a dry run", () => {
         ...duplicate,
         existing: { ...duplicate.existing, id: null },
       })),
+      recurringSuggestions: result.recurringSuggestions.map((suggestion) => ({
+        ...suggestion,
+        countsToward: suggestion.countsToward ? "an id" : undefined,
+      })),
     });
+    expect(dry.recurringSuggestions).toEqual([
+      expect.objectContaining({ index: 0, recurringName: "Rent", reason: "occurrence", countsToward: expect.any(String) }),
+    ]);
     expect(comparable(real)).toEqual(comparable(dry));
     expect(real.dryRun).toBe(false);
     expect((await snapshot("ann")).transactions.filter((tx) => tx.imported)).toHaveLength(3);

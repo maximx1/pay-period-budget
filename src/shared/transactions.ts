@@ -176,12 +176,28 @@ export type PossibleDuplicate = {
   /** The closest transaction of the same amount within DUPLICATE_WINDOW_DAYS. */
   existing: Transaction;
   /**
-   * What the existing one is: generated from a recurring item, entered by hand, or imported
-   * under a different key (reported only when the date and name also match).
+   * What the existing one is: an entry a recurring item generated, something entered by
+   * hand, or imported under a different key (reported only when the date and name also match).
    */
   reason: "recurring" | "manual" | "imported";
   /** Days between the two dates; 0 when they share a date. */
   daysApart: number;
+};
+
+/** A guess at which recurring item an incoming row belongs to. Never applied by the server. */
+export type RecurringSuggestion = {
+  /** Position of the incoming row in the request. */
+  index: number;
+  recurringId: string;
+  recurringName: string;
+  /**
+   * Why: `occurrence`, the row looks like the upcoming entry that item generated (and
+   * `countsToward` names it); `same_description`, a transaction already tied to the item
+   * has the same note or name; `name`, the item's name appears in the row.
+   */
+  reason: "occurrence" | "same_description" | "name";
+  /** With `occurrence`: the upcoming entry to put in the row's `countsToward`. */
+  countsToward?: string;
 };
 
 export type TransactionImportResponse = {
@@ -201,6 +217,11 @@ export type TransactionImportResponse = {
   possibleDuplicates: PossibleDuplicate[];
   /** Upcoming entries that rows of this request paid toward, and what is left of each. */
   countedToward: CountedToward[];
+  /**
+   * For rows that say nothing about a recurring item: which one each probably belongs to.
+   * A report only. To accept one, put its `recurringId` (and `countsToward`) on the row.
+   */
+  recurringSuggestions: RecurringSuggestion[];
   /** Today's period before and after, or null if no period covers today. */
   current: {
     periodId: string;

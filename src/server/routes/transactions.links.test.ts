@@ -404,3 +404,130 @@ describe("links in an import", () => {
     expect(await everything(ann)).toEqual(before);
   });
 });
+
+describe("suggesting the recurring item a row belongs to", () => {
+  async function importRows(transactions: Row[], options: Row = { dryRun: true }, client: Client = ann) {
+    const response = await client.post("/api/transactions/import", { transactions, ...options });
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    return (await response.json()) as TransactionImportResponse;
+  }
+  const suggestions = async (rows: Row[], client: Client = ann) => (await importRows(rows, { dryRun: true }, client)).recurringSuggestions;
+  const bank = (date: string, note: string, overrides: Row = {}) =>
+    payment(date, { name: "Card payment", amountCents: 4200, note, ...overrides });
+
+  it("points at the upcoming entry a row would pay, ready to be accepted", async () => {
+    const rent = (await rentDue())!;
+    const row = payment("2026-01-26", { name: "ACH LANDLORD LLC", amountCents: RENT, importKey: "rent-jan" });
+
+    const [suggestion] = await suggestions([row]);
+    expect(suggestion).toEqual({
+      index: 0,
+      recurringId: rentId,
+      recurringName: "Rent",
+      reason: "occurrence",
+      countsToward: rent.id,
+    });
+
+    // Accepting it is copying those two values onto the row.
+    const accepted = await importRows(
+      [{ ...row, recurringId: suggestion!.recurringId, countsToward: suggestion!.countsToward }],
+      {},
+    );
+    expect(accepted.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: 0, removed: true }]);
+    expect(accepted.recurringSuggestions).toEqual([]);
+  });
+
+  it("learns a bank description from a row that was tied by hand, and knows it next time", async () => {
+    expect(await suggestions([bank("2026-01-20", "CAPITAL ONE MOBILE PMT 4417")])).toEqual([]);
+
+    await importRows([bank("2026-01-20", "CAPITAL ONE MOBILE PMT 4417", { recurringId: cardId, importKey: "a" })], {});
+
+    expect(
+      await suggestions([
+        // The same description, however the bank happens to space or capitalise it.
+        bank("2026-02-14", "capital one  mobile pmt   4417", { amountCents: 9900, name: "Something else" }),
+        // A different description under a different name: nothing to go on.
+        bank("2026-02-15", "CAPITAL ONE MOBILE PMT 9999", { name: "Unrelated" }),
+      ]),
+    ).toEqual([{ index: 0, recurringId: cardId, recurringName: "Credit card", reason: "same_description" }]);
+  });
+
+  it("also learns from the name, and lets the latest use decide between two items", async () => {
+    await create(ann, payment("2026-01-10", { name: "Venmo Sam", recurringId: rentId }));
+    await create(ann, payment("2026-01-20", { name: "Venmo Sam", recurringId: cardId }));
+
+    expect(await suggestions([payment("2026-02-01", { name: "VENMO SAM" })])).toEqual([
+      { index: 0, recurringId: cardId, recurringName: "Credit card", reason: "same_description" },
+    ]);
+  });
+
+  it("falls back on the item's own name appearing in the row, as whole words", async () => {
+    const found = await suggestions([
+      payment("2026-02-01", { name: "RENT - FEBRUARY" }),
+      payment("2026-02-01", { name: "Online pmt", note: "ref 88 credit card autopay" }),
+      // "rent" is inside these words, not a word in them.
+      payment("2026-02-01", { name: "Current account fee", note: "parental transfer" }),
+      payment("2026-02-01", { name: "Groceries" }),
+    ]);
+    expect(found.map(({ index, recurringName, reason }) => [index, recurringName, reason])).toEqual([
+      [0, "Rent", "name"],
+      [1, "Credit card", "name"],
+    ]);
+  });
+
+  it("prefers the longer of two item names that both appear", async () => {
+    await addItem(ann, { name: "Card", firstDueDate: "2026-06-01" });
+    const found = await suggestions([payment("2026-02-01", { name: "Credit card payment" })]);
+    expect(found.map((suggestion) => suggestion.recurringName)).toEqual(["Credit card"]);
+  });
+
+  it("says nothing about a row that has already been told, or that is skipped", async () => {
+    const rent = (await rentDue())!;
+    await importRows([payment("2026-01-10", { name: "Rent early", importKey: "held" })], {});
+
+    expect(
+      await suggestions([
+        payment("2026-02-01", { name: "Rent", recurringId: cardId }),
+        payment("2026-01-24", { name: "Rent", countsToward: rent.id }),
+        payment("2026-01-10", { name: "Rent early", importKey: "held" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("does not suggest counting toward an entry that is already paid", async () => {
+    const rent = (await rentDue())!;
+    await ann.patch(`/api/transactions/${rent.id}`, { status: "paid" });
+
+    const result = await importRows([payment("2026-01-26", { name: "ACH LANDLORD LLC", amountCents: RENT })]);
+    // Still a possible duplicate of the paid rent, but there is nothing left to pay toward.
+    expect(result.possibleDuplicates).toHaveLength(1);
+    expect(result.recurringSuggestions).toEqual([]);
+  });
+
+  it("forgets what it learned from an item once the item is deleted", async () => {
+    await create(ann, payment("2026-01-20", { name: "Gym", note: "PLANET FIT 0042", recurringId: cardId }));
+    expect((await ann.delete(`/api/recurring/${cardId}`)).status).toBe(204);
+
+    expect(await suggestions([payment("2026-02-20", { name: "Gym", note: "PLANET FIT 0042" })])).toEqual([]);
+  });
+
+  it("never draws on another user's items or transactions", async () => {
+    const bob = await signUp("bob");
+    const bobsItem = await addItem(bob, { name: "Streaming" });
+    await create(bob, payment("2026-01-20", { name: "Movies", note: "NETFLIX.COM 866", recurringId: bobsItem }));
+
+    expect(
+      await suggestions([
+        payment("2026-02-01", { name: "Streaming" }),
+        payment("2026-02-01", { name: "Movies", note: "NETFLIX.COM 866" }),
+      ]),
+    ).toEqual([]);
+
+    // And what someone else did later with the same description does not hide her own link.
+    await create(ann, payment("2026-01-10", { name: "Films", note: "NETFLIX.COM 866", recurringId: cardId }));
+    await create(bob, payment("2026-01-25", { name: "Films", note: "NETFLIX.COM 866", recurringId: bobsItem }));
+    expect(await suggestions([payment("2026-02-01", { name: "Whatever", note: "NETFLIX.COM 866" })])).toEqual([
+      { index: 0, recurringId: cardId, recurringName: "Credit card", reason: "same_description" },
+    ]);
+  });
+});

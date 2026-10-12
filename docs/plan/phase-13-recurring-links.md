@@ -137,7 +137,7 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ### 13.4 The import recognises recurring items
 
-- [ ] Done
+- [x] Done
 
 - The dry run gains `recurringSuggestions: [{ index, recurringId, reason }]`, at most one
   per row:
@@ -285,3 +285,32 @@ title, the navigation and "Add recurring" say "Recurring". Suggested, not yet ag
   `features/recurring`, the MCP tools, `CLAUDE.md`) is a separate, mechanical task: it
   touches the table name, every endpoint and the phone app, and should not be mixed into
   a feature.
+
+### 13.4 (2026-10-12)
+
+- `recurringSuggestions` on the import response (dry run and real run alike):
+  `RecurringSuggestion` in `src/shared/transactions.ts`. Each also carries the item's
+  name, and an `occurrence` suggestion carries `countsToward`, so accepting one is copying
+  two values onto the row. A test does exactly that.
+- Built in `suggestRecurring` in `services/import.ts`, in the order the task lists: the
+  upcoming entry, then a description learned from earlier links, then the item's name.
+- **How it learns.** `transactions.listLinkedDescriptions` returns each distinct name and
+  note among transactions tied to items. A description that is just the item's own name
+  is ignored there (generated entries all have it) and left to the name rule. So the
+  first time "CAPITAL ONE MOBILE PMT 4417" appears there is nothing to suggest; once a
+  row with that note has been tied to the card, every later one is suggested.
+- Comparison ignores case and treats any run of spaces or punctuation as one space. Item
+  names shorter than three characters are not matched by name, and a name must appear as
+  whole words: "Rent" is not found in "Current account".
+- **Possible duplicates changed slightly:** `reason: "recurring"` now means an entry an
+  item *generated*. A transaction typed in and merely tied to an item is `manual`, which
+  it is. Before 13.1 nothing could be tied by hand, so the two were the same thing.
+- No suggestion to pay toward an entry that is already paid; that row is still reported
+  as a possible duplicate, which is what it then is.
+- An item deleted after transactions were tied to it leaves those transactions untied (the
+  existing rule), so nothing learned from it survives.
+- **Not yet shown to anyone:** the MCP import report ignores the new field until 13.5.
+- Checked by breaking six rules once each. Five failed a test at once. The sixth, dropping
+  the per-user filter from the descriptions query, did not, because another user's item is
+  dropped again before anything is returned; but it would let someone else's later use of
+  a description hide your own link, and there is now a test for that.

@@ -210,6 +210,13 @@ export interface TransactionRepo {
     recurringId: string,
     page: { limit: number; before?: { occursAt: LocalDateTime; id: string } },
   ): Promise<TransactionRecord[]>;
+  /**
+   * Each distinct name and note among the transactions tied to recurring items, with the
+   * item and the latest date-time it was used. For recognising the same description again.
+   */
+  listLinkedDescriptions(
+    userId: string,
+  ): Promise<Array<{ recurringId: string; name: string; note: string | null; lastUsedAt: LocalDateTime }>>;
   /** How many transactions a recurring item has, and their signed totals by status. */
   sumForRecurring(
     userId: string,
