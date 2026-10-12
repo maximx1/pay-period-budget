@@ -8,8 +8,8 @@ be loaded in one go, checked before it is written and safe to run twice.
 tried against anything real. **Suggested model:** Opus for 11.1 and 11.4 (credentials, and
 a bulk write through the carry-forward rules); Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. 11.1 done the same day; the rest
-not started.
+**Status:** planned 2026-10-11 at the owner's request. 11.1 and 11.2 done the same day;
+the rest not started.
 
 ## Approach
 
@@ -116,7 +116,7 @@ purpose once and see a test fail.
 
 ### 11.2 Tokens in Settings
 
-- [ ] Done
+- [x] Done
 
 **Files:** new `src/client/features/settings/ApiTokensSection.tsx`,
 `src/client/features/settings/api.ts`, `SettingsPage.tsx`.
@@ -319,3 +319,25 @@ Built as specified. What the next task needs to know:
   token mint a token, dropping the read-only check, keeping tokens on a password change,
   and dropping the user filter from the repo lookup each fail a test in
   `routes/apiTokens.test.ts`.
+
+### 11.2 (2026-10-11)
+
+- `ApiTokensSection.tsx` is the last section on the Settings page, on the web and in the
+  Android app alike. The form uses `apiTokenInputSchema` with the expiry as a choice
+  (30 days, 90 days, 1 year, never) converted to `expiresInDays` on submit. It defaults to
+  read only and 90 days: the least access, with a line under the control saying that
+  importing needs read and write.
+- Revoking asks in the row itself (Cancel / Revoke), the way deleting a transaction does.
+- **A toast is invisible while a dialog is open**: a modal `<dialog>` sits in the top
+  layer, above the toaster. Anything that goes wrong inside a dialog has to be said inside
+  it. The "couldn't copy" message was first a toast and showed nothing.
+- When the clipboard is refused the token is selected and an inline message says to copy
+  it by hand. That is the path a page served over plain HTTP takes.
+- Changing the password now also refreshes the token list, and the Password section says
+  that tokens are revoked.
+- Checked in the browser at 1280px and 375px, light and dark: empty list, both validation
+  messages, creating, a 55-character name wrapping, the token wrapping inside the dialog,
+  cancel and revoke, no sideways scroll at 375px.
+- **Not checked:** a successful copy. The preview browser refuses clipboard writes, so only
+  the failure path ran. An expired token's "Expired" badge was not seen either; the API
+  side of expiry is covered by tests.

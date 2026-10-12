@@ -39,14 +39,14 @@ export function PasswordSection() {
     try {
       await changePassword.mutateAsync({ currentPassword, newPassword });
       reset();
-      toast("Password changed. Other devices were signed out.");
+      toast("Password changed. Other devices were signed out and API tokens revoked.");
     } catch (error) {
       setFormError(applyApiError(error, setError, ["currentPassword", "newPassword"]));
     }
   });
 
   return (
-    <SettingsSection title="Password" description="Changing it signs you out everywhere except here.">
+    <SettingsSection title="Password" description="Changing it signs you out everywhere except here and revokes your API tokens.">
       <form onSubmit={onSubmit} noValidate className="flex max-w-sm flex-col gap-4">
         {formError && <Alert>{formError}</Alert>}
         <PasswordField
