@@ -181,14 +181,14 @@ describe("paying a bill in parts", () => {
 
     const first = await create(ann, payment("2026-01-20", { countsToward: rent.id }));
     expect(first.transaction).toMatchObject({ recurringId: rentId, amountCents: -30_000, status: "paid" });
-    expect(first.countedToward).toEqual({ id: rent.id, name: "Rent", remainingCents: -60_000, removed: false });
+    expect(first.countedToward).toEqual({ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: -60_000, removed: false });
     expect(await rentDue()).toMatchObject({ id: rent.id, amountCents: -60_000, status: "upcoming" });
 
     const second = await create(ann, payment("2026-01-22", { countsToward: rent.id }));
     expect(second.countedToward).toMatchObject({ remainingCents: -30_000, removed: false });
 
     const third = await create(ann, payment("2026-01-24", { countsToward: rent.id }));
-    expect(third.countedToward).toEqual({ id: rent.id, name: "Rent", remainingCents: 0, removed: true });
+    expect(third.countedToward).toEqual({ id: rent.id, name: "Rent", previousCents: -30_000, remainingCents: 0, removed: true });
     expect(await rentDue()).toBeUndefined();
 
     // The money moved from upcoming to paid and nowhere else.
@@ -266,6 +266,20 @@ describe("paying a bill in parts", () => {
     expect(await rentDue(bob)).toMatchObject({ amountCents: -RENT });
   });
 
+  it("is left alone when the item is ended, unlike the entries the item generated", async () => {
+    // A payment the owner typed in for a later date and tied to the rent.
+    const { transaction } = await create(ann, payment("2026-02-05", { name: "Promised extra", paid: false, recurringId: rentId }));
+    expect(await rentDue()).toBeDefined();
+
+    const ended = await ann.post(`/api/recurring/${rentId}/end`, { removeUpcoming: true });
+    expect(ended.status).toBe(200);
+
+    // Rent due on the 25th was generated, upcoming and after today: gone. The typed-in one stays.
+    expect(await rentDue()).toBeUndefined();
+    expect((await listed(ann)).filter((tx) => tx.recurringId === rentId).map((tx) => tx.id)).toEqual([transaction.id]);
+    await expectChainConsistent();
+  });
+
   it("does not bring the entry back when the payment is deleted afterwards", async () => {
     const rent = (await rentDue())!;
     const { transaction } = await create(ann, payment("2026-01-20", { amountCents: RENT, countsToward: rent.id }));
@@ -297,7 +311,7 @@ describe("links in an import", () => {
     ]);
 
     expect(result.created).toBe(5);
-    expect(result.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: 0, removed: true }]);
+    expect(result.countedToward).toEqual([{ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: 0, removed: true }]);
     expect(result.possibleDuplicates).toEqual([]);
     expect(result.current).toMatchObject({
       projectedBeforeCents: before.totals.projectedCents,
@@ -325,7 +339,7 @@ describe("links in an import", () => {
       payment("2026-01-23", { name: "Mystery", amountCents: RENT }),
     ]);
 
-    expect(result.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: -60_000, removed: false }]);
+    expect(result.countedToward).toEqual([{ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: -60_000, removed: false }]);
     expect(result.possibleDuplicates.map((duplicate) => duplicate.index)).toEqual([1]);
   });
 
@@ -342,7 +356,7 @@ describe("links in an import", () => {
     // Told that it is that rent, the import replaces the expected entry with the real payment.
     const settled = await importRows([{ ...bankRow, countsToward: rent.id }]);
     expect(settled.possibleDuplicates).toEqual([]);
-    expect(settled.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: 0, removed: true }]);
+    expect(settled.countedToward).toEqual([{ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: 0, removed: true }]);
     expect((await listed(ann, "2026-01-25", "2026-01-26")).map((tx) => [tx.name, tx.status, tx.recurringId, tx.importKey])).toEqual([
       ["ACH LANDLORD LLC", "paid", rentId, "rent-jan"],
     ]);
@@ -362,7 +376,7 @@ describe("links in an import", () => {
     const before = await everything(ann);
 
     const dry = await importRows(rows, { dryRun: true });
-    expect(dry.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: -60_000, removed: false }]);
+    expect(dry.countedToward).toEqual([{ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: -60_000, removed: false }]);
     expect(await everything(ann)).toEqual(before);
 
     const real = await importRows(rows);
@@ -433,7 +447,7 @@ describe("suggesting the recurring item a row belongs to", () => {
       [{ ...row, recurringId: suggestion!.recurringId, countsToward: suggestion!.countsToward }],
       {},
     );
-    expect(accepted.countedToward).toEqual([{ id: rent.id, name: "Rent", remainingCents: 0, removed: true }]);
+    expect(accepted.countedToward).toEqual([{ id: rent.id, name: "Rent", previousCents: -RENT, remainingCents: 0, removed: true }]);
     expect(accepted.recurringSuggestions).toEqual([]);
   });
 

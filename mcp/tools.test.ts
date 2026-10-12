@@ -384,6 +384,200 @@ describe("importing a file", () => {
   });
 });
 
+describe("recurring items", () => {
+  const rent = { name: "Rent", kind: "expense", defaultAmountCents: 90_000, recurrenceUnit: "month", firstDueDate: "2026-01-25" };
+  const idIn = (text: string) => /\| id ([\w-]+)/.exec(text)![1]!;
+  const listedIds = async () =>
+    ((await (await session.get("/api/recurring")).json()).items as Array<{ id: string; name: string }>).map((item) => item.name);
+
+  it("previews a new one by default, and says what saving it adds", async () => {
+    const preview = await call("create_recurring", rent);
+    expect(preview.split("\n")).toEqual([
+      "DRY RUN: nothing was saved. Would add 1 upcoming transaction to 1 existing pay period, the earliest on 2026-01-25.",
+      "To add it, call create_recurring again with dryRun: false.",
+    ]);
+    expect(await listedIds()).toEqual([]);
+    expect(await saved()).toEqual([]);
+
+    const added = await call("create_recurring", { ...rent, dryRun: false });
+    expect(added).toMatch(
+      /^Added: Rent \| expense \| -\$900\.00 \(-90000 cents\) each time \| Every month on the 25th \| first due 2026-01-25 \| next due 2026-01-25 \| id [\w-]+\nAdded 1 upcoming transaction to 1 existing pay period, the earliest on 2026-01-25\.$/,
+    );
+    expect((await saved()).map((tx) => tx.name)).toEqual(["Rent"]);
+  });
+
+  it("warns when a first due date in the past would fill in periods that are over", async () => {
+    expect(await call("create_recurring", { ...rent, firstDueDate: "2025-12-20" })).toContain(
+      "Would add 2 upcoming transactions to 2 existing pay periods, the earliest on 2025-12-20. " +
+        "1 of those periods is already over: the entries arrive unpaid there, and the leftover carried through every later period changes.",
+    );
+  });
+
+  it("adds one with no schedule, which brings nothing with it", async () => {
+    const input = { name: "Side jobs", kind: "income", defaultAmountCents: 0, recurrenceUnit: "none" };
+    expect(await call("create_recurring", input)).toContain("Nothing would be added to the pay periods that exist.");
+
+    const added = await call("create_recurring", { ...input, dryRun: false });
+    expect(added).toMatch(/^Added: Side jobs \| income \| no usual amount \| No schedule \| id [\w-]+\nNothing was added/);
+    expect(await call("list_recurring")).toMatch(/^1 recurring item:\n- Side jobs \| income \| no usual amount \| No schedule \| id /);
+  });
+
+  it("passes on what the server refuses", async () => {
+    const error = await call("create_recurring", { ...rent, defaultAmountCents: 0 }).catch((caught: unknown) => caught);
+    expect(failureText(error)).toContain("- defaultAmountCents: Enter an amount greater than zero");
+  });
+
+  it("changes, ends and deletes one", async () => {
+    const id = idIn(await call("create_recurring", { ...rent, dryRun: false }));
+
+    const changed = await call("update_recurring", { id, defaultAmountCents: 95_000, name: "Rent (new lease)" });
+    expect(changed).toMatch(/^Changed: Rent \(new lease\) \| expense \| -\$950\.00 \(-95000 cents\) each time \| .*\nTransactions that already exist are as they were\.$/);
+    // The January entry it had already added keeps its old amount.
+    expect(await call("list_transactions", { from: "2026-01-25", to: "2026-01-25" })).toContain("-$900.00 (-90000 cents) | upcoming | Rent |");
+    await expect(call("update_recurring", { id })).rejects.toThrow("Give at least one field to change.");
+
+    const ended = await call("end_recurring", { id, removeUpcoming: true });
+    expect(ended).toMatch(/^Ended: Rent \(new lease\) \| .* \| ends 2026-01-15 \| /);
+    expect(await saved()).toEqual([]);
+
+    expect(await call("delete_recurring", { id })).toBe(`Deleted recurring item ${id}. Its transactions remain, untied.`);
+    expect(await listedIds()).toEqual([]);
+    await expect(call("delete_recurring", { id })).rejects.toThrow("No such recurring item");
+  });
+
+  it("ties a payment to an item, pays a bill in parts, and lists what an item has", async () => {
+    const id = idIn(await call("create_recurring", { ...rent, dryRun: false }));
+    const due = idIn((await call("list_transactions", { from: "2026-01-25", to: "2026-01-25" })).split("\n")[1]!);
+
+    const extra = await call("create_transaction", row("2026-01-18", { name: "Late fee", amountCents: 2500, recurringId: id }));
+    expect(extra).toMatch(new RegExp(`\\| Late fee \\| tied to recurring item ${id} \\| id `));
+    expect(extra).not.toContain("Counted toward");
+
+    const part = await call("create_transaction", row("2026-01-20", { name: "Rent, part 1", amountCents: 30_000, countsToward: due }));
+    expect(part.split("\n")[2]).toBe(
+      "Counted toward Rent: -$900.00 (-90000 cents) was due; -$600.00 (-60000 cents) is still upcoming.",
+    );
+    const rest = await call("create_transaction", row("2026-01-24", { name: "Rent, part 2", amountCents: 60_000, countsToward: due }));
+    expect(rest.split("\n")[2]).toBe(
+      "Counted toward Rent: -$600.00 (-60000 cents) was due; now paid off, and the upcoming entry is removed.",
+    );
+
+    const all = await call("list_recurring_transactions", { id });
+    expect(all.split("\n").slice(0, 2)).toEqual([
+      "3 transactions tied to this item in all: paid -$925.00 (-92500 cents), upcoming $0.00 (0 cents).",
+      "All of them, newest first:",
+    ]);
+    expect(all).toContain("Rent, part 2");
+
+    const firstPage = await call("list_recurring_transactions", { id, limit: 2 });
+    expect(firstPage.split("\n")[1]).toBe("These 2, newest first:");
+    const cursor = /before: "([^"]+)"/.exec(firstPage)![1]!;
+    const secondPage = await call("list_recurring_transactions", { id, limit: 2, before: cursor });
+    expect(secondPage).toContain("Late fee");
+    expect(secondPage).not.toContain("There are older ones");
+
+    const lateFee = idIn(extra.split("\n")[0]!);
+    expect(await call("update_transaction", { id: lateFee, recurringId: null })).not.toContain("recurring item");
+    expect(await call("list_recurring_transactions", { id })).toMatch(/^2 transactions tied/);
+  });
+});
+
+describe("links in an imported file", () => {
+  let rentId: string;
+  let dueId: string;
+
+  beforeEach(async () => {
+    const created = await session.post("/api/recurring", {
+      name: "Rent",
+      kind: "expense",
+      defaultAmountCents: 90_000,
+      recurrenceUnit: "month",
+      firstDueDate: "2026-01-25",
+    });
+    rentId = (await created.json()).item.id;
+    const due = (await (await session.get("/api/transactions?from=2026-01-25&to=2026-01-25")).json()).transactions[0];
+    dueId = due.id;
+  });
+
+  it("suggests the item for each row and says exactly what to add to accept it", async () => {
+    // Something the import can learn from: a card payment tied by hand earlier.
+    const card = await (
+      await session.post("/api/recurring", { name: "Credit card", kind: "expense", defaultAmountCents: 20_000, recurrenceUnit: "month", firstDueDate: "2026-06-05" })
+    ).json();
+    await call("create_transaction", row("2026-01-02", { name: "Card", note: "CAPITAL ONE MOBILE PMT", recurringId: card.item.id }));
+
+    writeFile([
+      row("2026-01-26", { name: "ACH LANDLORD LLC", amountCents: 90_000, importKey: "a" }),
+      row("2026-01-21", { name: "Card", amountCents: 4200, note: "capital one mobile pmt", importKey: "b" }),
+      row("2026-01-22", { name: "Rent parking add-on", amountCents: 1500, importKey: "c" }),
+      row("2026-01-23", { name: "Groceries", importKey: "d" }),
+    ]);
+
+    const report = await call("import_transactions", { file: FILE });
+    const lines = report.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("3 rows look like they belong to a recurring item"));
+    expect(lines[at]).toBe(
+      "3 rows look like they belong to a recurring item. Nothing is tied unless the row says so: for each one that is right, add what is shown to the row.",
+    );
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      `- row 0 2026-01-26 "ACH LANDLORD LLC" → Rent: it matches the upcoming entry that item added. Add "countsToward": "${dueId}"`,
+      `- row 1 2026-01-21 "Card" → Credit card: an earlier transaction tied to that item has the same description. Add "recurringId": "${card.item.id}"`,
+      `- row 2 2026-01-22 "Rent parking add-on" → Rent: the item's name appears in it. Add "recurringId": "${rentId}"`,
+    ]);
+    // The row that matches the expected rent is not also listed as a possible duplicate.
+    expect(report).not.toContain("may repeat a transaction");
+    expect(await saved()).toHaveLength(2);
+  });
+
+  it("reports what paying toward an entry does, and imports it", async () => {
+    writeFile([
+      row("2026-01-20", { name: "Rent, first half", amountCents: 45_000, countsToward: dueId, importKey: "a" }),
+      row("2026-01-22", { name: "Rent extra", amountCents: 1000, recurringId: rentId, importKey: "b" }),
+    ]);
+
+    const preview = await call("import_transactions", { file: FILE });
+    expect(preview).toContain(
+      "Upcoming entries that would be paid toward:\n- Rent: -$900.00 (-90000 cents) was due; -$450.00 (-45000 cents) is still upcoming",
+    );
+    // Half of the rent moved from upcoming to paid; only the extra $10 is new spending.
+    expect(preview).toContain("- Projected leftover: $100.00 (10000 cents) → $90.00 (9000 cents)");
+    expect(preview).not.toContain("look like");
+
+    const done = await call("import_transactions", { file: FILE, dryRun: false });
+    expect(done).toContain("Upcoming entries paid toward:\n- Rent: -$900.00 (-90000 cents) was due; -$450.00 (-45000 cents) is still upcoming");
+    const listed = await call("list_recurring_transactions", { id: rentId });
+    expect(listed).toMatch(/^3 transactions tied to this item in all: paid -\$460\.00 \(-46000 cents\), upcoming -\$450\.00 \(-45000 cents\)\./);
+  });
+
+  it("adds up payments toward one entry that fall in different requests", async () => {
+    // Rows 0 and 600 are sent in different requests; each pays a third of the rent.
+    const rows = Array.from({ length: MAX_IMPORT_ROWS + 150 }, (_, index) =>
+      row("2026-01-14", { amountCents: 1, importKey: `bulk-${index}` }),
+    );
+    rows[0] = row("2026-01-20", { name: "Rent 1 of 3", amountCents: 30_000, countsToward: dueId, importKey: "part-1" });
+    rows[600] = row("2026-01-21", { name: "Rent 2 of 3", amountCents: 30_000, countsToward: dueId, importKey: "part-2" });
+    writeFile(rows);
+    const expected = "- Rent: -$900.00 (-90000 cents) was due; -$300.00 (-30000 cents) is still upcoming";
+
+    const preview = await call("import_transactions", { file: FILE });
+    expect(preview).toContain(`Upcoming entries that would be paid toward:\n${expected}`);
+    const done = await call("import_transactions", { file: FILE, dryRun: false });
+    expect(done).toContain(`Upcoming entries paid toward:\n${expected}`);
+
+    const due = (await (await session.get("/api/transactions?from=2026-01-25&to=2026-01-25")).json()).transactions[0];
+    expect(due).toMatchObject({ id: dueId, amountCents: -30_000, status: "upcoming" });
+  });
+
+  it("names the row whose link cannot be made", async () => {
+    writeFile([row("2026-01-20"), row("2026-01-21", { name: "Wrong", recurringId: "no-such-id" })]);
+    const error = await call("import_transactions", { file: FILE, dryRun: false }).catch((caught: unknown) => caught);
+    expect((error as Error).message.split("\n").slice(0, 2)).toEqual([
+      "The server would refuse 1 row of 2. Nothing was imported.",
+      "- row 1 (2026-01-21 Wrong): recurringId: No such recurring item",
+    ]);
+  });
+});
+
 describe("the token", () => {
   it("names the account it belongs to", async () => {
     expect(await whoAmI(api)).toBe("ann");
@@ -451,8 +645,15 @@ describe("over the protocol", () => {
       ["update_transaction", false, false],
       ["delete_transaction", false, true],
       ["list_recurring", true, false],
+      ["list_recurring_transactions", true, false],
+      ["create_recurring", false, false],
+      ["update_recurring", false, false],
+      ["end_recurring", false, true],
+      ["delete_recurring", false, true],
       ["import_transactions", false, false],
     ]);
+    const createRecurring = offered.find((tool) => tool.name === "create_recurring")!;
+    expect(createRecurring.inputSchema.required).toEqual(["name", "kind", "defaultAmountCents", "recurrenceUnit"]);
     const importTool = offered.find((tool) => tool.name === "import_transactions")!;
     expect(importTool.inputSchema.required).toEqual(["file"]);
     expect(Object.keys(importTool.inputSchema.properties ?? {})).toEqual([

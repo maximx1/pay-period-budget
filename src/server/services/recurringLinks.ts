@@ -86,7 +86,13 @@ export function createLinkPlanner(repos: Repos, userId: string) {
 
         const period = await repos.periods.findContaining(userId, dateOf(record.occursAt));
         if (period) await applyLeftoverDelta(repos, userId, period.seq, remainingCents - record.amountCents, now);
-        results.push({ id: record.id, name: record.name, remainingCents, removed: target.remainingCents === 0 });
+        results.push({
+          id: record.id,
+          name: record.name,
+          previousCents: record.amountCents,
+          remainingCents,
+          removed: target.remainingCents === 0,
+        });
       }
       return results;
     },

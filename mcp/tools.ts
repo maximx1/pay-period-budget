@@ -6,7 +6,15 @@ import { z } from "zod";
 import type { AuthResponse } from "../src/shared/auth.ts";
 import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shared/budget.ts";
 import { dateOf, isLocalDate, nowIn, todayIn } from "../src/shared/dates.ts";
-import type { RecurringListResponse } from "../src/shared/recurring.ts";
+import {
+  MAX_RECURRING_TRANSACTIONS_PAGE,
+  recurringInputSchema,
+  type RecurringListResponse,
+  recurringPatchSchema,
+  type RecurringPreview,
+  type RecurringResponse,
+  type RecurringTransactionsResponse,
+} from "../src/shared/recurring.ts";
 import {
   DUPLICATE_WINDOW_DAYS,
   type ImportRow,
@@ -14,6 +22,7 @@ import {
   MAX_IMPORT_ROWS,
   MAX_TRANSACTION_RANGE_DAYS,
   type PossibleDuplicate,
+  type RecurringSuggestion,
   type TransactionImportResponse,
   transactionInputSchema,
   type TransactionListResponse,
@@ -67,6 +76,36 @@ const DATE_TIME_RULE =
 
 const transactionFields = transactionInputSchema.shape;
 const patchFields = transactionPatchSchema.shape;
+const recurringFields = recurringInputSchema.shape;
+const recurringPatchFields = recurringPatchSchema.shape;
+
+const RECURRING_ID_RULE = "The id of a recurring item, from list_recurring.";
+const COUNTS_TOWARD_RULE =
+  "The id of an upcoming transaction that a recurring item generated, when this one pays part or all of it. " +
+  "That entry shrinks by this amount and is removed once nothing is left, so the bill is not counted twice. " +
+  "It also ties this transaction to the same item. Leave it out for a payment on top of the scheduled one.";
+const UNIT_RULE =
+  '"week", "month" or "year" repeat every `recurrenceInterval` of those from `firstDueDate`; "period" is once every ' +
+  'pay period, on its first day (a paycheck); "none" is no schedule at all: nothing is ever added by itself, and the ' +
+  "item only gathers the transactions tied to it.";
+
+/** What became of an upcoming entry that was paid toward. */
+const towardLine = (name: string, previousCents: number, remainingCents: number) =>
+  remainingCents === 0
+    ? `${name}: ${money(previousCents)} was due; now paid off, and the upcoming entry is removed`
+    : `${name}: ${money(previousCents)} was due; ${money(remainingCents)} is still upcoming`;
+
+function previewText(preview: RecurringPreview, saved: boolean): string {
+  const will = saved ? "Added" : "Would add";
+  if (preview.transactions === 0) {
+    return saved ? "Nothing was added to the pay periods that exist." : "Nothing would be added to the pay periods that exist.";
+  }
+  const base = `${will} ${plural(preview.transactions, "upcoming transaction")} to ${plural(preview.periods, "existing pay period")}, the earliest on ${preview.earliestDate}.`;
+  return preview.pastPeriods === 0
+    ? base
+    : `${base} ${plural(preview.pastPeriods, "of those periods is", "of those periods are")} already over: the entries arrive unpaid there, ` +
+        "and the leftover carried through every later period changes.";
+}
 
 const periodLine = (period: { startDate: string; endDate: string; id: string }) =>
   `${period.startDate} to ${period.endDate} (id ${period.id})`;
@@ -258,11 +297,21 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         paid: transactionFields.paid.describe(
           "True if the money has already moved (anything from a bank statement). Left out, it is an upcoming transaction.",
         ),
+        recurringId: transactionFields.recurringId.describe(
+          `${RECURRING_ID_RULE} Ties this transaction to that item, as a payment or receipt in addition to whatever the item schedules.`,
+        ),
+        countsToward: transactionFields.countsToward.describe(COUNTS_TOWARD_RULE),
       },
       readOnly: false,
       async run(input) {
-        const { transaction, period } = await api.post<TransactionResponse>("/api/transactions", input);
-        return `Added: ${transactionLine(transaction)}\nIn the period ${periodLine(period)}`;
+        const { transaction, period, countedToward } = await api.post<TransactionResponse>("/api/transactions", input);
+        return [
+          `Added: ${transactionLine(transaction)}`,
+          `In the period ${periodLine(period)}`,
+          ...(countedToward
+            ? [`Counted toward ${towardLine(countedToward.name, countedToward.previousCents, countedToward.remainingCents)}.`]
+            : []),
+        ].join("\n");
       },
     }),
 
@@ -270,9 +319,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       name: "update_transaction",
       title: "Change a transaction",
       description:
-        "Changes one transaction; give only the fields that change. This is how a bank row is matched to a transaction " +
-        'the budget already holds: set its real date and amount and `status: "paid"` rather than adding a second one. ' +
-        "Changing the date moves it to the period that covers the new date.",
+        "Changes one transaction; give only the fields that change: its details, whether it is paid, or which recurring " +
+        "item it is tied to. Changing the date moves it to the period that covers the new date.",
       inputSchema: {
         id: z.string().min(1).describe("The transaction's id, from list_transactions or get_period."),
         name: patchFields.name,
@@ -281,6 +329,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         occursAt: patchFields.occursAt.describe(DATE_TIME_RULE),
         note: patchFields.note.describe("An empty string or null removes the note."),
         status: patchFields.status.describe('"paid" once the money has moved, "upcoming" if it has not.'),
+        recurringId: patchFields.recurringId.describe(`${RECURRING_ID_RULE} Ties it to that item; null unties it.`),
       },
       readOnly: false,
       async run({ id, ...patch }) {
@@ -314,9 +363,10 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       name: "list_recurring",
       title: "Recurring bills and income",
       description:
-        "The recurring items: bills and income the budget adds by itself as upcoming transactions, one per occurrence, " +
-        "whenever a pay period is created. A bank row for one of these usually matches a transaction that already " +
-        "exists; update that one instead of adding another.",
+        "The recurring items: the bills and income the budget knows about. One with a schedule is added by itself as an " +
+        "upcoming transaction, one per occurrence, whenever a pay period is created; one with no schedule only gathers " +
+        "the transactions tied to it. A bank row for a scheduled one usually matches an upcoming transaction that " +
+        "already exists: import it with countsToward rather than adding a second.",
       inputSchema: {
         includeArchived: z.boolean().default(false).describe("Also list items whose end date has passed."),
       },
@@ -330,21 +380,153 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
     }),
 
     define({
+      name: "list_recurring_transactions",
+      title: "A recurring item's transactions",
+      description:
+        "Everything tied to one recurring item, newest first: the entries it generated and the transactions tied to it " +
+        `afterwards, with totals over all of them. Up to ${MAX_RECURRING_TRANSACTIONS_PAGE} per call; pass the cursor it ` +
+        "gives as `before` for older ones.",
+      inputSchema: {
+        id: z.string().min(1).describe(RECURRING_ID_RULE),
+        limit: z.number().int().min(1).max(MAX_RECURRING_TRANSACTIONS_PAGE).default(30).describe("How many to return."),
+        before: z.string().optional().describe("The cursor from the previous call, for the next older page."),
+      },
+      readOnly: true,
+      async run({ id, limit, before }) {
+        const query = new URLSearchParams({ limit: String(limit), ...(before && { before }) });
+        const { transactions, nextCursor, totals } = await api.get<RecurringTransactionsResponse>(
+          `/api/recurring/${encodeURIComponent(id)}/transactions?${query}`,
+        );
+        return [
+          `${plural(totals.count, "transaction")} tied to this item in all: paid ${money(totals.paidCents)}, upcoming ${money(totals.upcomingCents)}.`,
+          `${transactions.length === totals.count ? "All of them" : `These ${transactions.length}`}, newest first:`,
+          transactionList(transactions),
+          ...(nextCursor ? [`There are older ones. Call again with before: "${nextCursor}"`] : []),
+        ].join("\n");
+      },
+    }),
+
+    define({
+      name: "create_recurring",
+      title: "Add a recurring item",
+      description:
+        "Adds a bill or an income the budget should know about. With a schedule, the budget adds an upcoming transaction " +
+        "for each occurrence by itself, in every pay period from the first due date on; a first due date in the past " +
+        "therefore fills in periods that are already over. dryRun defaults to true and reports what would be added " +
+        "without saving; show the owner, then call again with dryRun: false.",
+      inputSchema: {
+        name: recurringFields.name,
+        kind: recurringFields.kind.describe('"expense" for a bill, "income" for money coming in.'),
+        defaultAmountCents: recurringFields.defaultAmountCents.describe(
+          'The usual amount, as a positive whole number of cents. 0 ("no usual amount") only with recurrenceUnit "none".',
+        ),
+        recurrenceUnit: recurringFields.recurrenceUnit.describe(UNIT_RULE),
+        recurrenceInterval: recurringFields.recurrenceInterval.describe('Every this many weeks, months or years. Ignored for "period" and "none".'),
+        firstDueDate: recurringFields.firstDueDate.describe('YYYY-MM-DD. The first occurrence; it also fixes the weekday or day of the month. Not used with "none".'),
+        endDate: recurringFields.endDate.describe("YYYY-MM-DD, or left out. No occurrences after this date."),
+        description: recurringFields.description.describe("Optional notes: an account number, a link to pay it."),
+        dryRun: z.boolean().default(true).describe("True (the default) reports without saving. False saves."),
+      },
+      readOnly: false,
+      async run({ dryRun, ...input }) {
+        const preview = await api.post<RecurringPreview>("/api/recurring/preview", input);
+        if (dryRun) {
+          return [
+            `DRY RUN: nothing was saved. ${previewText(preview, false)}`,
+            "To add it, call create_recurring again with dryRun: false.",
+          ].join("\n");
+        }
+        const { item } = await api.post<RecurringResponse>("/api/recurring", input);
+        return `Added: ${recurringLine(item)}\n${previewText(preview, true)}`;
+      },
+    }),
+
+    define({
+      name: "update_recurring",
+      title: "Change a recurring item",
+      description:
+        "Changes a recurring item; give only the fields that change. It never touches transactions that already exist: " +
+        "a new amount or schedule applies to pay periods created from now on.",
+      inputSchema: {
+        id: z.string().min(1).describe(RECURRING_ID_RULE),
+        name: recurringPatchFields.name,
+        kind: recurringPatchFields.kind,
+        defaultAmountCents: recurringPatchFields.defaultAmountCents.describe("Positive whole cents."),
+        recurrenceUnit: recurringPatchFields.recurrenceUnit.describe(UNIT_RULE),
+        recurrenceInterval: recurringPatchFields.recurrenceInterval,
+        firstDueDate: recurringPatchFields.firstDueDate.describe("YYYY-MM-DD."),
+        endDate: recurringPatchFields.endDate.describe("YYYY-MM-DD, or null for no end."),
+        description: recurringPatchFields.description,
+      },
+      readOnly: false,
+      async run({ id, ...patch }) {
+        if (Object.values(patch).every((value) => value === undefined)) {
+          throw new ToolFailure("Give at least one field to change.");
+        }
+        const { item } = await api.patch<RecurringResponse>(`/api/recurring/${encodeURIComponent(id)}`, patch);
+        return `Changed: ${recurringLine(item)}\nTransactions that already exist are as they were.`;
+      },
+    }),
+
+    define({
+      name: "end_recurring",
+      title: "End a recurring item",
+      description:
+        "Stops a recurring item from today: it produces nothing further and is archived from tomorrow. Its past " +
+        "transactions stay. Use this, not delete, for a bill that has simply finished.",
+      inputSchema: {
+        id: z.string().min(1).describe(RECURRING_ID_RULE),
+        removeUpcoming: z
+          .boolean()
+          .describe(
+            "True also deletes the upcoming transactions it generated that are dated after today. " +
+              "False leaves them for the owner to deal with. Transactions tied to it by hand are never removed.",
+          ),
+      },
+      readOnly: false,
+      destructive: true,
+      async run({ id, removeUpcoming }) {
+        const { item } = await api.post<RecurringResponse>(`/api/recurring/${encodeURIComponent(id)}/end`, { removeUpcoming });
+        return `Ended: ${recurringLine(item)}`;
+      },
+    }),
+
+    define({
+      name: "delete_recurring",
+      title: "Delete a recurring item",
+      description:
+        "Deletes a recurring item for good. Its transactions stay in the budget but are no longer tied to anything, " +
+        "and what the import had learned about it is lost. There is no undo. Prefer end_recurring.",
+      inputSchema: { id: z.string().min(1).describe(RECURRING_ID_RULE) },
+      readOnly: false,
+      destructive: true,
+      async run({ id }) {
+        await api.delete(`/api/recurring/${encodeURIComponent(id)}`);
+        return `Deleted recurring item ${id}. Its transactions remain, untied.`;
+      },
+    }),
+
+    define({
       name: "import_transactions",
       title: "Import transactions from a file",
       description:
         "Imports many transactions from a JSON file on this machine. Convert a bank export to that file with a script; " +
         "never retype amounts by hand.\n\n" +
         'The file is a JSON array of rows: {"name": string, "amountCents": positive integer, "kind": "expense" | "income", ' +
-        '"occursAt": "YYYY-MM-DDTHH:mm", "paid": true, "note"?: string, "importKey"?: string}. ' +
+        '"occursAt": "YYYY-MM-DDTHH:mm", "paid": true, "note"?: string, "importKey"?: string, "recurringId"?: string, ' +
+        '"countsToward"?: string}. Put the bank\'s own description in note: it is how the import learns which rows ' +
+        "belong to which recurring item. " +
         "Set paid: true for anything that has already cleared. importKey is your own stable name for the row (the bank's " +
         "transaction id, or date + amount + description + a counter among identical rows): a row whose key was imported " +
         "before is skipped, so the same file, or an overlapping export, can be imported again safely. A row whose " +
         "transaction the owner later deleted is skipped too, so it does not come back.\n\n" +
-        "dryRun defaults to true: it reports what would happen and saves nothing. Read the report, deal with the " +
-        "possible duplicates it lists (take the row out of the file and update the existing transaction instead), show " +
-        "the owner the effect on today's figures, and only then call again with dryRun: false. The import is all or " +
-        "nothing: one bad row and nothing is saved.",
+        "recurringId ties a row to a recurring item. countsToward says the row pays an upcoming entry that an item " +
+        "generated: the entry is replaced by the real payment instead of both being counted.\n\n" +
+        "dryRun defaults to true: it reports what would happen and saves nothing. Read the report. It suggests which " +
+        "rows belong to which recurring item and lists rows that may repeat something already in the budget; act on " +
+        "those by adding recurringId or countsToward to rows, or taking rows out, in the file (better: in the script " +
+        "that writes it). Run the dry run again, show the owner the effect on today's figures, and only then call again " +
+        "with dryRun: false. The import is all or nothing: one bad row and nothing is saved.",
       inputSchema: {
         file: z.string().min(1).describe("Absolute path of the JSON file."),
         dryRun: z.boolean().default(true).describe("True (the default) reports without saving. False saves."),
@@ -462,13 +644,32 @@ function importReport(
     periods.set(period.startDate, tally);
   }
 
+  const suggestions = results.flatMap((result, index) =>
+    result.recurringSuggestions.map((suggestion) => ({ ...suggestion, index: suggestion.index + index * MAX_IMPORT_ROWS })),
+  );
+  // A row that matches an expected bill is listed once, with what to do about it, under the suggestions.
+  const matchesExpectedBill = new Set(suggestions.filter((suggestion) => suggestion.countsToward).map((suggestion) => suggestion.index));
+
   // Rows of this file already saved by an earlier piece are not duplicates of each other.
   const ownKeys = new Set(rows.flatMap((row) => (row.importKey === undefined ? [] : [row.importKey])));
-  const duplicates = results.flatMap((result, index) =>
-    result.possibleDuplicates
-      .filter(({ reason, existing }) => !(reason === "imported" && existing.importKey !== null && ownKeys.has(existing.importKey)))
-      .map((duplicate) => ({ ...duplicate, index: duplicate.index + index * MAX_IMPORT_ROWS })),
-  );
+  const duplicates = results
+    .flatMap((result, index) =>
+      result.possibleDuplicates
+        .filter(({ reason, existing }) => !(reason === "imported" && existing.importKey !== null && ownKeys.has(existing.importKey)))
+        .map((duplicate) => ({ ...duplicate, index: duplicate.index + index * MAX_IMPORT_ROWS })),
+    )
+    .filter((duplicate) => !matchesExpectedBill.has(duplicate.index));
+
+  // Entries paid toward. Whether each piece was undone (a dry run, where two pieces paying
+  // one entry each start from the full amount) or saved (where the second starts from what
+  // the first left), what each piece took off adds up to the true total.
+  const toward = new Map<string, { name: string; previousCents: number; paidCents: number }>();
+  for (const entry of results.flatMap((result) => result.countedToward)) {
+    const took = Math.abs(entry.previousCents) - Math.abs(entry.remainingCents);
+    const seen = toward.get(entry.id);
+    if (seen) seen.paidCents += took;
+    else toward.set(entry.id, { name: entry.name, previousCents: entry.previousCents, paidCents: took });
+  }
 
   const lines: string[] = [
     saved
@@ -515,20 +716,52 @@ function importReport(
     );
   }
 
+  if (toward.size > 0) {
+    lines.push("", `Upcoming entries ${saved ? "paid" : "that would be paid"} toward:`);
+    for (const { name, previousCents, paidCents } of toward.values()) {
+      const remaining = Math.sign(previousCents) * Math.max(0, Math.abs(previousCents) - paidCents);
+      lines.push(`- ${towardLine(name, previousCents, remaining)}`);
+    }
+  }
+
+  if (suggestions.length > 0) {
+    lines.push(
+      "",
+      `${plural(suggestions.length, "row looks", "rows look")} like ${suggestions.length === 1 ? "it belongs" : "they belong"} to a recurring item` +
+        (saved
+          ? ". They were imported untied; update_transaction can tie them."
+          : ". Nothing is tied unless the row says so: for each one that is right, add what is shown to the row."),
+      listed(suggestions.map((suggestion) => suggestionLine(suggestion, rows[suggestion.index]))),
+    );
+  }
+
   if (duplicates.length > 0) {
     lines.push(
       "",
       `${plural(duplicates.length, "row")} may repeat a transaction the budget already holds (same amount, within ${DUPLICATE_WINDOW_DAYS} days). ` +
         (saved
           ? "They were imported anyway. For each that is the same payment, delete one of the two."
-          : "They would be imported anyway. For each that is the same payment, take the row out of the file and " +
-            "update the existing transaction (update_transaction: real date, real amount, status paid). Ask the owner about any that are unclear."),
+          : "They would be imported anyway. For each that is the same payment, take the row out of the file " +
+            "(and update the existing transaction if its date or amount is off). Ask the owner about any that are unclear."),
       listed(duplicates.map((duplicate) => duplicateLine(duplicate, rows[duplicate.index]))),
     );
   }
 
   if (!saved) lines.push("", "To import, call import_transactions again with dryRun: false.");
   return lines.join("\n");
+}
+
+const SUGGESTION_REASONS: Record<RecurringSuggestion["reason"], string> = {
+  occurrence: "it matches the upcoming entry that item added",
+  same_description: "an earlier transaction tied to that item has the same description",
+  name: "the item's name appears in it",
+};
+
+function suggestionLine({ index, recurringId, recurringName, reason, countsToward }: RecurringSuggestion, row: ImportRow | undefined): string {
+  const incoming = row ? `${dateOf(row.occursAt)} "${row.name}" ` : "";
+  // Paying toward an entry ties the row to its item as well, so that one field is enough.
+  const add = countsToward ? `"countsToward": "${countsToward}"` : `"recurringId": "${recurringId}"`;
+  return `row ${index} ${incoming}→ ${recurringName}: ${SUGGESTION_REASONS[reason]}. Add ${add}`;
 }
 
 const REASONS: Record<PossibleDuplicate["reason"], string> = {

@@ -152,7 +152,7 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ### 13.5 MCP tools
 
-- [ ] Done
+- [x] Done
 
 - `create_recurring` (previews what it would add to existing periods unless told to save,
   as the import does), `update_recurring`, `end_recurring`, `delete_recurring`,
@@ -270,22 +270,6 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
 - Checked by breaking three rules once each (such an item generating like a monthly one,
   a repeating item accepted with no amount, an edit leaving one that way).
 
-## The naming question (open, 2026-10-12)
-
-The owner pointed out that "recurring" no longer fits: some of these never repeat. The
-screen already says "Bills" and "Income" in its filter and in the dialog; only the page
-title, the navigation and "Add recurring" say "Recurring". Suggested, not yet agreed:
-
-- Call the page **Bills & income**. One of them is a *bill* (money out) or an *income*
-  (money in), with or without a schedule.
-- Keep **Accounts** for where money sits (savings, the joint checking account). A regular
-  transfer to savings is then a bill that *points at* an account, which is how
-  `backlog.md` already describes the Accounts feature.
-- Rename what is on screen first. Renaming the code (`recurring_items`, `/api/recurring`,
-  `features/recurring`, the MCP tools, `CLAUDE.md`) is a separate, mechanical task: it
-  touches the table name, every endpoint and the phone app, and should not be mixed into
-  a feature.
-
 ### 13.4 (2026-10-12)
 
 - `recurringSuggestions` on the import response (dry run and real run alike):
@@ -314,3 +298,56 @@ title, the navigation and "Add recurring" say "Recurring". Suggested, not yet ag
   the per-user filter from the descriptions query, did not, because another user's item is
   dropped again before anything is returned; but it would let someone else's later use of
   a description hide your own link, and there is now a test for that.
+
+### 13.5 (2026-10-12)
+
+- Five new tools, fourteen in all: `list_recurring_transactions`, `create_recurring`,
+  `update_recurring`, `end_recurring`, `delete_recurring`. The tool names keep
+  "recurring" until the code is renamed; their descriptions say "bills and income".
+- `create_recurring` is a dry run unless told otherwise, like the import: it calls
+  `/api/recurring/preview` and says how many transactions saving would add, and how many
+  of the periods are already over. `end_recurring` makes the caller choose
+  `removeUpcoming`; there is no default.
+- `create_transaction` takes `recurringId` and `countsToward`; `update_transaction` takes
+  `recurringId`. When a payment counts toward an entry the result says what was due and
+  what is left.
+- **The import report** now has, in this order: the per-period totals, today's figures,
+  upcoming entries paid toward, the recurring suggestions, and the possible duplicates.
+  - Each suggestion ends with the exact text to add to the row: `"countsToward": "<id>"`
+    for a row that matches an expected bill (that alone ties it to the item too), or
+    `"recurringId": "<id>"`.
+  - A row that matches an expected bill is listed once, under the suggestions, and no
+    longer also as a possible duplicate.
+  - Payments toward one entry from different requests of a large file are added up.
+    `CountedToward` gained `previousCents` for this: what each request took off an entry
+    can be summed whether the requests were undone (a dry run) or saved.
+- The README's import steps describe the new way. The old advice (take the row out and
+  update the expected entry by hand) is gone; see the 13.1 note for why it was wrong.
+- **Fixed on the way: "End this" with "remove upcoming" deleted every upcoming transaction
+  tied to the item**, including ones typed in and tied by hand since 13.1. It now removes
+  only the entries the item generated. `listUpcomingForRecurringAfter` requires an
+  occurrence date. A test covers it.
+- The built MCP file must be rebuilt (`npm run build:mcp`) for any of this to reach an
+  assistant.
+- Checked by breaking three report rules once each (payments from separate requests not
+  added up, a matching row listed twice, a suggestion that never offers `countsToward`).
+  Not yet run with a real assistant.
+
+## The name: "Bills & income" (agreed 2026-10-12)
+
+The owner pointed out that "recurring" no longer fits: some of these never repeat. The
+screen already says "Bills" and "Income" in its filter and in the dialog; only the page
+title, the navigation and "Add recurring" say "Recurring". The owner agreed to this plan:
+
+- Call the page **Bills & income**. One of them is a *bill* (money out) or an *income*
+  (money in), with or without a schedule.
+- Keep **Accounts** for where money sits (savings, the joint checking account). A regular
+  transfer to savings is then a bill that *points at* an account, which is how
+  `backlog.md` already describes the Accounts feature.
+- Rename what is on screen first. Renaming the code (`recurring_items`, `/api/recurring`,
+  `features/recurring`, the MCP tools, `CLAUDE.md`) is a separate, mechanical task: it
+  touches the table name, every endpoint and the phone app, and should not be mixed into
+  a feature.
+
+The on-screen rename is to be done with the screen work in 13.6 and 13.7. Until the code
+is renamed, `CLAUDE.md`'s rule stands as written: in code they are recurring items.

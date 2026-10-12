@@ -202,8 +202,10 @@ token the server refused.
 | `list_periods` | Every pay period with its dates |
 | `get_period` | One period (by id, by date, or the current one): starting amount, totals, transactions |
 | `list_transactions` | Transactions between two dates, at most 366 days |
-| `list_recurring` | Recurring bills and income |
-| `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time |
+| `list_recurring` | The bills and income the budget knows about |
+| `list_recurring_transactions` | Everything tied to one of them, newest first, with totals |
+| `create_recurring`, `update_recurring`, `end_recurring`, `delete_recurring` | Add (previewed first), change, stop or remove one |
+| `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time; a transaction can be tied to a bill or income, or count toward an upcoming one |
 | `import_transactions` | Many transactions from a JSON file, previewed first |
 
 Amounts are whole cents with a kind (`expense` or `income`); results show dollars and
@@ -235,7 +237,15 @@ The file is an array of rows:
 already in the budget is skipped, which is what makes it safe to import the same file, or
 next week's overlapping export, again. Use the bank's own transaction id if the export has
 one; otherwise date, signed amount, description and a counter among rows identical in all
-three.
+three. Put the bank's own description in `note`: the import learns from it.
+
+Two more optional fields tie a row to one of your bills or incomes:
+
+- `"recurringId"`: the row belongs to that item, on top of whatever the item schedules. An
+  extra $25 to the credit card, or money from a side job.
+- `"countsToward"`: the row *is* the payment the app was expecting. It names the upcoming
+  entry the item added; that entry is replaced by the real payment (or shrinks, if the row
+  pays only part), so the bill is not counted twice.
 
 What to ask the assistant to do, in this order:
 
@@ -246,12 +256,18 @@ What to ask the assistant to do, in this order:
    are stable. Start each download a few days before the last import so every day in it is
    complete, or the counters in the keys will not come out the same.
 3. Run `import_transactions` on the file. It is a dry run unless told otherwise: nothing
-   is saved, and it reports the totals per pay period, the change to today's figures and
-   any **possible duplicates** (a transaction already in the budget with the same amount
-   within three days, typically a recurring bill the app added as upcoming).
-4. For each possible duplicate that is the same payment, take the row out of the file and
-   change the existing transaction instead: its real date, its real amount, paid. Ask you
-   about any that are unclear.
+   is saved, and it reports the totals per pay period, the change to today's figures, and
+   two lists to act on:
+   - **rows that look like they belong to a bill or income**, with the reason and the
+     exact field to add to the row. A row that matches a bill the app is expecting gets
+     `countsToward`; one whose description was tied to an item before, or that mentions an
+     item's name, gets `recurringId`. The first time a description appears there is
+     nothing to go on; once you have said what it is, later imports recognise it.
+   - **possible duplicates**: a transaction already in the budget with the same amount
+     within three days, that is not an expected bill (something typed in by hand, say).
+4. Accept the suggestions that are right by adding the field to the row, in the script
+   rather than by hand. For a possible duplicate that is the same payment, take the row
+   out. Ask you about any that are unclear.
 5. Run the dry run again and show you the result. Import with `dryRun: false` only when
    you say so.
 6. Afterwards the current period's "leftover so far" should equal the bank's posted

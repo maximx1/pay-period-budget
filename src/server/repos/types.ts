@@ -222,7 +222,10 @@ export interface TransactionRepo {
     userId: string,
     recurringId: string,
   ): Promise<{ count: number; paidCents: number; upcomingCents: number }>;
-  /** A recurring item's upcoming transactions dated after `date`. */
+  /**
+   * The upcoming transactions a recurring item generated, dated after `date`. Not ones
+   * tied to it by hand: those are the user's own entries.
+   */
   listUpcomingForRecurringAfter(userId: string, recurringId: string, date: LocalDate): Promise<TransactionRecord[]>;
   update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;
   delete(userId: string, id: string): Promise<void>;

@@ -110,6 +110,8 @@ export type TransactionListResponse = { transactions: Transaction[] };
 export type CountedToward = {
   id: string;
   name: string;
+  /** What was due before this request, signed like the entry itself. */
+  previousCents: number;
   /** What is still due, signed like the entry itself. 0 when it was paid off. */
   remainingCents: number;
   /** Paid off, and so deleted. It does not come back if the payment is later changed or deleted. */

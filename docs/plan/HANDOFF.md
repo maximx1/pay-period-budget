@@ -30,7 +30,7 @@ Kick-off prompt for the next session:
 | 10 Projections tab | **Planned only** |
 | 11 API tokens, bulk import, MCP server | Done 2026-10-11: tokens on the server and in Settings, transactions by date range, bulk import, the MCP server, instructions in `README.md`, history up to five years back. **Not yet deployed.** The MCP server has not been registered with a real assistant or run against the deployed server; decisions are at the top of the phase file |
 | 12 Idle timeout and face unlock | Built 2026-10-12. Web half checked in a browser; **the Android half has never run**. The phase file ends with what to try on a phone |
-| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) and 13.4 (the import suggests the item a row belongs to) done 2026-10-12. 13.5 to 13.7 not started. The owner wants a better name than "recurring"; the suggestion is at the end of the phase file and is not agreed yet |
+| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) 13.4 (the import suggests the item a row belongs to) and 13.5 (MCP tools) done 2026-10-12. 13.6 and 13.7 not started. The owner agreed to call these "Bills & income" on screen (to be done with 13.6 and 13.7); the code keeps "recurring" until a separate rename |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 

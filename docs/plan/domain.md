@@ -348,8 +348,8 @@ It is a one-time calculation. Afterwards the transaction is independent:
 
 A recurring item is **archived** when `endDate` is before today. Archived items are hidden
 from the Recurring page unless "show archived" is on, and produce no further occurrences.
-"End this" sets `endDate` to today and offers to delete its upcoming transactions dated
-after today.
+"End this" sets `endDate` to today and offers to delete the upcoming transactions it
+generated that are dated after today. Transactions tied to it by hand are left alone.
 
 Deleting a recurring item keeps its past transactions (their `recurringId` becomes null).
 

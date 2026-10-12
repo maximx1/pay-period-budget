@@ -160,6 +160,7 @@ export function createTransactionRepo(db: Db): TransactionRepo {
           and(
             eq(transactions.userId, userId),
             eq(transactions.recurringId, recurringId),
+            isNotNull(transactions.occurrenceDate),
             eq(transactions.status, "upcoming"),
             gte(transactions.occursAt, atStartOfDay(addDays(date, 1))),
           ),
