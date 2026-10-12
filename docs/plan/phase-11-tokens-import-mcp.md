@@ -8,8 +8,8 @@ be loaded in one go, checked before it is written and safe to run twice.
 tried against anything real. **Suggested model:** Opus for 11.1 and 11.4 (credentials, and
 a bulk write through the carry-forward rules); Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.4 done the same day;
-the rest not started.
+**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.6 done the same day;
+11.7 (history further back than a year) not started.
 
 ## Approach
 
@@ -205,7 +205,7 @@ and another user's transactions are never reported.
 
 ### 11.5 The MCP server
 
-- [ ] Done
+- [x] Done (the file list and two behaviours differ; see the implementation notes)
 
 **Files:** new `mcp/` (`server.ts`, `client.ts`, `tools.ts`, `vite.config.ts`, tests),
 `package.json` (`build:mcp`, the dev dependency), `.gitignore` if needed.
@@ -241,7 +241,7 @@ round-trips, a bad token fails at start-up, an import file with a bad row sends 
 
 ### 11.6 Documentation and the import runbook
 
-- [ ] Done
+- [x] Done, in `README.md` rather than a new `docs/mcp.md` (see the implementation notes)
 
 **Files:** new `docs/mcp.md`, `README.md`, `CLAUDE.md` (layout and commands),
 `domain.md` (API list, the `import_key` column), `HANDOFF.md`.
@@ -414,3 +414,81 @@ this is what was built:
   not skipped, order ignoring existing rows, imported rows always reported, a four-day
   window, keys shared between users, out-of-range rows accepted): each fails a test in
   `routes/transactions.import.test.ts`. Also run once as a dry run against the dev server.
+
+### 11.5 (2026-10-11)
+
+`npm run build:mcp` writes `dist/mcp/ppb-mcp.mjs`: one file, about 780 kB, importing only
+Node's own modules. `dist/` is gitignored, so it is built where it is used.
+`@modelcontextprotocol/sdk` 1.32.1 is a dev dependency.
+
+| File | What it holds |
+| --- | --- |
+| `mcp/server.ts` | The entry point: reads the settings, checks the token, connects over stdio |
+| `mcp/config.ts` | `PPB_URL` and `PPB_TOKEN`, and why a bad one is refused |
+| `mcp/api.ts` | The only code that calls the API (`client.ts` in the task text) |
+| `mcp/tools.ts` | The nine tools, as plain functions that return text |
+| `mcp/format.ts` | How periods, transactions and money are worded |
+| `mcp/mcpServer.ts` | Registers the tools with the SDK and turns failures into error results |
+| `mcp/vite.config.ts` | The bundle |
+| `mcp/tools.test.ts` | Everything above, against `createTestApp()` with a real token |
+
+- **The tools know nothing about MCP.** `createTools(deps)` returns `{ name, description,
+  inputSchema, run }` objects; `run` returns the text or throws `ToolFailure` /
+  `ApiRequestError`. Tests call `run` directly, and three more go through the SDK's
+  in-memory transport to prove the registration.
+- Input schemas are the shared zod fields (`transactionInputSchema.shape` and so on) with
+  descriptions added, so a tool and its endpoint cannot disagree.
+- **Starting up.** A missing or malformed setting, or a token the server refuses, stops
+  it with a message on stderr. A server that cannot be reached does **not**: it starts
+  and the tools report the problem, so a laptop that was offline for a moment does not
+  lose its tools for the session. (The task text said to fail in both cases.)
+- **Plain `http://` is refused except to this machine**, since the token would travel
+  unencrypted. `PPB_TOKEN` must start with `ppb_`.
+- **`import_transactions`**:
+  - validates every row locally with `importRowSchema` and reports problems by the row's
+    place in the file, counted from 0, before sending anything;
+  - sends the file in requests of 500, and **tries every one as a dry run before saving
+    any**, so a problem anywhere in the file is found first. A real import of n requests
+    therefore makes 2n;
+  - refuses to save a file needing more than one request unless every row has an
+    `importKey`, because a failure part-way can only be recovered by running it again;
+  - merges the pieces into one report. For a dry run, each piece is undone, so periods
+    added are the most any one piece needed and today's change is the sum of each piece's
+    change; periods are matched by their dates because uncreated ones get a new id each
+    time. A test checks the dry-run report of a 1,050-row file against the real one;
+  - drops "imported earlier under a different key" matches whose key is in the same file:
+    those are rows an earlier request of this import just saved;
+  - accepts a file of at most 20,000 rows, as an array or `{ "transactions": [...] }`.
+- **`list_periods` gives dates and ids only**, not starting amounts as the task said:
+  `GET /api/periods` does not return them. `get_period` does.
+- `get_period` with a date never creates a period; it says none covers the date.
+- Every result shows money as `-$54.12 (-5412 cents)`. Tools are marked read-only or
+  destructive for clients that ask before running them.
+- `tsconfig.json` and `vitest.config.ts` now include `mcp/`.
+- Checked end to end: the built file was started as a client starts it, against the dev
+  server with a one-day token, and answered `initialize`, `tools/list`, `get_budget` and a
+  dry-run import over stdio. **Not yet registered with an assistant or pointed at the
+  deployed server**; that is the first thing to do in 11.6.
+
+### 11.6 (2026-10-11)
+
+- **Everything is in `README.md`**, under "Using it from an AI assistant (MCP)", at the
+  owner's request; there is no `docs/mcp.md`. It covers what leaves the machine, creating
+  a token, building, registering, the tools, the import file format and the runbook.
+- **The owner uses command-line assistants only**: Claude Code, Hermes Agent and the Cline
+  CLI. The README gives the registration for each. The server is stdio only by design;
+  do not add an HTTP transport or a hosted version without asking. This is personal
+  financial data.
+- The registrations follow each tool's documentation as read on 2026-10-11:
+  - Claude Code: `claude mcp add --env … --transport stdio ppb -- node <file>`. Options
+    go before the name, and something other than `--env` must come last before it.
+    Local scope by default; never `--scope project`, which writes the token into a
+    committed `.mcp.json`, and this repository is public.
+  - Hermes Agent: `mcp_servers:` in `~/.hermes/config.yaml`.
+  - Cline CLI: `mcpServers` in `~/.cline/data/settings/cline_mcp_settings.json`.
+- **Not verified:** none of the three was installed on the development machine, so no
+  registration command was run here. The server itself was driven over stdio by a test
+  client (11.5). The first real registration, and the first run against the deployed
+  server, are still to do, by the owner.
+- `CLAUDE.md` (commands, layout) and `domain.md` (API list, importing, `import_key`) were
+  updated as their tasks were done.
