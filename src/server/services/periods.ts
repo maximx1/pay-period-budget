@@ -100,6 +100,55 @@ export function createPeriodService(deps: {
     }
   }
 
+  /**
+   * Adds the period before the earliest one, or returns null if that would be more than a
+   * year back. Call inside a transaction.
+   */
+  async function addEarlierIn(
+    repos: Repos,
+    userId: string,
+    schedule: ScheduleRecord,
+    today: LocalDate,
+  ): Promise<PeriodRecord | null> {
+    const first = await repos.periods.findFirst(userId);
+    if (!first) throw noBudget();
+
+    const seq = first.seq - 1;
+    if (seq < earliestSeq(schedule, today)) return null;
+
+    const nominal = nominalPeriod(schedule, seq);
+    // End where the next period really starts (its start may have been moved by hand),
+    // but start on schedule, mirroring how periods are generated forwards.
+    const endDate = addDays(first.startDate, -1);
+    const createdAt = now();
+    const period: PeriodRecord = {
+      id: randomUUID(),
+      userId,
+      scheduleId: schedule.id,
+      seq,
+      startDate: nominal.start > endDate ? endDate : nominal.start,
+      endDate,
+      nominalStart: nominal.start,
+      nominalEnd: nominal.end,
+      startingCents: first.startingCents,
+      startingMode: "auto",
+      carryStale: false,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    await repos.periods.create(period);
+    await onPeriodCreated(repos, period);
+
+    // Recurring items due in it have just been added; back the starting amount off by them.
+    const { paidCents, upcomingCents } = await repos.transactions.sumInRange(userId, period.startDate, period.endDate);
+    const netCents = paidCents + upcomingCents;
+    if (netCents === 0) return period;
+
+    const startingCents = first.startingCents - netCents;
+    await repos.periods.update(userId, period.id, { startingCents }, createdAt);
+    return { ...period, startingCents };
+  }
+
   async function containingOrCreate(userId: string, budget: LoadedBudget, date: LocalDate, today: LocalDate) {
     // The common case needs no writes, so try a plain read before opening a transaction.
     const existing = await store.periods.findContaining(userId, date);
@@ -465,43 +514,8 @@ export function createPeriodService(deps: {
     addEarlier(userId: string): Promise<string> {
       return store.transaction(async (repos) => {
         const { schedule, timezone } = await loadBudget(repos, userId);
-        const first = await repos.periods.findFirst(userId);
-        if (!first) throw noBudget();
-
-        const seq = first.seq - 1;
-        if (seq < earliestSeq(schedule, todayIn(timezone, now()))) {
-          throw new AppError(400, "validation", "That's more than a year back");
-        }
-
-        const nominal = nominalPeriod(schedule, seq);
-        // End where the next period really starts (its start may have been moved by hand),
-        // but start on schedule, mirroring how periods are generated forwards.
-        const endDate = addDays(first.startDate, -1);
-        const createdAt = now();
-        const period: PeriodRecord = {
-          id: randomUUID(),
-          userId,
-          scheduleId: schedule.id,
-          seq,
-          startDate: nominal.start > endDate ? endDate : nominal.start,
-          endDate,
-          nominalStart: nominal.start,
-          nominalEnd: nominal.end,
-          startingCents: first.startingCents,
-          startingMode: "auto",
-          carryStale: false,
-          createdAt,
-          updatedAt: createdAt,
-        };
-        await repos.periods.create(period);
-        await onPeriodCreated(repos, period);
-
-        // Recurring items due in it have just been added; back the starting amount off by them.
-        const { paidCents, upcomingCents } = await repos.transactions.sumInRange(userId, period.startDate, period.endDate);
-        const netCents = paidCents + upcomingCents;
-        if (netCents !== 0) {
-          await repos.periods.update(userId, period.id, { startingCents: first.startingCents - netCents }, createdAt);
-        }
+        const period = await addEarlierIn(repos, userId, schedule, todayIn(timezone, now()));
+        if (!period) throw new AppError(400, "validation", "That's more than a year back");
         return period.id;
       });
     },
@@ -532,6 +546,48 @@ export function createPeriodService(deps: {
     async ensureThrough(repos: Repos, userId: string, date: LocalDate): Promise<void> {
       const budget = await loadBudget(repos, userId);
       await ensureThroughIn(repos, userId, budget.schedule, date, todayIn(budget.timezone, now()));
+    },
+
+    /**
+     * Creates periods towards both ends of a span of dates, as far as the limits allow, in
+     * the caller's transaction: forwards to the horizon, and backwards only if `addEarlier`
+     * is set. It never fails for a date out of reach; the caller looks at which periods
+     * exist afterwards. Returns how many were created at each end.
+     */
+    async extendToward(
+      repos: Repos,
+      userId: string,
+      span: { from: LocalDate; to: LocalDate },
+      options: { addEarlier: boolean },
+    ): Promise<{ earlier: number; later: number }> {
+      const { schedule, timezone } = await loadBudget(repos, userId);
+      const today = todayIn(timezone, now());
+      const firstBefore = await repos.periods.findFirst(userId);
+      const lastBefore = await repos.periods.findLast(userId);
+      if (!firstBefore || !lastBefore) throw noBudget();
+
+      let earlier = 0;
+      if (options.addEarlier) {
+        let first: PeriodRecord | null = firstBefore;
+        while (first.startDate > span.from) {
+          first = await addEarlierIn(repos, userId, schedule, today);
+          if (!first) break;
+          earlier += 1;
+        }
+      }
+
+      const horizonEnd = nominalPeriod(schedule, horizonSeq(schedule, today)).end;
+      const target = span.to > horizonEnd ? horizonEnd : span.to;
+      if (target > lastBefore.endDate) {
+        try {
+          await ensureThroughIn(repos, userId, schedule, target, today);
+        } catch (error) {
+          // Out of reach after all (the last allowed period was cut short by hand): stop where it stopped.
+          if (!(error instanceof AppError && error.fields?.date)) throw error;
+        }
+      }
+      const lastAfter = await repos.periods.findLast(userId);
+      return { earlier, later: (lastAfter?.seq ?? lastBefore.seq) - lastBefore.seq };
     },
   };
 }

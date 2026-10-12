@@ -1,8 +1,12 @@
-import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import type { Db } from "../../db/client.ts";
 import { transactions } from "../../db/schema.ts";
 import type { TransactionRepo } from "../types.ts";
+import { rethrowConstraint } from "./errors.ts";
+
+// Rows per statement, kept well under SQLite's limit on bound values.
+const BATCH = 100;
 
 /** occurs_at is sortable text, so a date range is the half-open interval [start 00:00, day after end 00:00). */
 function inRange(userId: string, startDate: LocalDate, endDate: LocalDate) {
@@ -49,6 +53,25 @@ export function createTransactionRepo(db: Db): TransactionRepo {
     async create(transaction) {
       await db.insert(transactions).values(transaction);
       return transaction;
+    },
+    async createMany(records) {
+      for (let i = 0; i < records.length; i += BATCH) {
+        await db
+          .insert(transactions)
+          .values(records.slice(i, i + BATCH))
+          .catch(rethrowConstraint);
+      }
+    },
+    async findImportKeys(userId, importKeys) {
+      const found: string[] = [];
+      for (let i = 0; i < importKeys.length; i += BATCH) {
+        const rows = await db
+          .select({ importKey: transactions.importKey })
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId), inArray(transactions.importKey, importKeys.slice(i, i + BATCH))));
+        for (const row of rows) if (row.importKey !== null) found.push(row.importKey);
+      }
+      return found;
     },
     async createIfAbsent(transaction) {
       const inserted = await db

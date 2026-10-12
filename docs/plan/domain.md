@@ -215,8 +215,8 @@ See decision 1 in `README.md`; the rules below assume the default.
 ## Transactions
 
 Fields: `id`, `userId`, `name`, `amountCents` (signed), `occursAt`, `status`
-(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, and for generated ones `recurringId`
-and `occurrenceDate`.
+(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, for generated ones `recurringId`
+and `occurrenceDate`, and for imported ones `importKey`.
 
 - The API accepts a positive amount plus `kind` (`expense` | `income`) and stores the
   signed value. Zero is rejected.
@@ -226,6 +226,26 @@ and `occurrenceDate`.
   `sortOrder` only matters between transactions with identical `occursAt` (phase 7 adds
   manual reordering; until then it is 0).
 - Deleting is a hard delete.
+
+### Importing
+
+`POST /api/transactions/import` saves up to 500 transactions in one step, with the same
+effect on starting amounts as creating them one at a time.
+
+- **All or nothing.** If any row is invalid, or dated where no period can exist, nothing
+  is saved and the error names each row (`transactions.17.occursAt`).
+- **`importKey`** is the importer's own name for a row, unique per user. A row whose key
+  is already held is skipped, so the same file can be imported again. Rows without a key
+  are always added. Deleting an imported transaction frees its key, so importing the same
+  row later brings it back.
+- **Rows before the earliest period** are refused unless `addEarlierPeriods` is set, which
+  adds the periods needed, within the usual one-year limit. Rows after the latest period
+  generate forwards to the horizon, as a single transaction does.
+- **`dryRun`** does the whole import and undoes it. The report is what a real run would
+  return.
+- **Possible duplicates** are reported, never acted on: for each incoming row, the closest
+  transaction already held with the same signed amount and a date within three days. The
+  caller decides whether to drop the row and update the existing transaction instead.
 
 ## Recurring items
 
@@ -302,9 +322,10 @@ periods            id, user_id → users, schedule_id → budget_schedules, seq,
                    unique (user_id, seq); unique (user_id, start_date)
 transactions       id, user_id → users, name, amount_cents, occurs_at, status, paid_at,
                    sort_order, note, recurring_id → recurring_items (set null),
-                   occurrence_date, created_at, updated_at
+                   occurrence_date, import_key, created_at, updated_at
                    index (user_id, occurs_at)
                    unique (recurring_id, occurrence_date)   -- nulls don't collide
+                   unique (user_id, import_key)             -- likewise
 recurring_items    id, user_id → users, name, description, kind, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    created_at, updated_at
@@ -359,6 +380,7 @@ POST   /api/transactions
 PATCH  /api/transactions/:id
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
+POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods? } → what was (or would be) saved; all or nothing
 GET    /api/recurring
 POST   /api/recurring
 POST   /api/recurring/preview          what creating this item would add, without saving

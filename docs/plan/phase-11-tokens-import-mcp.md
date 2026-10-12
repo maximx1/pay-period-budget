@@ -8,7 +8,7 @@ be loaded in one go, checked before it is written and safe to run twice.
 tried against anything real. **Suggested model:** Opus for 11.1 and 11.4 (credentials, and
 a bulk write through the carry-forward rules); Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.3 done the same day;
+**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.4 done the same day;
 the rest not started.
 
 ## Approach
@@ -147,7 +147,7 @@ is a field error; another user's transactions never appear.
 
 ### 11.4 Bulk import
 
-- [ ] Done
+- [x] Done (see the implementation notes: the response and the duplicate rule differ from the text below)
 
 **Files:** `src/server/db/schema.ts` + migration, `src/server/repos/types.ts`,
 `src/server/repos/sqlite/transactions.ts`, new `src/server/services/import.ts`,
@@ -358,3 +358,59 @@ Built as specified. What the next task needs to know:
 - Each transaction carries `recurringId`, which is how a caller tells a generated
   occurrence from a one-off. `occurrenceDate` (the date it was scheduled for) is not in
   the response; add it to `Transaction` if 11.4's matching needs it.
+
+### 11.4 (2026-10-11)
+
+`POST /api/transactions/import`, in `src/server/services/import.ts`. Types and the request
+schema are in `src/shared/transactions.ts` (`transactionImportSchema`,
+`TransactionImportResponse`, `PossibleDuplicate`). Where it differs from the task text,
+this is what was built:
+
+- **Response.** `periodsAdded` is `{ earlier, later }`, not one number: periods generated
+  forwards bring recurring transactions with them just as added earlier ones do.
+  `current` carries both figures before and after (`leftover…Cents`, `projected…Cents`)
+  and the period's id, and is null only if no period covers today. The status is 200 for
+  a dry run and a real run alike.
+- **Possible duplicates are narrower than planned, on purpose.**
+  - One entry per incoming row at most: the closest existing transaction with the same
+    signed amount within `DUPLICATE_WINDOW_DAYS` (3). On a tie the generated recurring one
+    wins, then one typed in by hand.
+  - Other rows of the same request are **not** compared. A bank does not list a payment
+    twice, and two $5 coffees in three days would otherwise be reported every time.
+  - An existing transaction that was itself imported has its own key, so a different key
+    normally means a different payment. It is reported (`reason: "imported"`) only when
+    the date and the name also match, which is what a changed way of making keys looks
+    like.
+  - Two incoming rows can point at the same existing transaction. The caller sees the
+    same `existing.id` twice and decides.
+- **`Transaction` now has `importKey`** (null unless imported), so a caller can see which
+  rows came from the bank.
+- **Reaching dates.** `PeriodService.extendToward(repos, userId, { from, to }, { addEarlier })`
+  creates periods toward both ends as far as the limits allow and never fails for a date
+  out of reach. The import then checks every row against the periods that exist and
+  reports the ones outside, by row. `addEarlier` was split into `addEarlierIn` for this.
+- **Dry run** throws a private error inside `store.transaction` to roll it back and
+  returns the result it carried. Ids of periods and generated transactions created along
+  the way differ between a dry run and the real run; everything else is identical (tested).
+- **Carrying** is one `applyLeftoverDelta` per period that received rows. The test that
+  matters imports eleven rows for one user and posts the same eleven one at a time for
+  another, across two added earlier periods, a hand-set starting amount and two periods
+  not yet generated, and compares every period and transaction.
+- **Order.** Rows sharing a date and time go after whatever is already there, in the order
+  given.
+- `paid: true` sets `paidAt` to the time of the import, as creating a paid transaction
+  does. The bank's posting date is the row's `occursAt`.
+- **Body size.** This path alone accepts 1 MB (`IMPORT_PATH` in `routes/transactions.ts`,
+  chosen in `app.ts`); everything else stays at 100 KB. 500 rows with 300-character notes
+  is about 200 KB.
+- **Fixed on the way: an oversized request was answered with a generic 500.** Hono's body
+  limit raises its own error type, which the error handler did not know. It is now a 413
+  with the usual envelope ("That request is too large"), on every endpoint.
+- New repo methods: `transactions.createMany` and `transactions.findImportKeys`.
+  `TransactionRecord` has `importKey`; anything that builds one must set it.
+- Rows without an `importKey` are always imported. Only keyed rows are safe to repeat.
+- 500 rows import in about 50 ms in the tests.
+- Checked by breaking eight rules once each (no carry, a dry run that saves, held keys
+  not skipped, order ignoring existing rows, imported rows always reported, a four-day
+  window, keys shared between users, out-of-range rows accepted): each fails a test in
+  `routes/transactions.import.test.ts`. Also run once as a dry run against the dev server.

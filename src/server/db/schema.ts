@@ -175,11 +175,15 @@ export const transactions = sqliteTable(
     recurringId: text("recurring_id").references(() => recurringItems.id, { onDelete: "set null" }),
     /** The scheduled date this was generated for. Unlike occurs_at it never changes. */
     occurrenceDate: text("occurrence_date"),
+    /** The importer's own name for this row, so importing the same row again adds nothing. */
+    importKey: text("import_key"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [
     index("transactions_user_occurs_idx").on(t.userId, t.occursAt),
+    // Rows that were not imported have a null key and never collide.
+    uniqueIndex("transactions_user_import_key_unique").on(t.userId, t.importKey),
     // One transaction per occurrence of an item. Rows with no item have a null recurring_id,
     // and SQLite treats nulls as distinct, so they are unaffected.
     uniqueIndex("transactions_recurring_occurrence_unique").on(t.recurringId, t.occurrenceDate),

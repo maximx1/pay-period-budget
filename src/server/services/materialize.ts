@@ -44,6 +44,7 @@ export async function materializeInPeriod(
         note: null,
         recurringId: item.id,
         occurrenceDate: date,
+        importKey: null,
         createdAt: now,
         updatedAt: now,
       }));

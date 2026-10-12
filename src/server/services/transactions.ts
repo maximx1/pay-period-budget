@@ -72,6 +72,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           note: input.note || null,
           recurringId: null,
           occurrenceDate: null,
+          importKey: null,
           createdAt,
           updatedAt: createdAt,
         });

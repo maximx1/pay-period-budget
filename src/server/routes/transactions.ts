@@ -1,5 +1,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import {
+  transactionImportSchema,
+  type TransactionImportResponse,
   transactionInputSchema,
   type TransactionListResponse,
   transactionOrderSchema,
@@ -8,10 +10,18 @@ import {
   type TransactionResponse,
 } from "../../shared/transactions.ts";
 import { type AppEnv, parseJson, parseQuery } from "../http.ts";
+import type { ImportService } from "../services/import.ts";
 import type { TransactionService } from "../services/transactions.ts";
 
-export function transactionRoutes(deps: { transactions: TransactionService; authed: MiddlewareHandler<AppEnv> }) {
-  const { transactions } = deps;
+/** Where many transactions arrive in one request; app.ts allows this path a larger body. */
+export const IMPORT_PATH = "/api/transactions/import";
+
+export function transactionRoutes(deps: {
+  transactions: TransactionService;
+  imports: ImportService;
+  authed: MiddlewareHandler<AppEnv>;
+}) {
+  const { transactions, imports } = deps;
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
 
@@ -23,6 +33,11 @@ export function transactionRoutes(deps: { transactions: TransactionService; auth
   routes.post("/", async (c) => {
     const input = await parseJson(c, transactionInputSchema);
     return c.json<TransactionResponse>(await transactions.create(c.var.user.id, input), 201);
+  });
+
+  routes.post("/import", async (c) => {
+    const input = await parseJson(c, transactionImportSchema);
+    return c.json<TransactionImportResponse>(await imports.importTransactions(c.var.user.id, input));
   });
 
   // Registered before "/:id" routes so "order" is never taken for an id.

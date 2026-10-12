@@ -391,6 +391,7 @@ describe("generated transactions stand on their own", () => {
       note: null,
       recurringId: item.id,
       occurrenceDate: "2026-01-25",
+      importKey: null,
       createdAt: t.clock.now(),
       updatedAt: t.clock.now(),
     };

@@ -36,6 +36,13 @@
       "when": 1791772204898,
       "tag": "0004_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791773286002,
+      "tag": "0005_transaction_import_key",
+      "breakpoints": true
     }
   ]
 }

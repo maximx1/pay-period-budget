@@ -13,8 +13,9 @@ import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
 import { recurringRoutes } from "./routes/recurring.ts";
 import { settingsRoutes } from "./routes/settings.ts";
-import { transactionRoutes } from "./routes/transactions.ts";
+import { IMPORT_PATH, transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
+import { createImportService } from "./services/import.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
 import { createRecurringService } from "./services/recurring.ts";
@@ -38,6 +39,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
     onPeriodCreated: (repos, period) => materializeAllInPeriod(repos, period, clock()),
   });
   const transactions = createTransactionService({ store, periods, now });
+  const imports = createImportService({ store, periods, now });
   const recurring = createRecurringService({ store, periods, now });
   const authed = requireAuth(auth, config);
 
@@ -56,7 +58,13 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
     }),
   );
   api.use(originGuard(config.appOrigins));
-  api.use(bodyLimit({ maxSize: 100 * 1024 }));
+  // A bulk import is the one request that is legitimately large.
+  const tooLarge = () => {
+    throw new AppError(413, "validation", "That request is too large");
+  };
+  const usualLimit = bodyLimit({ maxSize: 100 * 1024, onError: tooLarge });
+  const importLimit = bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge });
+  api.use((c, next) => (c.req.path === IMPORT_PATH ? importLimit : usualLimit)(c, next));
   // Healthy means able to serve: the process is up and the database answers.
   api.get("/health", async (c) => {
     await store.ping();
@@ -66,7 +74,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, authed }));
-  api.route("/transactions", transactionRoutes({ transactions, authed }));
+  api.route("/transactions", transactionRoutes({ transactions, imports, authed }));
   api.route("/recurring", recurringRoutes({ recurring, authed }));
   api.route("/settings", settingsRoutes({ periods, authed }));
   api.all("*", () => {

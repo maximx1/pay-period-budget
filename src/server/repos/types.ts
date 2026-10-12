@@ -156,6 +156,8 @@ export type TransactionRecord = {
   recurringId: string | null;
   /** The scheduled date it was generated for, or null for a one-off. */
   occurrenceDate: LocalDate | null;
+  /** The key it was imported under, or null if it was not imported. Unique per user. */
+  importKey: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -177,6 +179,10 @@ export interface TransactionRepo {
   /** The highest manual order among transactions at exactly this date and time, or null if there are none. */
   maxSortOrderAt(userId: string, occursAt: LocalDateTime): Promise<number | null>;
   create(transaction: TransactionRecord): Promise<TransactionRecord>;
+  /** Inserts them all. Throws UniqueConstraintError if an import key is already in use. */
+  createMany(transactions: TransactionRecord[]): Promise<void>;
+  /** Which of these import keys the user's transactions already use. */
+  findImportKeys(userId: string, importKeys: string[]): Promise<string[]>;
   /**
    * Inserts a generated transaction unless one already exists for the same recurring item
    * and occurrence date. Returns whether it was inserted.

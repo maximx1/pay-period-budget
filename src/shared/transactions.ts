@@ -67,6 +67,8 @@ export type Transaction = {
   sortOrder: number;
   /** The recurring item it was generated from, or null for a one-off (or if that item was deleted). */
   recurringId: string | null;
+  /** The key it was imported under, or null if it was entered or generated in the app. */
+  importKey: string | null;
 };
 
 /** The most days one request for transactions by date may cover, counting both ends. */
@@ -91,4 +93,83 @@ export type TransactionListResponse = { transactions: Transaction[] };
 export type TransactionResponse = {
   transaction: Transaction;
   period: { id: string; startDate: LocalDate; endDate: LocalDate };
+};
+
+/** The most rows one import request may carry. */
+export const MAX_IMPORT_ROWS = 500;
+/** How many days either side of a row an existing transaction of the same amount is reported as a possible duplicate. */
+export const DUPLICATE_WINDOW_DAYS = 3;
+
+export const importRowSchema = transactionInputSchema.extend({
+  /**
+   * The importer's own name for this row, such as the bank's transaction id. A row whose
+   * key the account already holds is skipped, which makes an import safe to repeat.
+   */
+  importKey: z.string().trim().min(1, "Enter a key or leave it out").max(100, "Keep the key under 100 characters").optional(),
+});
+export type ImportRow = z.output<typeof importRowSchema>;
+
+export const transactionImportSchema = z
+  .object({
+    /** Work everything out and report it, but save nothing. */
+    dryRun: z.boolean().optional(),
+    /** Allow rows dated before the earliest pay period by adding the periods they need. */
+    addEarlierPeriods: z.boolean().optional(),
+    transactions: z
+      .array(importRowSchema)
+      .min(1, "Nothing to import")
+      .max(MAX_IMPORT_ROWS, `Send ${MAX_IMPORT_ROWS} transactions or fewer at a time`),
+  })
+  .superRefine(({ transactions }, context) => {
+    const firstUse = new Map<string, number>();
+    for (const [index, row] of transactions.entries()) {
+      if (typeof row?.importKey !== "string") continue;
+      const earlier = firstUse.get(row.importKey);
+      if (earlier === undefined) firstUse.set(row.importKey, index);
+      else {
+        context.addIssue({
+          code: "custom",
+          path: ["transactions", index, "importKey"],
+          message: `Row ${earlier} of this request has the same key`,
+        });
+      }
+    }
+  });
+export type TransactionImportInput = z.output<typeof transactionImportSchema>;
+
+/** An incoming row that may be the same payment as a transaction the account already holds. */
+export type PossibleDuplicate = {
+  /** Position of the incoming row in the request. */
+  index: number;
+  /** The closest transaction of the same amount within DUPLICATE_WINDOW_DAYS. */
+  existing: Transaction;
+  /**
+   * What the existing one is: generated from a recurring item, entered by hand, or imported
+   * under a different key (reported only when the date and name also match).
+   */
+  reason: "recurring" | "manual" | "imported";
+  /** Days between the two dates; 0 when they share a date. */
+  daysApart: number;
+};
+
+export type TransactionImportResponse = {
+  dryRun: boolean;
+  /** Rows saved, or that would be on a real run. */
+  created: number;
+  /** Rows left out because their key is already in the account. */
+  skipped: Array<{ index: number; importKey: string }>;
+  /** Pay periods created to hold the rows. Each brings its recurring items' transactions with it. */
+  periodsAdded: { earlier: number; later: number };
+  /** The periods that received rows, oldest first. */
+  periods: Array<{ id: string; startDate: LocalDate; endDate: LocalDate; count: number; netCents: number }>;
+  /** A report only: these rows are imported like any other unless the caller takes them out. */
+  possibleDuplicates: PossibleDuplicate[];
+  /** Today's period before and after, or null if no period covers today. */
+  current: {
+    periodId: string;
+    leftoverBeforeCents: number;
+    leftoverAfterCents: number;
+    projectedBeforeCents: number;
+    projectedAfterCents: number;
+  } | null;
 };
