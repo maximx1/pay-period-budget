@@ -35,6 +35,8 @@ export type SessionRecord = {
   createdAt: Date;
   expiresAt: Date;
   lastSeenAt: Date;
+  /** Ends the session after this long without a request. Null: only `expiresAt` ends it. */
+  idleTimeoutMs: number | null;
   userAgent: string | null;
 };
 
@@ -50,6 +52,8 @@ export interface SessionRepo {
   /** Signs the user out everywhere except the session with `keepId`. */
   deleteOthers(userId: string, keepId: string): Promise<void>;
   deleteExpired(now: Date): Promise<void>;
+  /** Deletes sessions with an idle timeout whose last request is older than it plus `graceMs`. */
+  deleteIdle(now: Date, graceMs: number): Promise<void>;
 }
 
 export type ApiTokenRecord = {

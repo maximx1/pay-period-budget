@@ -37,6 +37,11 @@ export const sessions = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    /**
+     * Set for a browser's session: it ends once this long passes without a request. Null for
+     * the Android app's, which locks itself instead and keeps its session.
+     */
+    idleTimeoutMs: integer("idle_timeout_ms"),
     userAgent: text("user_agent"),
   },
   (t) => [

@@ -1,6 +1,7 @@
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
-import { isLocked, noteAppHidden, noteAppShown } from "./sessionStore.ts";
+import { recheckIdle } from "./idle.ts";
+import { isLocked } from "./sessionStore.ts";
 
 // Behaviour only the Android app needs. Loaded on demand from main.tsx so none of it, nor
 // the plugins it imports, ends up in what a browser downloads.
@@ -52,11 +53,13 @@ function keepSystemBarsInStepWithTheme() {
   new MutationObserver(apply).observe(document.documentElement, { attributeFilter: ["data-theme"] });
 }
 
-/** With biometric unlock on, coming back after a while away asks for the fingerprint again. */
+/**
+ * Time in the background counts as time unused. Timers may not have run while the app was
+ * away, so look at the clock the moment it comes back: past the idle timeout, it locks.
+ */
 function lockAfterTimeAway() {
   void App.addListener("appStateChange", ({ isActive }) => {
-    if (isActive) noteAppShown();
-    else noteAppHidden();
+    if (isActive) recheckIdle();
   });
 }
 

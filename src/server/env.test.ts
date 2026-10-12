@@ -16,4 +16,12 @@ describe("loadConfig", () => {
     expect(loadConfig({ NODE_ENV: "production" }).cookieSecure).toBe(true);
     expect(loadConfig({ NODE_ENV: "production", COOKIE_SECURE: "false" }).cookieSecure).toBe(false);
   });
+
+  it("sets the idle timeout to ten minutes unless told otherwise, and lets it be turned off", () => {
+    expect(loadConfig({}).idleTimeoutMs).toBe(10 * 60 * 1000);
+    expect(loadConfig({ IDLE_TIMEOUT_MINUTES: "30" }).idleTimeoutMs).toBe(30 * 60 * 1000);
+    expect(loadConfig({ IDLE_TIMEOUT_MINUTES: "0" }).idleTimeoutMs).toBe(0);
+    expect(() => loadConfig({ IDLE_TIMEOUT_MINUTES: "-5" })).toThrow();
+    expect(() => loadConfig({ IDLE_TIMEOUT_MINUTES: "soon" })).toThrow();
+  });
 });

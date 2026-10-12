@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Fingerprint, Wallet } from "lucide-react";
+import { ScanFace, Wallet } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "../../components/ui/Button.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
@@ -8,8 +8,9 @@ import { dropSessionData } from "./session.ts";
 
 /**
  * Stands in for the whole app while the Android app is locked: at start-up with biometric
- * unlock on, and after a while in the background. Nothing behind it is mounted, so nothing
- * is shown and no request is made until the fingerprint check passes. A browser is never locked.
+ * unlock on, and once it has gone unused for the idle timeout. Nothing behind it is mounted,
+ * so nothing is shown and no request is made until the face or fingerprint check passes.
+ * A browser is never locked; it signs out instead.
  */
 export function BiometricGate({ children }: { children: ReactNode }) {
   const locked = useSyncExternalStore(subscribeToLock, isLocked);
@@ -31,7 +32,7 @@ function LockScreen() {
     if (result === "unlocked") return;
     if (result === "gone") {
       dropSessionData(queryClient);
-      toast("Fingerprint unlock isn't available any more. Sign in with your password.", { variant: "error" });
+      toast("Face or fingerprint unlock isn't available any more. Sign in with your password.", { variant: "error" });
       return;
     }
     setPrompting(false);
@@ -65,7 +66,7 @@ function LockScreen() {
         )}
         <div className="mt-6 flex w-full flex-col gap-2">
           <Button onClick={tryUnlock} loading={prompting}>
-            {!prompting && <Fingerprint className="size-4" aria-hidden />}
+            {!prompting && <ScanFace className="size-4" aria-hidden />}
             Unlock
           </Button>
           <Button variant="ghost" onClick={usePassword} disabled={prompting}>

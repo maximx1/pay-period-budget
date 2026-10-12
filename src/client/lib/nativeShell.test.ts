@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/app", () => ({ App: {} }));
-vi.mock("./sessionStore.ts", () => ({ isLocked: () => false, noteAppHidden: () => {}, noteAppShown: () => {} }));
+vi.mock("./sessionStore.ts", () => ({ isLocked: () => false }));
 
 const { dismissTopModal, isDarkTheme } = await import("./nativeShell.ts");
 

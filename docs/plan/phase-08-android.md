@@ -127,7 +127,8 @@ Behaviour, the same pattern banking apps use:
 - If accepted, the session token moves from plain preferences into biometric-protected
   storage. It is no longer readable without a successful prompt.
 - On cold start, and when the app returns to the foreground after more than 5 minutes
-  away, show a lock screen and trigger the prompt. Success loads the token into memory;
+  away (since phase 12: after ten minutes without use, in the foreground or not), show a
+  lock screen and trigger the prompt. Success loads the token into memory;
   cancel leaves the lock screen with "Try again" and "Use password instead" (which clears
   the stored token and shows the sign-in form).
 - Too many failures or biometrics removed from the device → fall back to the password.
@@ -288,7 +289,8 @@ Still to check, with a fingerprint enrolled (emulator first, then the Pixel):
 2. Force-stop and reopen: lock screen, prompt, straight into the app with no password.
 3. Cancel the prompt: lock screen stays; "Unlock" prompts again; "Use password instead"
    shows the sign-in form.
-4. More than five minutes in the background locks it; less does not.
+4. More than five minutes in the background locks it; less does not. (Since phase 12 the
+   rule is ten minutes without use; see the checklist at the end of `phase-12-idle-timeout.md`.)
 5. With it on, `shared_prefs/CapacitorStorage.xml` holds no `session.token`, and the
    plugin's preferences hold only ciphertext (`run-as` on a debug build).
 6. Signing the phone out from the web's Settings forces a password sign-in.

@@ -1,5 +1,6 @@
 import { Preferences } from "@capacitor/preferences";
 import { AccessControl, BiometricAuthError, NativeBiometric } from "@capgo/capacitor-native-biometric";
+import { markActive } from "./idle.ts";
 import { isNative } from "./platform.ts";
 
 // Where the Android app keeps its session token. A browser never holds one: its session
@@ -8,13 +9,13 @@ import { isNative } from "./platform.ts";
 // The token lives in one of two places, by the user's choice on this device:
 //   - plain app-private preferences, read at start-up without asking; or
 //   - the biometric vault: encrypted under an Android Keystore key that the OS releases
-//     only after a fingerprint or face check. Nothing in JavaScript can read it otherwise.
+//     only after a face or fingerprint check. Nothing in JavaScript can read it otherwise.
+//     The OS decides which of the two it accepts: only ones it rates "strong" (Class 3),
+//     and it offers every strong one that is enrolled in the same prompt. The app cannot
+//     choose or order them.
 const TOKEN_KEY = "session.token";
 const UNLOCK_KEY = "session.unlock";
 const OFFERED_KEY = "session.unlockOffered";
-
-/** Away from the app for longer than this and it asks for the fingerprint again. */
-export const AWAY_LIMIT_MS = 5 * 60 * 1000;
 
 // Device storage is asynchronous; this copy lets api.ts read the token without waiting.
 let current: string | null = null;
@@ -22,7 +23,6 @@ let current: string | null = null;
 let biometric = false;
 /** A token is in the vault and has not been released into memory. */
 let locked = false;
-let hiddenAt: number | null = null;
 const lockListeners = new Set<() => void>();
 
 function setLocked(next: boolean) {
@@ -136,6 +136,8 @@ export async function unlock(): Promise<UnlockResult> {
   if (!locked) return "unlocked";
   try {
     current = await readFromVault();
+    // Unlocking is use: the idle clock starts again from here.
+    markActive();
     setLocked(false);
     return "unlocked";
   } catch (error) {
@@ -150,21 +152,14 @@ export async function unlock(): Promise<UnlockResult> {
   }
 }
 
-/** Drops the token from memory, so the next use needs the fingerprint again. */
+/**
+ * Drops the token from memory, so the next use needs the face or fingerprint again. Called
+ * when the app has gone unused for the idle timeout (features/auth/IdleGuard.tsx).
+ */
 export function lock(): void {
   if (!biometric || current === null) return;
   current = null;
   setLocked(true);
-}
-
-// The app locks after a spell in the background. nativeShell.ts reports the two moments.
-export function noteAppHidden(now: number = Date.now()): void {
-  hiddenAt ??= now;
-}
-
-export function noteAppShown(now: number = Date.now()): void {
-  if (hiddenAt !== null && now - hiddenAt > AWAY_LIMIT_MS) lock();
-  hiddenAt = null;
 }
 
 export function biometricUnlockEnabled(): boolean {

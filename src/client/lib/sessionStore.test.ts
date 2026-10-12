@@ -104,11 +104,10 @@ describe("without biometric unlock", () => {
     expect(restarted.isLocked()).toBe(false);
   });
 
-  it("never locks for time away", async () => {
+  it("cannot be locked: there would be nothing to unlock it with", async () => {
     const store = await start();
     await store.setToken("abc");
-    store.noteAppHidden(0);
-    store.noteAppShown(store.AWAY_LIMIT_MS * 10);
+    store.lock();
     expect(store.getToken()).toBe("abc");
     expect(store.isLocked()).toBe(false);
   });
@@ -221,17 +220,35 @@ describe("with biometric unlock on", () => {
     expect(changes).toEqual([true, false]);
   });
 
-  it("locks after more than five minutes away, and not before", async () => {
+  it("drops the token when locked, and unlocking counts as using the app", async () => {
     const store = await withBiometricUnlock();
+    // The same copy of the module the store itself uses.
+    const idle = await import("./idle.ts");
+    const longAgo = Date.now() - 60 * 60 * 1000;
+    idle.markActive(longAgo);
 
-    store.noteAppHidden(1_000);
-    store.noteAppShown(1_000 + store.AWAY_LIMIT_MS);
-    expect(store.isLocked()).toBe(false);
-
-    store.noteAppHidden(1_000);
-    store.noteAppShown(1_001 + store.AWAY_LIMIT_MS);
+    store.lock();
     expect(store.isLocked()).toBe(true);
     expect(store.getToken()).toBeNull();
+    // Still idle: the lock screen would otherwise reopen straight away.
+    expect(idle.lastActivity()).toBe(longAgo);
+
+    expect(await store.unlock()).toBe("unlocked");
+    expect(store.getToken()).toBe("abc");
+    expect(idle.isIdle(10 * 60 * 1000)).toBe(false);
+    expect(idle.lastActivity()).toBeGreaterThan(longAgo);
+  });
+
+  it("does not count a refused unlock as using the app", async () => {
+    const store = await withBiometricUnlock();
+    const idle = await import("./idle.ts");
+    const longAgo = Date.now() - 60 * 60 * 1000;
+    idle.markActive(longAgo);
+    store.lock();
+
+    phone.prompt = CANCEL;
+    expect(await store.unlock()).toBe("cancelled");
+    expect(idle.lastActivity()).toBe(longAgo);
   });
 
   it("puts the token from a new password sign-in straight into the vault", async () => {

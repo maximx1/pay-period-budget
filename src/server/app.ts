@@ -30,7 +30,12 @@ export type AppDeps = {
 };
 
 export function createApp({ store, config, now, staticDir }: AppDeps) {
-  const auth = createAuthService({ store, sessionTtlMs: config.sessionTtlMs, now });
+  const auth = createAuthService({
+    store,
+    sessionTtlMs: config.sessionTtlMs,
+    idleTimeoutMs: config.idleTimeoutMs,
+    now,
+  });
   const clock = now ?? (() => new Date());
   const periods = createPeriodService({
     store,

@@ -69,7 +69,7 @@ describe("sqlite store", () => {
   });
 
   it("enforces foreign keys, inside and outside transactions", async () => {
-    const orphan = { id: "s1", tokenHash: "h1", userId: "missing", createdAt: now, expiresAt: now, lastSeenAt: now, userAgent: null };
+    const orphan = { id: "s1", tokenHash: "h1", userId: "missing", createdAt: now, expiresAt: now, lastSeenAt: now, idleTimeoutMs: null, userAgent: null };
     await expect(t.store.sessions.create(orphan)).rejects.toThrow();
     await expect(t.store.transaction((repos) => repos.sessions.create({ ...orphan, id: "s2", tokenHash: "h2" }))).rejects.toThrow();
   });

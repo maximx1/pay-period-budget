@@ -15,9 +15,24 @@ import { AppError } from "../lib/errors.ts";
 import { hashPassword, verifyDummyPassword, verifyPassword } from "../lib/password.ts";
 import { generateApiToken, generateSessionToken, hashToken } from "../lib/tokens.ts";
 import { describeUserAgent } from "../lib/userAgent.ts";
-import { type ApiTokenRecord, type DataStore, UniqueConstraintError, type UserRecord } from "../repos/types.ts";
+import {
+  type ApiTokenRecord,
+  type DataStore,
+  type SessionRecord,
+  UniqueConstraintError,
+  type UserRecord,
+} from "../repos/types.ts";
 
 const LAST_SEEN_RESOLUTION_MS = 60 * 60 * 1000;
+/** A session with an idle timeout has its last request recorded to the minute rather than the hour. */
+const IDLE_SEEN_RESOLUTION_MS = 60 * 1000;
+/**
+ * The server ends an idle session this much later than the timeout says. The browser signs
+ * itself out on time; this is the backstop for a closed tab or a stolen cookie, and it must
+ * never beat the browser to it. The slack covers the minute's resolution above plus the gap
+ * between the browser's keepalive requests while it is in use (see IDLE_KEEPALIVE_MS).
+ */
+const IDLE_GRACE_MS = 2 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type IssuedSession = { user: PublicUser; token: string; expiresAt: Date };
@@ -28,7 +43,11 @@ export type AuthenticatedSession = {
   renewedUntil?: Date;
 };
 export type AuthenticatedApiToken = { user: PublicUser; tokenId: string; scope: ApiTokenScope };
-export type RequestMeta = { userAgent?: string };
+export type RequestMeta = {
+  userAgent?: string;
+  /** The session is a browser's: end it after the idle timeout. */
+  endsWhenIdle?: boolean;
+};
 
 export type AuthService = ReturnType<typeof createAuthService>;
 
@@ -52,9 +71,16 @@ const takenError = (field: string) =>
 export function createAuthService(deps: {
   store: DataStore;
   sessionTtlMs: number;
+  /** 0: no session ends for being idle. */
+  idleTimeoutMs?: number;
   now?: () => Date;
 }) {
-  const { store, sessionTtlMs, now = () => new Date() } = deps;
+  const { store, sessionTtlMs, idleTimeoutMs = 0, now = () => new Date() } = deps;
+
+  /** Whether the session has gone unused for longer than its idle timeout allows. */
+  const idledOut = (session: SessionRecord, current: Date) =>
+    session.idleTimeoutMs !== null &&
+    current.getTime() - session.lastSeenAt.getTime() > session.idleTimeoutMs + IDLE_GRACE_MS;
 
   async function issueSession(user: UserRecord, meta: RequestMeta): Promise<IssuedSession> {
     const token = generateSessionToken();
@@ -67,6 +93,7 @@ export function createAuthService(deps: {
       createdAt,
       expiresAt,
       lastSeenAt: createdAt,
+      idleTimeoutMs: meta.endsWhenIdle && idleTimeoutMs > 0 ? idleTimeoutMs : null,
       userAgent: meta.userAgent?.slice(0, 255) ?? null,
     });
     return { user: toPublicUser(user), token, expiresAt };
@@ -112,7 +139,7 @@ export function createAuthService(deps: {
       if (!session) return null;
 
       const current = now();
-      if (session.expiresAt <= current) {
+      if (session.expiresAt <= current || idledOut(session, current)) {
         await store.sessions.deleteById(session.id);
         return null;
       }
@@ -120,7 +147,8 @@ export function createAuthService(deps: {
       if (!user) return null;
 
       const needsRenewal = session.expiresAt.getTime() - current.getTime() < sessionTtlMs / 2;
-      const lastSeenIsOld = current.getTime() - session.lastSeenAt.getTime() > LAST_SEEN_RESOLUTION_MS;
+      const seenResolution = session.idleTimeoutMs === null ? LAST_SEEN_RESOLUTION_MS : IDLE_SEEN_RESOLUTION_MS;
+      const lastSeenIsOld = current.getTime() - session.lastSeenAt.getTime() > seenResolution;
       if (!needsRenewal && !lastSeenIsOld) return { user: toPublicUser(user), sessionId: session.id };
 
       const expiresAt = needsRenewal ? new Date(current.getTime() + sessionTtlMs) : session.expiresAt;
@@ -171,7 +199,7 @@ export function createAuthService(deps: {
     async listSessions(userId: string, currentSessionId: string): Promise<SessionInfo[]> {
       const current = now();
       return (await store.sessions.listForUser(userId))
-        .filter((session) => session.expiresAt > current)
+        .filter((session) => session.expiresAt > current && !idledOut(session, current))
         .map((session) => ({
           id: session.id,
           device: describeUserAgent(session.userAgent),
@@ -229,6 +257,7 @@ export function createAuthService(deps: {
 
     async purgeExpiredSessions(): Promise<void> {
       await store.sessions.deleteExpired(now());
+      await store.sessions.deleteIdle(now(), IDLE_GRACE_MS);
     },
   };
 }

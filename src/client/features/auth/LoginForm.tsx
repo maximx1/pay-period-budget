@@ -6,6 +6,7 @@ import { loginInputSchema } from "../../../shared/auth.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { PasswordField, TextField } from "../../components/ui/TextField.tsx";
+import { idleSignOutMinutes } from "../../lib/idle.ts";
 import { applyApiError } from "./formErrors.ts";
 import { useLogin } from "./session.ts";
 
@@ -14,6 +15,8 @@ type LoginValues = z.input<typeof loginInputSchema>;
 export function LoginForm() {
   const login = useLogin();
   const [formError, setFormError] = useState<string | null>(null);
+  // Set when the app signed out by itself; gone again after the next sign-in.
+  const [idleMinutes] = useState(idleSignOutMinutes);
   const {
     register,
     handleSubmit,
@@ -36,6 +39,11 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert>{formError}</Alert>}
+      {idleMinutes !== null && !formError && (
+        <p role="status" className="rounded-lg bg-surface-2 px-3 py-2.5 text-sm text-fg">
+          You were signed out after {idleMinutes} {idleMinutes === 1 ? "minute" : "minutes"} without activity.
+        </p>
+      )}
       <TextField
         label="Username or email"
         autoComplete="username"

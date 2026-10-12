@@ -35,15 +35,17 @@ export function BiometricOffer() {
     setWorking(false);
     setOpen(false);
     toast(
-      turnedOn ? "Fingerprint unlock is on." : "Fingerprint unlock wasn't turned on. You can do it later in Settings.",
+      turnedOn
+        ? "Face or fingerprint unlock is on."
+        : "Face or fingerprint unlock wasn't turned on. You can do it later in Settings.",
       turnedOn ? undefined : { variant: "error" },
     );
   }
 
   return (
-    <Dialog open={open} onClose={decline} title="Unlock with fingerprint or face next time?">
+    <Dialog open={open} onClose={decline} title="Unlock with your face or fingerprint next time?">
       <p className="text-sm text-muted">
-        Skip the password on this phone. Your sign-in is kept locked, and only your fingerprint or face opens it.
+        Skip the password on this phone. Your sign-in is kept locked, and only your face or fingerprint opens it.
       </p>
       <DialogActions>
         <Button variant="secondary" onClick={decline} disabled={working}>

@@ -57,7 +57,18 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
 
   const routes = new Hono<AppEnv>();
 
-  routes.get("/config", (c) => c.json<AuthConfigResponse>({ registrationOpen: config.allowRegistration }));
+  routes.get("/config", (c) =>
+    c.json<AuthConfigResponse>({
+      registrationOpen: config.allowRegistration,
+      idleTimeoutMinutes: config.idleTimeoutMs / MINUTE,
+    }),
+  );
+
+  /** What is known about the request that is signing in. A browser's session ends when left idle. */
+  const metaOf = (c: Context, transport: SessionTransport) => ({
+    userAgent: c.req.header("user-agent"),
+    endsWhenIdle: transport === "cookie",
+  });
 
   routes.post("/register", async (c) => {
     if (!config.allowRegistration) {
@@ -69,7 +80,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     registerByIp.hit(ip);
 
     const { transport, ...input } = await parseJson(c, registerRequestSchema);
-    const session = await auth.register(input, { userAgent: c.req.header("user-agent") });
+    const session = await auth.register(input, metaOf(c, transport));
     return c.json(deliver(c, session, transport), 201);
   });
 
@@ -83,7 +94,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     if (retryAfter) throw tooManyAttempts(retryAfter);
 
     try {
-      const session = await auth.login(input, { userAgent: c.req.header("user-agent") });
+      const session = await auth.login(input, metaOf(c, transport));
       loginByIdentifier.reset(input.identifier);
       return c.json(deliver(c, session, transport));
     } catch (error) {

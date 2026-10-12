@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lte, ne, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { sessions } from "../../db/schema.ts";
 import type { SessionRepo } from "../types.ts";
@@ -38,6 +38,16 @@ export function createSessionRepo(db: Db): SessionRepo {
     },
     async deleteExpired(now) {
       await db.delete(sessions).where(lte(sessions.expiresAt, now));
+    },
+    async deleteIdle(now, graceMs) {
+      await db
+        .delete(sessions)
+        .where(
+          and(
+            isNotNull(sessions.idleTimeoutMs),
+            sql`${sessions.lastSeenAt} + ${sessions.idleTimeoutMs} + ${graceMs} < ${now.getTime()}`,
+          ),
+        );
     },
   };
 }

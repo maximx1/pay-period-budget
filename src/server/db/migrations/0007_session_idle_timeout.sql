@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `idle_timeout_ms` integer;

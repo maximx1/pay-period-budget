@@ -11,12 +11,16 @@ import type { AppEnv } from "./http.ts";
 import { SESSION_COOKIE } from "./middleware/session.ts";
 import { createSqliteStore } from "./repos/sqlite/index.ts";
 
-/** @param env extra environment settings for the app's configuration, e.g. `{ ALLOW_REGISTRATION: "false" }` */
+/**
+ * @param env extra environment settings for the app's configuration, e.g. `{ ALLOW_REGISTRATION: "false" }`.
+ *   The idle timeout is off unless a test turns it on (`{ IDLE_TIMEOUT_MINUTES: "10" }`): most tests
+ *   move the clock by days and are not about a browser being left alone.
+ */
 export async function createTestApp(env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ppb-test-"));
   const { db, close } = await openDatabase(`file:${join(dir, "test.db")}`);
   const store = createSqliteStore(db);
-  const config = loadConfig({ NODE_ENV: "test", ...env });
+  const config = loadConfig({ NODE_ENV: "test", IDLE_TIMEOUT_MINUTES: "0", ...env });
 
   let current = new Date("2026-01-15T12:00:00Z");
   const clock = {

@@ -177,6 +177,113 @@ describe("sessions", () => {
   });
 });
 
+describe("a browser left idle", () => {
+  const MINUTE = 60 * 1000;
+  let idle: TestApp;
+  beforeEach(async () => {
+    idle = await createTestApp({ IDLE_TIMEOUT_MINUTES: "10" });
+  });
+  afterEach(() => idle.cleanup());
+
+  async function signedIn() {
+    const client = idle.client();
+    await client.post("/api/auth/register", alice);
+    return client;
+  }
+  const me = async (client: ReturnType<TestApp["client"]>) => (await client.get("/api/auth/me")).status;
+
+  it("is signed out once ten minutes pass without a request", async () => {
+    const client = await signedIn();
+    const cookie = client.sessionCookie;
+
+    // The server is the backstop and allows two minutes more than the browser does.
+    idle.clock.advance(12 * MINUTE);
+    expect(await idle.store.sessions.listForUser((await idle.store.users.findByUsername("alice"))!.id)).toHaveLength(1);
+    idle.clock.advance(1000);
+    const response = await client.get("/api/auth/me");
+    expect(response.status).toBe(401);
+    expect(client.sessionCookie).toBeUndefined();
+
+    // Gone for good: the cookie cannot be replayed, even straight away.
+    client.sessionCookie = cookie;
+    expect(await me(client)).toBe(401);
+    expect(await idle.store.sessions.listForUser((await idle.store.users.findByUsername("alice"))!.id)).toEqual([]);
+  });
+
+  it("stays signed in for as long as requests keep coming", async () => {
+    const client = await signedIn();
+    for (let step = 0; step < 12; step++) {
+      idle.clock.advance(9 * MINUTE);
+      expect(await me(client), `after ${(step + 1) * 9} minutes`).toBe(200);
+    }
+  });
+
+  it("never beats the browser to it: ten minutes after the browser was last used it is still there", async () => {
+    const client = await signedIn();
+    // The worst case. A request too soon after sign-in to be recorded as a new "last seen"...
+    idle.clock.advance(MINUTE);
+    expect(await me(client)).toBe(200);
+    // ...then use that reaches the server only as a keepalive, which is not due yet (30 seconds)...
+    idle.clock.advance(30 * 1000);
+    // ...and a return just inside the ten minutes. The session must not have gone.
+    idle.clock.advance(10 * MINUTE - 1000);
+    expect(await me(client)).toBe(200);
+  });
+
+  it("leaves the phone app's session alone: it locks itself instead", async () => {
+    const response = await idle.client().post("/api/auth/register", { ...alice, transport: "token" });
+    const { token } = await response.json();
+
+    idle.clock.advance(3 * DAY);
+    expect((await idle.client().get("/api/auth/me", { authorization: `Bearer ${token}` })).status).toBe(200);
+  });
+
+  it("leaves an API token alone", async () => {
+    const client = await signedIn();
+    const { secret } = await (await client.post("/api/auth/tokens", { name: "Assistant", scope: "read" })).json();
+
+    idle.clock.advance(3 * DAY);
+    expect((await idle.client().get("/api/auth/me", { authorization: `Bearer ${secret}` })).status).toBe(200);
+  });
+
+  it("drops an idle browser from the list of signed-in devices, and from the database", async () => {
+    const laptop = await signedIn();
+    idle.clock.advance(5 * MINUTE);
+    const phone = await idle.client().post("/api/auth/login", {
+      identifier: "alice",
+      password: alice.password,
+      transport: "token",
+    });
+    const { token } = await phone.json();
+    const other = idle.client();
+    await other.post("/api/auth/login", { identifier: "alice", password: alice.password });
+
+    // The first browser has now been idle 18 minutes; the second is in use; the phone never times out.
+    idle.clock.advance(13 * MINUTE);
+    expect((await other.get("/api/auth/me")).status).toBe(401);
+    await other.post("/api/auth/login", { identifier: "alice", password: alice.password });
+    const { sessions } = await (await other.get("/api/auth/sessions")).json();
+    expect(sessions).toHaveLength(2);
+
+    const userId = (await idle.store.users.findByUsername("alice"))!.id;
+    expect(await idle.store.sessions.listForUser(userId)).toHaveLength(3);
+    await idle.auth.purgeExpiredSessions();
+    expect(await idle.store.sessions.listForUser(userId)).toHaveLength(2);
+
+    expect(await me(laptop)).toBe(401);
+    expect((await idle.client().get("/api/auth/me", { authorization: `Bearer ${token}` })).status).toBe(200);
+  });
+
+  it("tells the client how long that is", async () => {
+    expect(await (await idle.client().get("/api/auth/config")).json()).toEqual({
+      registrationOpen: true,
+      idleTimeoutMinutes: 10,
+    });
+    // Off, as in every other test here: nothing times out and the client is told so.
+    expect((await (await t.client().get("/api/auth/config")).json()).idleTimeoutMinutes).toBe(0);
+  });
+});
+
 describe("changing the password", () => {
   const next = "a better passphrase";
 
@@ -483,8 +590,8 @@ describe("closing registration", () => {
   afterEach(() => closed.cleanup());
 
   it("tells the sign-in screen whether accounts can be created", async () => {
-    expect(await (await t.client().get("/api/auth/config")).json()).toEqual({ registrationOpen: true });
-    expect(await (await closed.client().get("/api/auth/config")).json()).toEqual({ registrationOpen: false });
+    expect(await (await t.client().get("/api/auth/config")).json()).toMatchObject({ registrationOpen: true });
+    expect(await (await closed.client().get("/api/auth/config")).json()).toMatchObject({ registrationOpen: false });
   });
 
   it("refuses new accounts but still signs existing ones in", async () => {

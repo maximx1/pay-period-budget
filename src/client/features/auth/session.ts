@@ -9,6 +9,7 @@ import type {
   TokenAuthResponse,
 } from "../../../shared/auth.ts";
 import { ApiError, api } from "../../lib/api.ts";
+import { clearIdleSignOut, DEFAULT_IDLE_TIMEOUT_MINUTES, markActive } from "../../lib/idle.ts";
 import { isNative } from "../../lib/platform.ts";
 import { clearToken, setToken } from "../../lib/sessionStore.ts";
 
@@ -33,13 +34,28 @@ export function useSession() {
   });
 }
 
-/** Whether this server lets new accounts be created. Undefined until known. */
-export function useRegistrationOpen(): boolean | undefined {
+/** What the server tells a client before anyone has signed in. Asked once and kept. */
+function useAuthConfig() {
   return useQuery({
     queryKey: [SESSION_QUERY_KEY[0], "config"],
     queryFn: () => api.get<AuthConfigResponse>("/api/auth/config"),
     staleTime: Number.POSITIVE_INFINITY,
-  }).data?.registrationOpen;
+  });
+}
+
+/** Whether this server lets new accounts be created. Undefined until known. */
+export function useRegistrationOpen(): boolean | undefined {
+  return useAuthConfig().data?.registrationOpen;
+}
+
+/**
+ * Minutes without use after which the app closes itself: 0 for never, undefined until the
+ * server has answered. If it cannot be asked, the usual ten minutes apply.
+ */
+export function useIdleTimeoutMinutes(): number | undefined {
+  const config = useAuthConfig();
+  if (config.data) return config.data.idleTimeoutMinutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES;
+  return config.isError ? DEFAULT_IDLE_TIMEOUT_MINUTES : undefined;
 }
 
 const CurrentUserContext = createContext<PublicUser | null>(null);
@@ -60,6 +76,14 @@ export function useCurrentUser(): PublicUser {
  * the token instead and keeps it for the Authorization header.
  */
 async function authenticate(path: string, input: LoginInput | RegisterInput): Promise<AuthResponse> {
+  const response = await signIn(path, input);
+  // Signing in is use: the idle clock starts from here, not from whenever the app was last open.
+  markActive();
+  clearIdleSignOut();
+  return response;
+}
+
+async function signIn(path: string, input: LoginInput | RegisterInput): Promise<AuthResponse> {
   if (!isNative) return api.post<AuthResponse>(path, input);
   const { user, token } = await api.post<TokenAuthResponse>(path, { ...input, transport: "token" });
   await setToken(token);

@@ -25,6 +25,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      IDLE_TIMEOUT_MINUTES: ${IDLE_TIMEOUT_MINUTES:-10}
     ports:
       # Only this machine can reach the port by default; a reverse proxy on the host does
       # the rest. Set APP_BIND=0.0.0.0 in .env to expose it to the network directly.

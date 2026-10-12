@@ -70,6 +70,11 @@ export type TokenAuthResponse = AuthResponse & {
 /** What a signed-out client needs to know to draw the sign-in screen. */
 export type AuthConfigResponse = {
   registrationOpen: boolean;
+  /**
+   * Minutes without activity after which the web app signs out and the Android app locks.
+   * 0: neither happens.
+   */
+  idleTimeoutMinutes: number;
 };
 
 export const changePasswordSchema = z.object({

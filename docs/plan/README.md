@@ -40,6 +40,7 @@ different app.
 | [9](phase-09-reset-starting.md) | Resetting a modified starting amount | Planned; scope to confirm with the owner | Opus |
 | [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
 | [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
+| [12](phase-12-idle-timeout.md) | Idle timeout: the web app signs out and the Android app locks after ten minutes; face unlock | Built 2026-10-12. The Android half has not run on a phone | Opus |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

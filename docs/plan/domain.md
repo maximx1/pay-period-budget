@@ -349,6 +349,13 @@ session: either the cookie the web app gets, or `Authorization: Bearer <token>` 
 client that signed in with `transport: "token"`. Errors use the envelope in
 `src/shared/api.ts`.
 
+**Idle timeout.** A browser's session (the cookie) also ends when no request arrives for
+`IDLE_TIMEOUT_MINUTES` (10; 0 turns it off). The browser signs itself out on time; the
+server waits two minutes longer, so it is the backstop for a closed tab or a copied cookie
+and never ends a session that is in use. A `transport: "token"` session (the Android app)
+has no idle timeout on the server: the app locks itself instead. `GET /api/auth/config`
+tells a client the number of minutes.
+
 An **API token** (created in Settings, sent the same way as a bearer) also works, for
 budget data only: every endpoint below outside `/api/auth`, plus `GET /api/auth/me`. On
 the rest of `/api/auth` it gets a 403. A `read` token may only send `GET`; a `write` token
@@ -356,7 +363,7 @@ may send anything. Changing the password revokes them all.
 
 ```
 GET    /api/health                     200 when the server and database are up
-GET    /api/auth/config                → { registrationOpen }
+GET    /api/auth/config                → { registrationOpen, idleTimeoutMinutes }
 POST   /api/auth/register              body may include transport: "cookie" | "token"
 POST   /api/auth/login                 likewise; "token" returns { user, token, expiresAt }
 POST   /api/auth/logout

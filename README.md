@@ -67,7 +67,8 @@ project folder is read as well (see `.env.example`).
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so rate limits see the visitor's address rather than the proxy's |
 | `COOKIE_SECURE` | `true` in production | Session cookie is HTTPS-only |
 | `ALLOW_REGISTRATION` | `true` | `false` stops new accounts being created |
-| `SESSION_TTL_DAYS` | `30` | How long a sign-in lasts without use; it is extended while in use |
+| `SESSION_TTL_DAYS` | `30` | The longest a sign-in lasts without use; it is extended while in use |
+| `IDLE_TIMEOUT_MINUTES` | `10` | Minutes without activity before the web app signs out and the Android app locks. `0` turns both off |
 
 ## Signing in from something other than the web app
 
@@ -296,9 +297,21 @@ address: type what you open in a browser, for example `https://budget.example.co
 checks that a budget server answers there and remembers it. "Change server" under the
 sign-in form asks again. Only `https://` addresses are accepted.
 
-**Fingerprint unlock.** On a phone with a fingerprint or face enrolled, the app offers once
-to unlock that way. After that the password is only needed if you log out, the session
-ends, or every fingerprint is removed from the phone. Settings → App lock turns it on or off.
+**Face or fingerprint unlock.** On a phone with a fingerprint or a face enrolled, the app
+offers once to unlock that way. After that the password is only needed if you log out, the
+session ends, or every fingerprint and face is removed from the phone. Settings → App lock
+turns it on or off. With it on, the app locks after ten minutes without use
+(`IDLE_TIMEOUT_MINUTES` on the server), counting time in the background; with it off, it
+signs out instead, as the web app does.
+
+Android decides which of the two it accepts, not the app. The sign-in is locked to a key in
+the phone's secure hardware, which only opens for biometrics Android rates "strong". On a
+phone whose face unlock is strong (Pixel 8 and later, for example) the unlock prompt takes
+your face and has the fingerprint sensor ready at the same moment, so the fingerprint is the
+fallback without anything to set up. On a phone whose face unlock is the weaker kind, good
+only for the lock screen, the prompt offers the fingerprint alone. On a Pixel, face for
+apps is under Settings → Security & privacy → Device unlock → Face & Fingerprint Unlock →
+Face Unlock → "Verify it's you in apps".
 
 **Against the API on this machine.** A debug build may also use plain HTTP to reach the
 development server; a release build never can. Put `https://localhost` in `APP_ORIGINS` in

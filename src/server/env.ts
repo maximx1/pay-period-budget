@@ -9,6 +9,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1).default("file:./data/app.db"),
   APP_ORIGINS: z.string().default("http://localhost:5173"),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(24 * 60).default(10),
   TRUST_PROXY: z.enum(["true", "false"]).default("false"),
   COOKIE_SECURE: z.enum(["true", "false"]).optional(),
   ALLOW_REGISTRATION: z.enum(["true", "false"]).default("true"),
@@ -21,6 +22,11 @@ export type AppConfig = {
   /** Browser origins allowed to make state-changing requests. */
   appOrigins: string[];
   sessionTtlMs: number;
+  /**
+   * How long the web app may go unused before it signs out, and the Android app before it
+   * locks. 0 turns both off.
+   */
+  idleTimeoutMs: number;
   trustProxy: boolean;
   /** Whether the session cookie is HTTPS-only. Defaults to on in production. */
   cookieSecure: boolean;
@@ -38,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .map((origin) => origin.trim())
       .filter(Boolean),
     sessionTtlMs: parsed.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    idleTimeoutMs: parsed.IDLE_TIMEOUT_MINUTES * 60 * 1000,
     trustProxy: parsed.TRUST_PROXY === "true",
     cookieSecure: parsed.COOKIE_SECURE ? parsed.COOKIE_SECURE === "true" : parsed.NODE_ENV === "production",
     allowRegistration: parsed.ALLOW_REGISTRATION === "true",
