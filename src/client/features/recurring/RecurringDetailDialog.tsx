@@ -1,0 +1,106 @@
+import { useNavigate } from "react-router";
+import { todayIn } from "../../../shared/dates.ts";
+import type { RecurringItem } from "../../../shared/recurring.ts";
+import { Alert } from "../../components/ui/Alert.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
+import { usePeriodList } from "../periods/api.ts";
+import { RECENT_TRANSACTIONS, useRecentRecurringTransactions } from "./api.ts";
+import { ItemTotals, ItemTransactionList, shownAmount } from "./ItemTransactions.tsx";
+
+type RecurringDetailDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  /** Kept after closing so the dialog doesn't empty while it fades out. */
+  item?: RecurringItem;
+  /** The budget's time zone, for "today". */
+  timezone: string;
+  onEdit: () => void;
+};
+
+/** One bill or income at a glance: its schedule, what has gone to it, and its latest transactions. */
+export function RecurringDetailDialog({ open, onClose, item, timezone, onEdit }: RecurringDetailDialogProps) {
+  return (
+    <Dialog open={open} onClose={onClose} title={item?.name ?? ""}>
+      {item && <Detail item={item} timezone={timezone} onClose={onClose} onEdit={onEdit} />}
+    </Dialog>
+  );
+}
+
+function Detail({ item, timezone, onClose, onEdit }: Required<Omit<RecurringDetailDialogProps, "open">>) {
+  const navigate = useNavigate();
+  const recent = useRecentRecurringTransactions(item.id);
+  const periods = usePeriodList(true);
+  const today = todayIn(timezone, new Date());
+  const signedUsual = item.kind === "income" ? item.defaultAmountCents : -item.defaultAmountCents;
+  const more = recent.data ? recent.data.totals.count - recent.data.transactions.length : 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted">
+        {item.kind === "income" ? "Income" : "Bill"} · {item.scheduleText}
+        {item.defaultAmountCents > 0 && ` · ${shownAmount(signedUsual)}`}
+        {item.archived && " · Archived"}
+      </p>
+
+      {recent.isPending ? (
+        <div className="h-40 animate-pulse rounded-lg bg-surface-2" role="status" aria-label="Loading transactions" />
+      ) : recent.isError ? (
+        <div className="flex flex-col items-start gap-3">
+          <Alert>Couldn't load its transactions.</Alert>
+          <Button variant="secondary" onClick={() => recent.refetch()}>
+            Try again
+          </Button>
+        </div>
+      ) : (
+        <>
+          <ItemTotals totals={recent.data.totals} />
+          {recent.data.transactions.length === 0 ? (
+            <p className="text-sm text-muted">
+              Nothing yet. Transactions it adds, and ones you tie to it, show up here.
+            </p>
+          ) : (
+            <div>
+              <h3 className="mb-1 text-sm font-semibold text-fg">
+                {more > 0 ? `Latest ${RECENT_TRANSACTIONS}` : "Transactions"}
+              </h3>
+              <ItemTransactionList
+                transactions={recent.data.transactions}
+                periods={periods.data}
+                today={today}
+                onNavigate={onClose}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <DialogActions>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            onClose();
+            onEdit();
+          }}
+        >
+          Edit
+        </Button>
+        {more > 0 ? (
+          <Button
+            data-autofocus
+            onClick={() => {
+              onClose();
+              navigate(`/recurring/${item.id}`);
+            }}
+          >
+            All {recent.data?.totals.count} transactions
+          </Button>
+        ) : (
+          <Button data-autofocus onClick={onClose}>
+            Done
+          </Button>
+        )}
+      </DialogActions>
+    </div>
+  );
+}

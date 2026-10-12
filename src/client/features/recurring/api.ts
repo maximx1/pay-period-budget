@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   RecurringInput,
   RecurringListResponse,
   RecurringPatch,
   RecurringPreview,
   RecurringResponse,
+  RecurringTransactionsResponse,
 } from "../../../shared/recurring.ts";
 import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
@@ -13,7 +14,37 @@ export const recurringKeys = {
   all: ["recurring"] as const,
   list: ["recurring", "list"] as const,
   preview: (input: RecurringInput) => ["recurring", "preview", input] as const,
+  /** Prefix of every "what is tied to this item" query; invalidate it when any transaction changes. */
+  transactions: ["recurring", "transactions"] as const,
 };
+
+/** How many of an item's transactions the detail dialog shows before "all transactions". */
+export const RECENT_TRANSACTIONS = 10;
+/** How many more the full list loads at a time. */
+export const TRANSACTIONS_PAGE = 30;
+
+const transactionsPath = (id: string, limit: number, before?: string | null) =>
+  `/api/recurring/${id}/transactions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`;
+
+/** The newest few transactions tied to an item, with totals over all of them. Pass null for none. */
+export function useRecentRecurringTransactions(id: string | null) {
+  return useQuery({
+    queryKey: [...recurringKeys.transactions, id, "recent"] as const,
+    queryFn: () => api.get<RecurringTransactionsResponse>(transactionsPath(id ?? "", RECENT_TRANSACTIONS)),
+    enabled: id !== null,
+  });
+}
+
+/** Everything tied to an item, newest first, a page at a time. */
+export function useAllRecurringTransactions(id: string) {
+  return useInfiniteQuery({
+    queryKey: [...recurringKeys.transactions, id, "all"] as const,
+    queryFn: ({ pageParam }) =>
+      api.get<RecurringTransactionsResponse>(transactionsPath(id, TRANSACTIONS_PAGE, pageParam)),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+}
 
 export function useRecurringItems() {
   return useQuery({
@@ -41,6 +72,7 @@ function useRefresh(options: { periods: boolean }) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: recurringKeys.list }),
       options.periods ? queryClient.invalidateQueries({ queryKey: periodKeys.all }) : null,
+      options.periods ? queryClient.invalidateQueries({ queryKey: recurringKeys.transactions }) : null,
     ]);
 }
 

@@ -9,8 +9,8 @@ received from) each one.
 **Suggested model:** Opus for 13.1 to 13.3 (they change what a recurring item is and how
 paying one moves the totals); Sonnet for the rest.
 
-**Status:** planned 2026-10-12 from the owner's description. The owner took both
-suggestions below the same day; 13.1 started.
+**Status:** planned 2026-10-12 from the owner's description and built the same day: every
+task is done. Not yet deployed, and the MCP side has not been used by a real assistant.
 
 ## What the owner asked for
 
@@ -173,7 +173,7 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ### 13.7 The detail view on the Recurring page
 
-- [ ] Done
+- [x] Done
 
 - Clicking a card opens the item: its schedule and amount, totals, and its ten most recent
   transactions, each showing date, amount and paid or upcoming, and linking to its period.
@@ -363,6 +363,41 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
   afterwards and the period's totals compared equal to before.
 - No automated test covers the dialog: the project has no component tests (see
   `backlog.md`). The API it calls is covered by `routes/transactions.links.test.ts`.
+
+### 13.7 (2026-10-12)
+
+- **The card is the button.** Clicking anywhere on a card on the Bills & income page opens
+  its detail. The name is a real `<button>` whose `::after` covers the card; the pencil
+  and the description (its links and its "more" toggle) sit above that and keep working.
+- **`RecurringDetailDialog`**: kind, schedule and usual amount; three figures (paid,
+  upcoming, how many); the latest ten transactions. "Edit" opens the edit dialog. When
+  there are more than ten, the main button is "All N transactions"; otherwise "Done".
+- **`/recurring/:recurringId`** (`RecurringTransactionsPage`): the same figures and the
+  whole list, 30 at a time. An `IntersectionObserver` on a marker after the list loads the
+  next page as it comes within 200px of view; a "Load more" button does the same by hand.
+  The end says "That's all 45."
+- Each row shows the name, date, paid or upcoming, the note and the amount, and is a link
+  to the pay period that covers it, opened at that date (`/?date=…` for the current
+  period, as the go-to-date dialog does). A row no period covers is not a link.
+- `ItemTransactions.tsx` holds what the dialog and the page share: the row list, the
+  three figures, and `periodPathFor`.
+- Data: `useRecentRecurringTransactions` and `useAllRecurringTransactions` in
+  `features/recurring/api.ts`, under the query key prefix `recurringKeys.transactions`.
+  **Anything that changes a transaction invalidates that prefix** (create, update, delete,
+  the paid switch; ending or deleting an item), so the figures never lag behind the home
+  screen.
+- Amounts follow the home screen: money in with a plus, money out bare.
+- Checked in the browser on the dev account with a temporary income item holding 45
+  transactions, at 1280px dark and 375px light: a click on the blank part of the card
+  opened the detail; it showed the right totals and "Latest 10"; "All 45 transactions"
+  opened the page with 30 rows; scrolling loaded the other 15, each once; the pencil
+  still opened "Edit income"; a row led to `/?date=2026-10-21` and closed the dialog. The
+  item and all 45 transactions were deleted afterwards and the period's totals compared
+  equal to before.
+- **Not checked:** the "Load more" button by hand (scrolling got there first), and the
+  page for an item whose id does not exist.
+- No component tests exist in this project, so none were added; the endpoint behind both
+  views is covered by `routes/recurring.transactions.test.ts`.
 
 ## The name: "Bills & income" (agreed 2026-10-12)
 

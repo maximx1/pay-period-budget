@@ -42,17 +42,40 @@ function Description({ text }: { text: string }) {
   );
 }
 
-export function RecurringCard({ item, onEdit }: { item: RecurringItem; onEdit: () => void }) {
+type RecurringCardProps = {
+  item: RecurringItem;
+  /** The card itself: show what has gone to this bill or income. */
+  onOpen: () => void;
+  onEdit: () => void;
+};
+
+export function RecurringCard({ item, onOpen, onEdit }: RecurringCardProps) {
   const income = item.kind === "income";
 
   return (
-    <Card className={cn("flex flex-col gap-3", item.archived && "opacity-75")}>
+    // The name is the button; its ::after covers the card, so a click anywhere on it opens
+    // the detail. The pencil and the description's own links and toggle sit above that.
+    <Card
+      className={cn(
+        "relative flex flex-col gap-3 transition-colors hover:bg-surface-2 has-[h3>button:focus-visible]:outline-2 has-[h3>button:focus-visible]:outline-offset-2 has-[h3>button:focus-visible]:outline-ring",
+        item.archived && "opacity-75",
+      )}
+    >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold text-fg">{item.name}</h3>
+          <h3 className="truncate font-semibold text-fg">
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label={`${item.name}: show its transactions`}
+              className="max-w-full truncate text-left after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none"
+            >
+              {item.name}
+            </button>
+          </h3>
           <p className="text-sm text-muted">{item.scheduleText}</p>
         </div>
-        <IconButton label={`Edit ${item.name}`} onClick={onEdit} className="-mt-2 -mr-2">
+        <IconButton label={`Edit ${item.name}`} onClick={onEdit} className="relative z-10 -mt-2 -mr-2">
           <Pencil className="size-5" aria-hidden />
         </IconButton>
       </div>
@@ -75,7 +98,11 @@ export function RecurringCard({ item, onEdit }: { item: RecurringItem; onEdit: (
         </div>
       )}
 
-      {item.description && <Description text={item.description} />}
+      {item.description && (
+        <div className="relative z-10 self-start">
+          <Description text={item.description} />
+        </div>
+      )}
     </Card>
   );
 }

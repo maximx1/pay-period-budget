@@ -10,6 +10,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { useBudget } from "../budget/api.ts";
 import { useRecurringItems } from "./api.ts";
 import { RecurringCard } from "./RecurringCard.tsx";
+import { RecurringDetailDialog } from "./RecurringDetailDialog.tsx";
 import { RecurringDialog } from "./RecurringDialog.tsx";
 
 type KindFilter = "all" | "expense" | "income";
@@ -38,6 +39,7 @@ export function RecurringPage() {
   const [showArchived, setShowArchived] = useState(false);
   // `item` is kept after closing so the dialog doesn't change its title while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; item?: RecurringItem }>({ open: false });
+  const [detail, setDetail] = useState<{ open: boolean; item?: RecurringItem }>({ open: false });
 
   const addButton = (
     <Button onClick={() => setDialog({ open: true })}>
@@ -112,7 +114,12 @@ export function RecurringPage() {
         ) : (
           <div className={gridClass}>
             {visible.map((item) => (
-              <RecurringCard key={item.id} item={item} onEdit={() => setDialog({ open: true, item })} />
+              <RecurringCard
+                key={item.id}
+                item={item}
+                onOpen={() => setDetail({ open: true, item })}
+                onEdit={() => setDialog({ open: true, item })}
+              />
             ))}
           </div>
         )}
@@ -129,6 +136,14 @@ export function RecurringPage() {
         onClose={() => setDialog((current) => ({ ...current, open: false }))}
         timezone={budget.data?.timezone ?? "UTC"}
         item={dialog.item}
+      />
+      <RecurringDetailDialog
+        open={detail.open}
+        onClose={() => setDetail((current) => ({ ...current, open: false }))}
+        timezone={budget.data?.timezone ?? "UTC"}
+        // The list's copy, so an edit made from here shows when the detail is next opened.
+        item={items.data?.find((item) => item.id === detail.item?.id) ?? detail.item}
+        onEdit={() => setDialog({ open: true, item: detail.item })}
       />
     </>
   );

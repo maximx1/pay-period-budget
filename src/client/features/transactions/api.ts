@@ -9,33 +9,41 @@ import type {
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
+import { recurringKeys } from "../recurring/api.ts";
 import { withOrder, withStatus } from "./optimistic.ts";
 
 // A transaction changes its own period's totals and the starting amount of every period
-// after it, so each of these refreshes all cached periods rather than just one.
+// after it, so each of these refreshes all cached periods rather than just one. It may
+// also be tied to a bill or income, whose own list of transactions is refreshed too.
+
+function useRefreshAfterChange() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+      queryClient.invalidateQueries({ queryKey: recurringKeys.transactions }),
+    ]);
+}
 
 export function useCreateTransaction() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: TransactionInput) => api.post<TransactionResponse>("/api/transactions", input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+    onSuccess: useRefreshAfterChange(),
   });
 }
 
 export function useUpdateTransaction() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: TransactionPatch }) =>
       api.patch<TransactionResponse>(`/api/transactions/${id}`, patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+    onSuccess: useRefreshAfterChange(),
   });
 }
 
 export function useDeleteTransaction() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/api/transactions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.all }),
+    onSuccess: useRefreshAfterChange(),
   });
 }
 
@@ -68,6 +76,8 @@ export function useSetTransactionStatus() {
     onSettled: () => {
       // While more taps are still saving, their optimistic state is newer than the server's.
       if (queryClient.isMutating({ mutationKey: STATUS_MUTATION_KEY }) === 1) {
+        // Paid or upcoming also moves the totals shown for the bill or income it is tied to.
+        void queryClient.invalidateQueries({ queryKey: recurringKeys.transactions });
         return queryClient.invalidateQueries({ queryKey: periodKeys.all });
       }
     },

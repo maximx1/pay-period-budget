@@ -52,6 +52,12 @@ export const router = createBrowserRouter([
                     lazy: async () => ({ Component: (await import("./features/recurring/RecurringPage.tsx")).RecurringPage }),
                   },
                   {
+                    path: "/recurring/:recurringId",
+                    lazy: async () => ({
+                      Component: (await import("./features/recurring/RecurringTransactionsPage.tsx")).RecurringTransactionsPage,
+                    }),
+                  },
+                  {
                     path: "/settings",
                     lazy: async () => ({ Component: (await import("./features/settings/SettingsPage.tsx")).SettingsPage }),
                   },
