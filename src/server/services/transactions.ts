@@ -3,7 +3,9 @@ import { dateOf, type LocalDateTime } from "../../shared/dates.ts";
 import type {
   TransactionInput,
   TransactionKind,
+  Transaction,
   TransactionPatch,
+  TransactionRange,
   TransactionResponse,
 } from "../../shared/transactions.ts";
 import { AppError } from "../lib/errors.ts";
@@ -49,6 +51,11 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
   });
 
   return {
+    /** Transactions dated within the range, in display order. Reads only: no period is generated. */
+    async list(userId: string, { from, to }: TransactionRange): Promise<Transaction[]> {
+      return (await store.transactions.listInRange(userId, from, to)).map(toTransaction);
+    },
+
     create(userId: string, input: TransactionInput): Promise<TransactionResponse> {
       return store.transaction(async (repos) => {
         const period = await periodFor(repos, userId, input.occursAt);

@@ -471,6 +471,105 @@ describe("manual order among transactions at the same date and time", () => {
   });
 });
 
+describe("listing transactions by date", () => {
+  const list = async (client: Client, from: string, to: string) => {
+    const response = await client.get(`/api/transactions?from=${from}&to=${to}`);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    return ((await response.json()) as { transactions: TransactionResponse["transaction"][] }).transactions;
+  };
+
+  it("returns what is dated within the range, both ends included, across periods", async () => {
+    await create(ann, expense({ name: "day before", occursAt: "2026-01-04T23:59" }));
+    await create(ann, expense({ name: "first day", occursAt: "2026-01-05T00:00" }));
+    await create(ann, expense({ name: "next period", occursAt: "2026-01-20T09:30", paid: true }));
+    await create(ann, expense({ name: "last day", occursAt: "2026-02-01T23:59", kind: "income" }));
+    await create(ann, expense({ name: "day after", occursAt: "2026-02-02T00:00" }));
+
+    const found = await list(ann, "2026-01-05", "2026-02-01");
+    expect(found.map((tx) => tx.name)).toEqual(["first day", "next period", "last day"]);
+    expect(found[1]).toEqual({
+      id: expect.any(String),
+      name: "next period",
+      amountCents: -2700,
+      kind: "expense",
+      occursAt: "2026-01-20T09:30",
+      status: "paid",
+      paidAt: t.clock.now().toISOString(),
+      note: null,
+      sortOrder: 0,
+      recurringId: null,
+    });
+    expect(found[2]).toMatchObject({ amountCents: 2700, kind: "income", status: "upcoming" });
+
+    expect((await list(ann, "2026-01-20", "2026-01-20")).map((tx) => tx.name)).toEqual(["next period"]);
+  });
+
+  it("uses the display order: time, then manual order", async () => {
+    const [a, b] = [
+      (await create(ann, expense({ name: "a" }))).transaction,
+      (await create(ann, expense({ name: "b" }))).transaction,
+    ];
+    await create(ann, expense({ name: "earlier", occursAt: "2026-01-19T08:00" }));
+    expect((await ann.put("/api/transactions/order", { ids: [b.id, a.id] })).status).toBe(204);
+
+    expect((await list(ann, "2026-01-13", "2026-01-26")).map((tx) => tx.name)).toEqual(["earlier", "b", "a"]);
+  });
+
+  it("includes transactions generated from recurring items, with the item they came from", async () => {
+    const response = await ann.post("/api/recurring", {
+      name: "Rent",
+      kind: "expense",
+      defaultAmountCents: 90_000,
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      firstDueDate: "2026-01-25",
+    });
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
+    const { item } = await response.json();
+
+    const found = await list(ann, "2026-01-01", "2026-01-31");
+    expect(found).toEqual([expect.objectContaining({ name: "Rent", amountCents: -90_000, recurringId: item.id })]);
+  });
+
+  it("creates nothing, even for dates no period covers yet", async () => {
+    const before = (await periods()).length;
+    expect(await list(ann, "2026-06-01", "2026-12-31")).toEqual([]);
+    expect(await list(ann, "2024-01-01", "2024-12-31")).toEqual([]);
+    expect((await periods()).length).toBe(before);
+  });
+
+  it("allows 366 days and no more", async () => {
+    expect(await list(ann, "2026-01-01", "2027-01-01")).toEqual([]);
+
+    const tooLong = await ann.get("/api/transactions?from=2026-01-01&to=2027-01-02");
+    expect(tooLong.status).toBe(400);
+    expect((await tooLong.json()).error.fields).toEqual({ to: "Ask for 366 days or fewer at a time" });
+  });
+
+  it.each([
+    ["an end before the start", "from=2026-02-01&to=2026-01-31", ["to"]],
+    ["a missing end", "from=2026-01-01", ["to"]],
+    ["no dates at all", "", ["from", "to"]],
+    ["a date that doesn't exist", "from=2026-02-30&to=2026-03-01", ["from"]],
+    ["a date and time", "from=2026-01-01T00:00&to=2026-01-02", ["from"]],
+  ])("rejects %s", async (_label, query, fields) => {
+    const response = await ann.get(`/api/transactions?${query}`);
+    expect(response.status).toBe(400);
+    expect(Object.keys((await response.json()).error.fields).sort()).toEqual(fields);
+  });
+
+  it("requires a session and never shows another user's transactions", async () => {
+    await create(ann, expense());
+    expect((await t.client().get("/api/transactions?from=2026-01-01&to=2026-01-31")).status).toBe(401);
+
+    const bob = await signUp("bob", 0);
+    expect(await list(bob, "2025-12-16", "2026-02-23")).toEqual([]);
+    await create(bob, expense({ name: "Bob's" }));
+    expect((await list(bob, "2025-12-16", "2026-02-23")).map((tx) => tx.name)).toEqual(["Bob's"]);
+    expect((await list(ann, "2025-12-16", "2026-02-23")).map((tx) => tx.name)).toEqual(["Bag of ice"]);
+  });
+});
+
 describe("access control", () => {
   it("requires a session", async () => {
     const anonymous = t.client();

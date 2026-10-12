@@ -21,7 +21,16 @@ export async function parseJson<T extends z.ZodType>(c: Context, schema: T): Pro
   const body: unknown = await c.req.json().catch(() => {
     throw new AppError(400, "validation", "Request body is not valid JSON");
   });
-  const result = schema.safeParse(body);
+  return validated(schema, body);
+}
+
+/** Validates the query string the same way, each parameter arriving as text. */
+export function parseQuery<T extends z.ZodType>(c: Context, schema: T): z.output<T> {
+  return validated(schema, c.req.query());
+}
+
+function validated<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
+  const result = schema.safeParse(input);
   if (result.success) return result.data;
 
   const fields: Record<string, string> = {};

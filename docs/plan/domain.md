@@ -354,6 +354,7 @@ POST   /api/periods/:id/dates/revert
 PATCH  /api/periods/:id/starting       { startingCents, carryForward }
 POST   /api/periods/:id/starting/revert
 POST   /api/periods/:id/recalculate
+GET    /api/transactions?from=&to=     dated within the range, both ends included, at most 366 days → { transactions }; creates nothing
 POST   /api/transactions
 PATCH  /api/transactions/:id
 DELETE /api/transactions/:id

@@ -8,7 +8,7 @@ be loaded in one go, checked before it is written and safe to run twice.
 tried against anything real. **Suggested model:** Opus for 11.1 and 11.4 (credentials, and
 a bulk write through the carry-forward rules); Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. 11.1 and 11.2 done the same day;
+**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.3 done the same day;
 the rest not started.
 
 ## Approach
@@ -131,7 +131,7 @@ purpose once and see a test fail.
 
 ### 11.3 Reading transactions by date
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/server/routes/transactions.ts`, `src/server/services/transactions.ts`,
 `src/shared/transactions.ts`, `domain.md` (API list), tests.
@@ -341,3 +341,20 @@ Built as specified. What the next task needs to know:
 - **Not checked:** a successful copy. The preview browser refuses clipboard writes, so only
   the failure path ran. An expired token's "Expired" badge was not seen either; the API
   side of expiry is covered by tests.
+
+### 11.3 (2026-10-11)
+
+- `GET /api/transactions?from=YYYY-MM-DD&to=YYYY-MM-DD` → `{ transactions }`
+  (`TransactionListResponse`), validated by `transactionRangeSchema` in
+  `src/shared/transactions.ts`. Both ends are included. The limit is 366 days counting
+  both ends, so `2026-01-01` to `2027-01-01` is allowed and one day more is not.
+- It reads only. A range that reaches past the generated periods, or before the first
+  one, returns what is there and creates nothing.
+- **`parseQuery(c, schema)`** in `src/server/http.ts` is new: the query-string counterpart
+  of `parseJson`, with the same field errors. Every value arrives as text.
+- A zod refinement on an object still runs when a field failed its own `refine`, and then
+  compares garbage. The date fields abort on failure (`abort: true`) so a bad `from` is
+  reported once, on `from`.
+- Each transaction carries `recurringId`, which is how a caller tells a generated
+  occurrence from a one-off. `occurrenceDate` (the date it was scheduled for) is not in
+  the response; add it to `Transaction` if 11.4's matching needs it.

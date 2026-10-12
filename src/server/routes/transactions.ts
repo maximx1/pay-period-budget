@@ -1,17 +1,24 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import {
-  type TransactionResponse,
   transactionInputSchema,
+  type TransactionListResponse,
   transactionOrderSchema,
   transactionPatchSchema,
+  transactionRangeSchema,
+  type TransactionResponse,
 } from "../../shared/transactions.ts";
-import { type AppEnv, parseJson } from "../http.ts";
+import { type AppEnv, parseJson, parseQuery } from "../http.ts";
 import type { TransactionService } from "../services/transactions.ts";
 
 export function transactionRoutes(deps: { transactions: TransactionService; authed: MiddlewareHandler<AppEnv> }) {
   const { transactions } = deps;
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
+
+  routes.get("/", async (c) => {
+    const range = parseQuery(c, transactionRangeSchema);
+    return c.json<TransactionListResponse>({ transactions: await transactions.list(c.var.user.id, range) });
+  });
 
   routes.post("/", async (c) => {
     const input = await parseJson(c, transactionInputSchema);

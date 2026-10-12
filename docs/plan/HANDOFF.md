@@ -28,7 +28,7 @@ Kick-off prompt for the next session:
 | Periods before the first one | Done 2026-10-11 (decision 12). The back arrow adds them; today's numbers stay fixed |
 | 9 Resetting a modified starting amount | **Planned only.** The owner asked for the phase; what it covers needs confirming first |
 | 10 Projections tab | **Planned only** |
-| 11 API tokens, bulk import, MCP server | 11.1 and 11.2 (tokens on the server and in Settings) done 2026-10-11. 11.3 to 11.7 not started; decisions are at the top of the phase file |
+| 11 API tokens, bulk import, MCP server | 11.1 to 11.3 (tokens on the server and in Settings, transactions by date range) done 2026-10-11. 11.4 to 11.7 not started; decisions are at the top of the phase file |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 

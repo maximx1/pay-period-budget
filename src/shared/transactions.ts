@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isLocalDateTime, type LocalDate, type LocalDateTime } from "./dates.ts";
+import { diffDays, isLocalDate, isLocalDateTime, type LocalDate, type LocalDateTime } from "./dates.ts";
 
 export const TRANSACTION_KINDS = ["expense", "income"] as const;
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
@@ -68,6 +68,24 @@ export type Transaction = {
   /** The recurring item it was generated from, or null for a one-off (or if that item was deleted). */
   recurringId: string | null;
 };
+
+/** The most days one request for transactions by date may cover, counting both ends. */
+export const MAX_TRANSACTION_RANGE_DAYS = 366;
+
+// Aborting keeps the comparisons below from running on something that isn't a date.
+const rangeDateSchema = z.string("Enter a date").refine(isLocalDate, { message: "Enter a valid date", abort: true });
+
+/** A span of calendar days, both ends included. */
+export const transactionRangeSchema = z
+  .object({ from: rangeDateSchema, to: rangeDateSchema })
+  .refine(({ from, to }) => to >= from, { path: ["to"], message: "The end date is before the start date" })
+  .refine(({ from, to }) => to < from || diffDays(from, to) < MAX_TRANSACTION_RANGE_DAYS, {
+    path: ["to"],
+    message: `Ask for ${MAX_TRANSACTION_RANGE_DAYS} days or fewer at a time`,
+  });
+export type TransactionRange = z.output<typeof transactionRangeSchema>;
+
+export type TransactionListResponse = { transactions: Transaction[] };
 
 /** Returned by create and update: the saved transaction and the period it now falls in. */
 export type TransactionResponse = {
