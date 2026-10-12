@@ -163,7 +163,7 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ### 13.6 Choosing the item when entering a transaction
 
-- [ ] Done
+- [x] Done
 
 - "Recurring item" in the add and edit dialog: None, then the items by name. Picking one
   while adding fills in the name, and the amount if the item has a usual one and the field
@@ -333,6 +333,37 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
   added up, a matching row listed twice, a suggestion that never offers `countsToward`).
   Not yet run with a real assistant.
 
+### 13.6 (2026-10-12)
+
+- The add and edit dialog has **"Bill or income"**: None, then the current items by name
+  (and the one a transaction is already tied to, even if it has ended). It is not shown
+  when there are no items at all.
+- Picking one while adding fills in the name if it is empty, sets expense or income to
+  match, and fills in the amount if it is empty and the item has a usual one.
+- **"Counts toward"** appears under it while adding, when the chosen item has an upcoming
+  entry it generated in the period on screen, of the same kind. It defaults to "Nothing:
+  this is an extra payment", so tying a payment never shrinks an entry unless that is
+  chosen. It became a list rather than the checkbox the task described, because a weekly
+  bill can have two entries in one period.
+- Only the period on screen is looked at. A payment dated in another period cannot be
+  counted toward an entry from the dialog; the API and the assistant can.
+- After a payment toward an entry, a toast says what is left ("$60.00 of Rent is still
+  upcoming.") or that it is paid off.
+- Editing sends `recurringId` only when it changed.
+- On the home screen a scheduled entry keeps the repeat mark; a transaction tied by hand
+  gets a tag. Told apart by `occurrenceDate`.
+- **The on-screen rename is done.** The menu entry, page title, add button, dialog titles
+  ("Add a bill or income", "Edit bill", "Edit income"), loading, error and empty states
+  now say bills and income. The route is still `/recurring` and nothing in the code was
+  renamed.
+- Checked in the browser on the dev account with a temporary $90 bill: choosing it filled
+  the form and offered "The $90.00 due Wed, Oct 21"; paying $30 toward it left $60
+  upcoming and the projected leftover unchanged; editing the payment to None untied it.
+  Looked at 1280px light and 375px dark. The bill and its transactions were deleted
+  afterwards and the period's totals compared equal to before.
+- No automated test covers the dialog: the project has no component tests (see
+  `backlog.md`). The API it calls is covered by `routes/transactions.links.test.ts`.
+
 ## The name: "Bills & income" (agreed 2026-10-12)
 
 The owner pointed out that "recurring" no longer fits: some of these never repeat. The
@@ -349,5 +380,4 @@ title, the navigation and "Add recurring" say "Recurring". The owner agreed to t
   touches the table name, every endpoint and the phone app, and should not be mixed into
   a feature.
 
-The on-screen rename is to be done with the screen work in 13.6 and 13.7. Until the code
-is renamed, `CLAUDE.md`'s rule stands as written: in code they are recurring items.
+The on-screen rename was done with 13.6. Until the code is renamed, `CLAUDE.md`'s rule stands as written: in code they are recurring items.

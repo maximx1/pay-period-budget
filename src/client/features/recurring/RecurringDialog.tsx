@@ -138,7 +138,11 @@ type RecurringDialogProps = {
 
 export function RecurringDialog({ open, onClose, item, timezone }: RecurringDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title={item ? "Edit recurring item" : "Add recurring item"}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={item ? (item.kind === "income" ? "Edit income" : "Edit bill") : "Add a bill or income"}
+    >
       <RecurringForm onClose={onClose} item={item} timezone={timezone} />
     </Dialog>
   );
@@ -318,7 +322,9 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
         <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-3">
           <p className="text-sm font-medium text-fg">
             {confirming === "end"
-              ? `End ${item?.name} today? It stops repeating and is archived from tomorrow.`
+              ? item?.recurrenceUnit === "none"
+                ? `End ${item.name} today? It is archived from tomorrow.`
+                : `End ${item?.name} today? It stops repeating and is archived from tomorrow.`
               : `Delete ${item?.name}? Transactions it already created stay where they are.`}
           </p>
           {confirming === "end" && (

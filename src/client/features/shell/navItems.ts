@@ -1,10 +1,11 @@
-import { House, type LucideIcon, Repeat, Settings } from "lucide-react";
+import { House, type LucideIcon, ReceiptText, Settings } from "lucide-react";
 
 export type NavItem = { to: string; label: string; icon: LucideIcon };
 
 export const navItems: readonly NavItem[] = [
   { to: "/", label: "Home", icon: House },
-  { to: "/recurring", label: "Recurring", icon: Repeat },
+  // Called "recurring items" in the code; on screen they are bills and income, scheduled or not.
+  { to: "/recurring", label: "Bills & income", icon: ReceiptText },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

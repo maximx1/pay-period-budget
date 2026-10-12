@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Circle, CircleCheck, Repeat } from "lucide-react";
+import { ChevronDown, ChevronUp, Circle, CircleCheck, Repeat, Tag } from "lucide-react";
 import { formatTime } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
@@ -53,9 +53,13 @@ export function TransactionRow({ transaction, onToggle, onEdit, reorder }: Trans
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate font-medium text-fg">{name}</span>
-            {transaction.recurringId && (
-              <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="From a recurring item" />
-            )}
+            {transaction.recurringId &&
+              // Added by a bill's or income's schedule, or tied to one by hand.
+              (transaction.occurrenceDate ? (
+                <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="Scheduled bill or income" />
+              ) : (
+                <Tag className="size-3.5 shrink-0 text-muted" role="img" aria-label="Tied to a bill or income" />
+              ))}
           </span>
           {details && <span className="block truncate text-sm text-muted">{details}</span>}
         </span>

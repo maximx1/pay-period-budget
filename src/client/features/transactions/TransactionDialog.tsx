@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import type { PeriodView } from "../../../shared/budget.ts";
-import { atStartOfDay, dateOf, formatDateRange, nowIn } from "../../../shared/dates.ts";
-import { centsToInput, parseMoneyInput } from "../../../shared/money.ts";
+import { atStartOfDay, dateOf, formatDateRange, formatDay, nowIn } from "../../../shared/dates.ts";
+import { centsToInput, formatCents, parseMoneyInput } from "../../../shared/money.ts";
 import {
   MAX_TRANSACTION_CENTS,
   type Transaction,
@@ -15,10 +15,12 @@ import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
+import { SelectField } from "../../components/ui/SelectField.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
+import { useRecurringItems } from "../recurring/api.ts";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
 const parseAmount = (text: string) => {
@@ -32,6 +34,10 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   amount: z.string().refine((text) => parseAmount(text) !== null, "Enter an amount like 27.50"),
   note: z.string().max(500, "Keep the note under 500 characters"),
   paid: z.boolean(),
+  /** The bill or income it belongs to; empty for none. */
+  recurringId: z.string(),
+  /** An upcoming entry of that bill or income which this pays toward; empty for none. */
+  countsToward: z.string(),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -79,6 +85,9 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     control,
     handleSubmit,
     setError,
+    setValue,
+    getValues,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -90,31 +99,109 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           occursAt: transaction.occursAt,
           note: transaction.note ?? "",
           paid: transaction.status === "paid",
+          recurringId: transaction.recurringId ?? "",
+          countsToward: "",
         }
-      : { name: "", amount: "", kind: "expense", occursAt: defaultOccursAt, note: "", paid: false },
+      : {
+          name: "",
+          amount: "",
+          kind: "expense",
+          occursAt: defaultOccursAt,
+          note: "",
+          paid: false,
+          recurringId: "",
+          countsToward: "",
+        },
   });
 
-  function finish({ period }: TransactionResponse) {
+  // Bills and income to tie this to: the current ones, and the one it is already tied to
+  // even if that has since ended.
+  const items = useRecurringItems();
+  const [chosenId, chosenKind] = watch(["recurringId", "kind"]);
+  const choices = (items.data ?? []).filter((item) => !item.archived || item.id === transaction?.recurringId);
+  const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
+
+  // What a new payment could be paying: the upcoming entries that bill or income added to
+  // the period on screen. Paying toward one shrinks it, so the bill is not counted twice.
+  const payable = transaction
+    ? []
+    : view.transactions.filter(
+        (entry) =>
+          chosenId !== "" &&
+          entry.recurringId === chosenId &&
+          entry.occurrenceDate !== null &&
+          entry.status === "upcoming" &&
+          entry.kind === chosenKind,
+      );
+  const towardOptions = [
+    { value: "", label: chosenKind === "income" ? "Nothing: this is on top of it" : "Nothing: this is an extra payment" },
+    ...payable.map((entry) => ({
+      value: entry.id,
+      label: `The ${formatCents(Math.abs(entry.amountCents))} due ${formatDay(dateOf(entry.occursAt))}`,
+    })),
+  ];
+
+  /** Picking a bill or income for a new transaction fills in what is known about it. */
+  function choose(itemId: string) {
+    setValue("countsToward", "");
+    const item = choices.find((choice) => choice.id === itemId);
+    if (!item || transaction) return;
+    if (getValues("name").trim() === "") setValue("name", item.name);
+    setValue("kind", item.kind);
+    if (getValues("amount").trim() === "" && item.defaultAmountCents > 0) {
+      setValue("amount", centsToInput(item.defaultAmountCents));
+    }
+  }
+  const itemField = register("recurringId");
+
+  function finish({ period, countedToward }: TransactionResponse) {
     onClose();
-    if (period.id !== view.period.id) {
+    if (countedToward) {
+      toast(
+        countedToward.removed
+          ? `${countedToward.name} is paid off.`
+          : `${formatCents(Math.abs(countedToward.remainingCents))} of ${countedToward.name} is still upcoming.`,
+      );
+    } else if (period.id !== view.period.id) {
       toast(`${transaction ? "Moved" : "Added"} to ${formatDateRange(period.startDate, period.endDate)}`);
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, recurringId, countsToward }) => {
     setFormError(null);
     const amountCents = parseAmount(amount) ?? 0;
+    const tiedTo = recurringId === "" ? null : recurringId;
     try {
       finish(
         transaction
-          ? await update.mutateAsync({ id: transaction.id, patch: { name, amountCents, kind, occursAt, note } })
-          : await create.mutateAsync({ name, amountCents, kind, occursAt, note, paid }),
+          ? await update.mutateAsync({
+              id: transaction.id,
+              // Sent only when it changed, so an edit of something else never re-ties anything.
+              patch: {
+                name,
+                amountCents,
+                kind,
+                occursAt,
+                note,
+                ...(tiedTo !== transaction.recurringId && { recurringId: tiedTo }),
+              },
+            })
+          : await create.mutateAsync({
+              name,
+              amountCents,
+              kind,
+              occursAt,
+              note,
+              paid,
+              recurringId: tiedTo,
+              ...(countsToward !== "" && payable.some((entry) => entry.id === countsToward) && { countsToward }),
+            }),
       );
     } catch (error) {
       if (error instanceof ApiError && error.fields?.amountCents) {
         setError("amount", { message: error.fields.amountCents });
       }
-      setFormError(applyApiError(error, setError, ["name", "occursAt", "note"]));
+      setFormError(applyApiError(error, setError, ["name", "occursAt", "note", "recurringId", "countsToward"]));
     }
   });
 
@@ -162,6 +249,30 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
         error={errors.occursAt?.message}
         {...register("occursAt")}
       />
+
+      {choices.length > 0 && (
+        <SelectField
+          label="Bill or income"
+          options={itemOptions}
+          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : undefined}
+          error={errors.recurringId?.message}
+          {...itemField}
+          onChange={(event) => {
+            void itemField.onChange(event);
+            choose(event.target.value);
+          }}
+        />
+      )}
+
+      {payable.length > 0 && (
+        <SelectField
+          label="Counts toward"
+          options={towardOptions}
+          hint="Choosing an upcoming entry shrinks it by this amount, and removes it once it is paid off."
+          error={errors.countsToward?.message}
+          {...register("countsToward")}
+        />
+      )}
 
       {showNote ? (
         <TextField label="Note" autoComplete="off" error={errors.note?.message} {...register("note")} />

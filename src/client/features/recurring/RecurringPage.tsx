@@ -1,4 +1,4 @@
-import { Plus, Repeat, Search, SearchX } from "lucide-react";
+import { Plus, ReceiptText, Search, SearchX } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { RecurringItem } from "../../../shared/recurring.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
@@ -29,7 +29,7 @@ function matches(item: RecurringItem, search: string, kind: KindFilter, showArch
   return needle === "" || `${item.name}\n${item.description}`.toLowerCase().includes(needle);
 }
 
-/** Recurring bills and income, as a filterable grid of cards. */
+/** Bills and income ("recurring items" in the code), as a filterable grid of cards. */
 export function RecurringPage() {
   const items = useRecurringItems();
   const budget = useBudget();
@@ -42,14 +42,14 @@ export function RecurringPage() {
   const addButton = (
     <Button onClick={() => setDialog({ open: true })}>
       <Plus className="size-4" aria-hidden />
-      Add recurring
+      Add bill or income
     </Button>
   );
 
   let content: ReactNode;
   if (items.isPending) {
     content = (
-      <div className={gridClass} role="status" aria-label="Loading recurring items">
+      <div className={gridClass} role="status" aria-label="Loading bills and income">
         {[0, 1, 2].map((n) => (
           <div key={n} className="h-36 animate-pulse rounded-2xl bg-surface-2" />
         ))}
@@ -58,7 +58,7 @@ export function RecurringPage() {
   } else if (items.isError) {
     content = (
       <div className="flex flex-col items-start gap-3">
-        <Alert>Couldn't load your recurring items.</Alert>
+        <Alert>Couldn't load your bills and income.</Alert>
         <Button variant="secondary" onClick={() => items.refetch()}>
           Try again
         </Button>
@@ -68,9 +68,9 @@ export function RecurringPage() {
     content = (
       <Card>
         <EmptyState
-          icon={Repeat}
-          title="No recurring items yet"
-          description="Add a bill or a paycheck once and it shows up in every period it falls in."
+          icon={ReceiptText}
+          title="No bills or income yet"
+          description="Add a bill or a paycheck once and it shows up in every period it falls in. Or add one with no schedule, to gather payments as they happen."
           action={addButton}
         />
       </Card>
@@ -89,7 +89,7 @@ export function RecurringPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search"
-              aria-label="Search recurring items"
+              aria-label="Search bills and income"
               className="min-h-11 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-base text-fg placeholder:text-muted focus:outline-2 focus:outline-offset-1 focus:outline-ring"
             />
           </div>
@@ -122,7 +122,7 @@ export function RecurringPage() {
 
   return (
     <>
-      <PageHeader title="Recurring" subtitle="Bills and income that repeat." actions={items.data?.length ? addButton : undefined} />
+      <PageHeader title="Bills & income" subtitle="What you pay and what you're paid, on a schedule or not." actions={items.data?.length ? addButton : undefined} />
       {content}
       <RecurringDialog
         open={dialog.open}

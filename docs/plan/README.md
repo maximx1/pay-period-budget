@@ -41,7 +41,7 @@ different app.
 | [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
 | [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
 | [12](phase-12-idle-timeout.md) | Idle timeout: the web app signs out and the Android app locks after ten minutes; face unlock | Built 2026-10-12. The Android half has not run on a phone | Opus |
-| [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | 13.1 to 13.5 done 2026-10-12; 13.6 and 13.7 (the two screen changes) not started. On screen these become "Bills & income" | Opus for 13.1 to 13.3, Sonnet for the rest |
+| [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | 13.1 to 13.6 done 2026-10-12; 13.7 (the detail view) not started. On screen these are now "Bills & income" | Opus for 13.1 to 13.3, Sonnet for the rest |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
