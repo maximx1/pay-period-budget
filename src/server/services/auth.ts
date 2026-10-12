@@ -1,12 +1,24 @@
 import { randomUUID } from "node:crypto";
-import type { ChangePasswordInput, LoginInput, PublicUser, RegisterInput, SessionInfo } from "../../shared/auth.ts";
+import {
+  type ApiTokenCreatedResponse,
+  type ApiTokenInfo,
+  type ApiTokenInput,
+  type ApiTokenScope,
+  type ChangePasswordInput,
+  type LoginInput,
+  MAX_API_TOKENS,
+  type PublicUser,
+  type RegisterInput,
+  type SessionInfo,
+} from "../../shared/auth.ts";
 import { AppError } from "../lib/errors.ts";
 import { hashPassword, verifyDummyPassword, verifyPassword } from "../lib/password.ts";
-import { generateSessionToken, hashToken } from "../lib/tokens.ts";
+import { generateApiToken, generateSessionToken, hashToken } from "../lib/tokens.ts";
 import { describeUserAgent } from "../lib/userAgent.ts";
-import { type DataStore, UniqueConstraintError, type UserRecord } from "../repos/types.ts";
+import { type ApiTokenRecord, type DataStore, UniqueConstraintError, type UserRecord } from "../repos/types.ts";
 
 const LAST_SEEN_RESOLUTION_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type IssuedSession = { user: PublicUser; token: string; expiresAt: Date };
 export type AuthenticatedSession = {
@@ -15,11 +27,22 @@ export type AuthenticatedSession = {
   /** Set when the session was extended and the client should be handed the new expiry. */
   renewedUntil?: Date;
 };
+export type AuthenticatedApiToken = { user: PublicUser; tokenId: string; scope: ApiTokenScope };
 export type RequestMeta = { userAgent?: string };
 
 export type AuthService = ReturnType<typeof createAuthService>;
 
 const toPublicUser = ({ id, username, email }: UserRecord): PublicUser => ({ id, username, email });
+
+const toApiTokenInfo = (token: ApiTokenRecord): ApiTokenInfo => ({
+  id: token.id,
+  name: token.name,
+  scope: token.scope,
+  hint: token.hint,
+  createdAt: token.createdAt.toISOString(),
+  lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+  expiresAt: token.expiresAt?.toISOString() ?? null,
+});
 
 const takenError = (field: string) =>
   new AppError(409, "conflict", `That ${field} is already in use`, {
@@ -110,9 +133,25 @@ export function createAuthService(deps: {
       if (session) await store.sessions.deleteById(session.id);
     },
 
+    /** Resolves an API token to its user and what it may do. Null if unknown or expired. */
+    async authenticateApiToken(token: string): Promise<AuthenticatedApiToken | null> {
+      const record = await store.apiTokens.findByTokenHash(hashToken(token));
+      if (!record) return null;
+
+      const current = now();
+      if (record.expiresAt && record.expiresAt <= current) return null;
+      const user = await store.users.findById(record.userId);
+      if (!user) return null;
+
+      if (!record.lastUsedAt || current.getTime() - record.lastUsedAt.getTime() > LAST_SEEN_RESOLUTION_MS) {
+        await store.apiTokens.touch(record.id, current);
+      }
+      return { user: toPublicUser(user), tokenId: record.id, scope: record.scope };
+    },
+
     /**
-     * Replaces the password after checking the current one, and signs out every other
-     * session: whoever else had access shouldn't keep it.
+     * Replaces the password after checking the current one, signs out every other session
+     * and revokes every API token: whoever else had access shouldn't keep it.
      */
     async changePassword(userId: string, currentSessionId: string, input: ChangePasswordInput): Promise<void> {
       const user = await store.users.findById(userId);
@@ -124,6 +163,7 @@ export function createAuthService(deps: {
       await store.transaction(async (repos) => {
         await repos.users.updatePasswordHash(userId, passwordHash, now());
         await repos.sessions.deleteOthers(userId, currentSessionId);
+        await repos.apiTokens.deleteAllForUser(userId);
       });
     },
 
@@ -150,6 +190,41 @@ export function createAuthService(deps: {
 
     async revokeOtherSessions(userId: string, currentSessionId: string): Promise<void> {
       await store.sessions.deleteOthers(userId, currentSessionId);
+    },
+
+    /** The account's API tokens, newest first. Never includes a secret. */
+    async listApiTokens(userId: string): Promise<ApiTokenInfo[]> {
+      return (await store.apiTokens.listForUser(userId)).map(toApiTokenInfo);
+    },
+
+    /** Creates a token and returns its secret, which cannot be recovered afterwards. */
+    async createApiToken(userId: string, input: ApiTokenInput): Promise<ApiTokenCreatedResponse> {
+      const secret = generateApiToken();
+      const createdAt = now();
+      const record = await store.transaction(async (repos) => {
+        if ((await repos.apiTokens.listForUser(userId)).length >= MAX_API_TOKENS) {
+          throw new AppError(409, "conflict", `You can have ${MAX_API_TOKENS} tokens at most. Revoke one first.`);
+        }
+        return repos.apiTokens.create({
+          id: randomUUID(),
+          tokenHash: hashToken(secret),
+          userId,
+          name: input.name,
+          hint: secret.slice(-4),
+          scope: input.scope,
+          createdAt,
+          lastUsedAt: null,
+          expiresAt: input.expiresInDays ? new Date(createdAt.getTime() + input.expiresInDays * DAY_MS) : null,
+        });
+      });
+      return { secret, token: toApiTokenInfo(record) };
+    },
+
+    async revokeApiToken(userId: string, tokenId: string): Promise<void> {
+      if (!(await store.apiTokens.findById(userId, tokenId))) {
+        throw new AppError(404, "not_found", "No such token");
+      }
+      await store.apiTokens.delete(userId, tokenId);
     },
 
     async purgeExpiredSessions(): Promise<void> {

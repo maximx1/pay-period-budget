@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  type ApiTokenCreatedResponse,
+  apiTokenInputSchema,
+  type ApiTokenListResponse,
   type AuthConfigResponse,
   type AuthResponse,
   changePasswordSchema,
@@ -18,6 +21,7 @@ import {
   clearSessionCookie,
   readSessionToken,
   requireAuth,
+  requireSession,
   setSessionCookie,
 } from "../middleware/session.ts";
 import type { AuthService, IssuedSession } from "../services/auth.ts";
@@ -39,6 +43,8 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
   const registerByIp = new RateLimiter(10, 60 * MINUTE, clock);
   const passwordByUser = new RateLimiter(10, 15 * MINUTE, clock);
   const authed = requireAuth(auth, config);
+  // Everything that manages the account itself: an API token is refused.
+  const signedIn = requireSession(auth, config);
 
   /** Hands a new session to the client the way it asked for it. */
   function deliver(c: Context, session: IssuedSession, transport: SessionTransport): AuthResponse | TokenAuthResponse {
@@ -98,7 +104,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
 
   routes.get("/me", authed, (c) => c.json<AuthResponse>({ user: c.var.user }));
 
-  routes.post("/password", authed, async (c) => {
+  routes.post("/password", signedIn, async (c) => {
     const userId = c.var.user.id;
     const retryAfter = passwordByUser.retryAfterSeconds(userId);
     if (retryAfter) throw tooManyAttempts(retryAfter);
@@ -115,19 +121,33 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     }
   });
 
-  routes.get("/sessions", authed, async (c) =>
+  routes.get("/sessions", signedIn, async (c) =>
     c.json<SessionListResponse>({ sessions: await auth.listSessions(c.var.user.id, c.var.sessionId) }),
   );
 
-  routes.post("/sessions/revoke-others", authed, async (c) => {
+  routes.post("/sessions/revoke-others", signedIn, async (c) => {
     await auth.revokeOtherSessions(c.var.user.id, c.var.sessionId);
     return c.body(null, 204);
   });
 
-  routes.delete("/sessions/:id", authed, async (c) => {
+  routes.delete("/sessions/:id", signedIn, async (c) => {
     const id = c.req.param("id");
     await auth.revokeSession(c.var.user.id, id);
     if (id === c.var.sessionId) clearSessionCookie(c);
+    return c.body(null, 204);
+  });
+
+  routes.get("/tokens", signedIn, async (c) =>
+    c.json<ApiTokenListResponse>({ tokens: await auth.listApiTokens(c.var.user.id) }),
+  );
+
+  routes.post("/tokens", signedIn, async (c) => {
+    const input = await parseJson(c, apiTokenInputSchema);
+    return c.json<ApiTokenCreatedResponse>(await auth.createApiToken(c.var.user.id, input), 201);
+  });
+
+  routes.delete("/tokens/:id", signedIn, async (c) => {
+    await auth.revokeApiToken(c.var.user.id, c.req.param("id"));
     return c.body(null, 204);
   });
 

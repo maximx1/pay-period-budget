@@ -67,8 +67,8 @@ export function createTestClient(app: Hono<AppEnv>) {
   return {
     get: (path: string, headers?: Record<string, string>) => send("GET", path, undefined, headers),
     post: (path: string, body?: unknown, headers?: Record<string, string>) => send("POST", path, body, headers),
-    patch: (path: string, body?: unknown) => send("PATCH", path, body),
-    put: (path: string, body?: unknown) => send("PUT", path, body),
+    patch: (path: string, body?: unknown, headers?: Record<string, string>) => send("PATCH", path, body, headers),
+    put: (path: string, body?: unknown, headers?: Record<string, string>) => send("PUT", path, body, headers),
     delete: (path: string, headers?: Record<string, string>) => send("DELETE", path, undefined, headers),
     get sessionCookie() {
       return sessionCookie;

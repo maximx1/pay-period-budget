@@ -91,3 +91,50 @@ export type SessionInfo = {
 };
 
 export type SessionListResponse = { sessions: SessionInfo[] };
+
+/**
+ * What an API token may do. Either kind reaches budget data only: the account itself
+ * (password, sessions, tokens) always needs a signed-in session.
+ */
+export const API_TOKEN_SCOPES = ["read", "write"] as const;
+export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
+
+export const MAX_API_TOKENS = 10;
+export const MAX_API_TOKEN_DAYS = 3650;
+
+export const apiTokenInputSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name").max(60, "Keep the name under 60 characters"),
+  scope: z.enum(API_TOKEN_SCOPES),
+  /** Left out or null: the token never expires. */
+  expiresInDays: z
+    .number("Enter a number of days")
+    .int("Enter a whole number of days")
+    .min(1, "Enter at least one day")
+    .max(MAX_API_TOKEN_DAYS, "That's too far ahead")
+    .nullable()
+    .optional(),
+});
+export type ApiTokenInput = z.output<typeof apiTokenInputSchema>;
+
+/** A key a program uses to act on the account's budget. The secret itself is never listed. */
+export type ApiTokenInfo = {
+  id: string;
+  name: string;
+  scope: ApiTokenScope;
+  /** The last four characters of the secret, to tell tokens apart. */
+  hint: string;
+  /** ISO instants. `lastUsedAt` is only refreshed about once an hour; null if never used. */
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Null if it never expires. An expired token stays listed until it is revoked. */
+  expiresAt: string | null;
+};
+
+export type ApiTokenListResponse = { tokens: ApiTokenInfo[] };
+
+/** The response to creating a token: the only time the secret is ever sent. */
+export type ApiTokenCreatedResponse = {
+  /** Send as `Authorization: Bearer <secret>`. Only its hash is stored. */
+  secret: string;
+  token: ApiTokenInfo;
+};

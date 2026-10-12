@@ -6,8 +6,9 @@ import { AppError } from "./lib/errors.ts";
 
 export type AppEnv = {
   Variables: {
-    /** Set by requireAuth; only read these in routes behind that middleware. */
+    /** Set by requireAuth and requireSession; only read it in routes behind one of them. */
     user: PublicUser;
+    /** Set for a signed-in session, not for an API token; only read it behind requireSession. */
     sessionId: string;
   };
 };
@@ -45,7 +46,7 @@ export function clientIp(c: Context, trustProxy: boolean): string {
   }
 }
 
-const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+export const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
  * CSRF defence for cookie-authenticated requests: a browser always sends Origin on

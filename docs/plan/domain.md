@@ -308,6 +308,9 @@ transactions       id, user_id → users, name, amount_cents, occurs_at, status,
 recurring_items    id, user_id → users, name, description, kind, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    created_at, updated_at
+api_tokens         id, user_id → users, name, token_hash, hint, scope, created_at,
+                   last_used_at, expires_at (null = never)
+                   unique (token_hash)
 ```
 
 All child rows cascade when a user is deleted.
@@ -318,6 +321,11 @@ Everything except sign-in, registration, `/api/auth/config` and `/api/health` re
 session: either the cookie the web app gets, or `Authorization: Bearer <token>` for a
 client that signed in with `transport: "token"`. Errors use the envelope in
 `src/shared/api.ts`.
+
+An **API token** (created in Settings, sent the same way as a bearer) also works, for
+budget data only: every endpoint below outside `/api/auth`, plus `GET /api/auth/me`. On
+the rest of `/api/auth` it gets a 403. A `read` token may only send `GET`; a `write` token
+may send anything. Changing the password revokes them all.
 
 ```
 GET    /api/health                     200 when the server and database are up
@@ -330,6 +338,9 @@ POST   /api/auth/password              { currentPassword, newPassword }
 GET    /api/auth/sessions              signed-in devices
 DELETE /api/auth/sessions/:id
 POST   /api/auth/sessions/revoke-others
+GET    /api/auth/tokens                API tokens, without their secrets → { tokens }
+POST   /api/auth/tokens                { name, scope: "read" | "write", expiresInDays? } → { secret, token }; the secret is never shown again
+DELETE /api/auth/tokens/:id
 PATCH  /api/settings                   { timezone }
 GET    /api/budget                     → { budget | null }
 POST   /api/budget                     setup; 409 if one exists

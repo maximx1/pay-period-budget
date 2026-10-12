@@ -2,6 +2,7 @@
 // nothing outside src/server/repos and src/server/db may import drizzle or the driver.
 // Swapping the database means writing a new implementation of DataStore.
 
+import type { ApiTokenScope } from "../../shared/auth.ts";
 import type { LocalDate, LocalDateTime } from "../../shared/dates.ts";
 import type { RecurrenceUnit } from "../../shared/recurrence.ts";
 import type { ScheduleType } from "../../shared/schedule.ts";
@@ -49,6 +50,30 @@ export interface SessionRepo {
   /** Signs the user out everywhere except the session with `keepId`. */
   deleteOthers(userId: string, keepId: string): Promise<void>;
   deleteExpired(now: Date): Promise<void>;
+}
+
+export type ApiTokenRecord = {
+  id: string;
+  tokenHash: string;
+  userId: string;
+  name: string;
+  hint: string;
+  scope: ApiTokenScope;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  /** Null: never expires. */
+  expiresAt: Date | null;
+};
+
+export interface ApiTokenRepo {
+  create(token: ApiTokenRecord): Promise<ApiTokenRecord>;
+  findByTokenHash(tokenHash: string): Promise<ApiTokenRecord | null>;
+  findById(userId: string, id: string): Promise<ApiTokenRecord | null>;
+  /** The user's tokens, newest first. Includes expired ones. */
+  listForUser(userId: string): Promise<ApiTokenRecord[]>;
+  touch(id: string, lastUsedAt: Date): Promise<void>;
+  delete(userId: string, id: string): Promise<void>;
+  deleteAllForUser(userId: string): Promise<void>;
 }
 
 export type SettingsRecord = {
@@ -196,6 +221,7 @@ export interface RecurringRepo {
 export interface Repos {
   users: UserRepo;
   sessions: SessionRepo;
+  apiTokens: ApiTokenRepo;
   settings: SettingsRepo;
   schedules: ScheduleRepo;
   periods: PeriodRepo;

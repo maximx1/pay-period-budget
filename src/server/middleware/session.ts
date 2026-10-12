@@ -2,8 +2,9 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import type { AppConfig } from "../env.ts";
-import type { AppEnv } from "../http.ts";
+import { type AppEnv, SAFE_METHODS } from "../http.ts";
 import { AppError } from "../lib/errors.ts";
+import { looksLikeApiToken } from "../lib/tokens.ts";
 import type { AuthService } from "../services/auth.ts";
 
 export const SESSION_COOKIE = "ppb_session";
@@ -39,10 +40,26 @@ export function readSessionToken(c: Context): { token: string; via: "header" | "
   return cookie ? { token: cookie, via: "cookie" } : null;
 }
 
-/** Rejects the request with 401 unless it carries a live session; exposes the user as c.var.user. */
-export function requireAuth(auth: AuthService, config: CookieConfig) {
+function authenticate(auth: AuthService, config: CookieConfig, accept: { apiTokens: boolean }) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const carried = readSessionToken(c);
+
+    if (carried?.via === "header" && looksLikeApiToken(carried.token)) {
+      const apiToken = await auth.authenticateApiToken(carried.token);
+      // An unknown one falls through: it is refused below like any other bad credential.
+      if (apiToken) {
+        if (!accept.apiTokens) {
+          throw new AppError(403, "forbidden", "An API token can't manage the account. Sign in to do that.");
+        }
+        if (apiToken.scope === "read" && !SAFE_METHODS.has(c.req.method)) {
+          throw new AppError(403, "forbidden", "This API token is read-only");
+        }
+        c.set("user", apiToken.user);
+        await next();
+        return;
+      }
+    }
+
     const session = carried ? await auth.authenticate(carried.token) : null;
     if (!carried || !session) {
       if (carried?.via === "cookie") clearSessionCookie(c);
@@ -57,4 +74,21 @@ export function requireAuth(auth: AuthService, config: CookieConfig) {
     c.set("sessionId", session.sessionId);
     await next();
   });
+}
+
+/**
+ * Rejects the request with 401 unless it carries a live session or API token; exposes the
+ * user as c.var.user. A read-only token is refused (403) on anything but a read. For
+ * budget data; anything that manages the account takes requireSession instead.
+ */
+export function requireAuth(auth: AuthService, config: CookieConfig) {
+  return authenticate(auth, config, { apiTokens: true });
+}
+
+/**
+ * As requireAuth, but only a signed-in session will do: an API token gets a 403. A leaked
+ * token must not be able to change the password, sign devices out or mint another token.
+ */
+export function requireSession(auth: AuthService, config: CookieConfig) {
+  return authenticate(auth, config, { apiTokens: false });
 }

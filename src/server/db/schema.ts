@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
 import { TRANSACTION_KINDS, TRANSACTION_STATUSES } from "../../shared/transactions.ts";
@@ -41,6 +42,31 @@ export const sessions = sqliteTable(
   (t) => [
     uniqueIndex("sessions_token_hash_unique").on(t.tokenHash),
     index("sessions_user_id_idx").on(t.userId),
+  ],
+);
+
+/** Keys for programs acting for the user (an assistant, a script). Limited to budget data. */
+export const apiTokens = sqliteTable(
+  "api_tokens",
+  {
+    id: text("id").primaryKey(),
+    /** SHA-256 of the token. The raw token is shown once, when it is created. */
+    tokenHash: text("token_hash").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** The last four characters of the token, to tell tokens apart in a list. */
+    hint: text("hint").notNull(),
+    scope: text("scope", { enum: API_TOKEN_SCOPES }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+    /** Null: never expires. */
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("api_tokens_token_hash_unique").on(t.tokenHash),
+    index("api_tokens_user_id_idx").on(t.userId),
   ],
 );
 

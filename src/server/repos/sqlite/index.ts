@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import type { DataStore, Repos } from "../types.ts";
+import { createApiTokenRepo } from "./apiTokens.ts";
 import { createPeriodRepo } from "./periods.ts";
 import { createRecurringRepo } from "./recurring.ts";
 import { createScheduleRepo } from "./schedules.ts";
@@ -14,6 +15,7 @@ function createRepos(db: Db): Repos {
   return {
     users: createUserRepo(db),
     sessions: createSessionRepo(db),
+    apiTokens: createApiTokenRepo(db),
     settings: createSettingsRepo(db),
     schedules: createScheduleRepo(db),
     periods: createPeriodRepo(db),
