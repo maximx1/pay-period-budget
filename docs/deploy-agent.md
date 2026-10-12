@@ -344,6 +344,22 @@ curl -fsS https://DOMAIN/api/auth/config
 
 prints `{"registrationOpen":false}`.
 
+## Optional: turning assistant access off
+
+Only if the owner asks. API tokens, which an AI assistant uses to reach the budget, work
+unless the server is told otherwise. To refuse them all, add this line to `.env`:
+
+```
+ALLOW_API_TOKENS=false
+```
+
+```bash
+docker compose up -d
+```
+
+Check it: `curl -s https://DOMAIN/api/auth/config` shows `"apiTokensEnabled":false`.
+Nothing is deleted, and setting the line back to `true` turns them on again.
+
 ## Updating later
 
 ```bash

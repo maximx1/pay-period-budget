@@ -13,6 +13,7 @@ const envSchema = z.object({
   TRUST_PROXY: z.enum(["true", "false"]).default("false"),
   COOKIE_SECURE: z.enum(["true", "false"]).optional(),
   ALLOW_REGISTRATION: z.enum(["true", "false"]).default("true"),
+  ALLOW_API_TOKENS: z.enum(["true", "false"]).default("true"),
 });
 
 export type AppConfig = {
@@ -32,6 +33,11 @@ export type AppConfig = {
   cookieSecure: boolean;
   /** Whether new accounts can be created. Turn off once yours exists on a server others can reach. */
   allowRegistration: boolean;
+  /**
+   * Whether API tokens work at all. They are the only way in for an assistant (the MCP
+   * server), so off means no assistant can reach the budget. Tokens are kept while it is off.
+   */
+  allowApiTokens: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -48,5 +54,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxy: parsed.TRUST_PROXY === "true",
     cookieSecure: parsed.COOKIE_SECURE ? parsed.COOKIE_SECURE === "true" : parsed.NODE_ENV === "production",
     allowRegistration: parsed.ALLOW_REGISTRATION === "true",
+    allowApiTokens: parsed.ALLOW_API_TOKENS === "true",
   };
 }

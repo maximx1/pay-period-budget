@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createApp } from "../src/server/app.ts";
 import { createTestApp, type TestApp } from "../src/server/testing.ts";
 import { MAX_IMPORT_ROWS } from "../src/shared/transactions.ts";
 import { type Api, ApiRequestError, createApi } from "./api.ts";
@@ -615,6 +616,24 @@ describe("the token", () => {
       "The server refused the API token. It may have been revoked or have expired; create a new one in the app's Settings.",
     );
     await expect(call("get_budget")).rejects.toThrow("refused the API token");
+  });
+
+  it("passes on the reason when the server has API tokens turned off", async () => {
+    // The same budget behind a server started with ALLOW_API_TOKENS=false.
+    const secret = await newToken("write");
+    const { app } = createApp({ store: t.store, config: { ...t.config, allowApiTokens: false }, now: t.clock.now });
+    const live = t.app;
+    t.app = app;
+    try {
+      connect(secret);
+      // Not "revoked or expired": the token is fine, and a new one would not help.
+      await expect(whoAmI(api)).rejects.toThrow("API tokens are turned off on this server");
+      await expect(call("get_budget")).rejects.toThrow("API tokens are turned off on this server");
+      await expect(call("create_transaction", row("2026-01-20"))).rejects.toThrow("API tokens are turned off on this server");
+    } finally {
+      t.app = live;
+    }
+    expect(await saved()).toEqual([]);
   });
 
   it("can read but not write when it is read-only", async () => {

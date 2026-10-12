@@ -17,6 +17,7 @@ import { SelectField } from "../../components/ui/SelectField.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { applyApiError } from "../auth/formErrors.ts";
+import { useApiTokensEnabled } from "../auth/session.ts";
 import { useApiTokens, useCreateApiToken, useRevokeApiToken } from "./api.ts";
 import { SettingsSection } from "./SettingsSection.tsx";
 
@@ -47,6 +48,8 @@ export function ApiTokensSection() {
   const toast = useToast();
   const tokens = useApiTokens();
   const revoke = useRevokeApiToken();
+  // False when the server has API tokens turned off (ALLOW_API_TOKENS). Tokens are kept through that.
+  const turnedOff = useApiTokensEnabled() === false;
   const [creating, setCreating] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
@@ -74,6 +77,13 @@ export function ApiTokensSection() {
     const atLimit = tokens.data.length >= MAX_API_TOKENS;
     content = (
       <>
+        {turnedOff && (
+          // A setting, not a failure: said plainly rather than as an alert.
+          <p role="status" className="mb-4 rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg">
+            Assistant access is turned off on this server, so no token works right now.
+            {tokens.data.length > 0 && " The ones below are kept, and will work again if it is turned back on."}
+          </p>
+        )}
         {tokens.data.length === 0 ? (
           <p className="text-sm text-muted">No tokens yet.</p>
         ) : (
@@ -118,10 +128,12 @@ export function ApiTokensSection() {
             ))}
           </ul>
         )}
-        <Button variant="secondary" className="mt-4" disabled={atLimit} onClick={() => setCreating(true)}>
-          New token
-        </Button>
-        {atLimit && (
+        {!turnedOff && (
+          <Button variant="secondary" className="mt-4" disabled={atLimit} onClick={() => setCreating(true)}>
+            New token
+          </Button>
+        )}
+        {atLimit && !turnedOff && (
           <p className="mt-2 text-sm text-muted">You have {MAX_API_TOKENS} tokens, the most allowed. Revoke one to add another.</p>
         )}
       </>

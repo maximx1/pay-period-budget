@@ -161,6 +161,20 @@ docker compose up -d
 
 The sign-in page now offers only sign-in.
 
+### Turning assistant access off
+
+An AI assistant reaches the budget with an API token made in Settings (see "Using it from
+an AI assistant" in `README.md`). That is allowed unless you say otherwise. To refuse every
+API token, set in `.env`
+
+```
+ALLOW_API_TOKENS=false
+```
+
+and run `docker compose up -d` again. Nothing is deleted: the tokens are still listed in
+Settings, which says they are turned off, and they work again when the line is set back to
+`true`. Signing in from the web app and the Android app is not affected.
+
 ## How it heals itself
 
 | What goes wrong | What happens |

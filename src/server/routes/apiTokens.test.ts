@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MAX_API_TOKENS } from "../../shared/auth.ts";
+import { API_TOKENS_OFF_MESSAGE, MAX_API_TOKENS } from "../../shared/auth.ts";
+import { createApp } from "../app.ts";
 import { hashToken } from "../lib/tokens.ts";
 import { SESSION_COOKIE } from "../middleware/session.ts";
-import { createTestApp, type TestApp } from "../testing.ts";
+import { createTestApp, createTestClient, type TestApp } from "../testing.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -300,5 +301,97 @@ describe("changing the password", () => {
     const refused = await ann.post("/api/auth/password", { currentPassword: "not it", newPassword: "a new password" });
     expect(refused.status).toBe(400);
     expect((await t.client().get("/api/auth/me", bearer(secret))).status).toBe(200);
+  });
+});
+
+describe("API tokens turned off for the whole server (ALLOW_API_TOKENS=false)", () => {
+  /** The same database and clock behind a server started with the setting one way or the other, signed in as ann. */
+  const signedOut = (allowApiTokens: boolean): Client =>
+    createTestClient(createApp({ store: t.store, config: { ...t.config, allowApiTokens }, now: t.clock.now }).app);
+  function server(allowApiTokens: boolean): Client {
+    const client = signedOut(allowApiTokens);
+    client.sessionCookie = ann.sessionCookie;
+    return client;
+  }
+  const refusal = { error: { code: "forbidden", message: API_TOKENS_OFF_MESSAGE } };
+
+  it("is on unless the server says otherwise, and tells a client either way", async () => {
+    expect(t.config.allowApiTokens).toBe(true);
+    expect((await (await ann.get("/api/auth/config")).json()).apiTokensEnabled).toBe(true);
+    expect((await (await server(false).get("/api/auth/config")).json()).apiTokensEnabled).toBe(false);
+  });
+
+  it("refuses every API token, for reading as well as writing, and says why", async () => {
+    const write = await createToken(ann);
+    const read = await createToken(ann, { name: "Reader", scope: "read" });
+    const off = server(false);
+    // No cookie: the token is all these requests carry.
+    const anonymous = signedOut(false);
+
+    for (const secret of [write.secret, read.secret]) {
+      const reading = await anonymous.get("/api/periods/current", bearer(secret));
+      expect(reading.status).toBe(403);
+      expect(await reading.json()).toEqual(refusal);
+      // The one account endpoint a token may normally use.
+      const me = await anonymous.get("/api/auth/me", bearer(secret));
+      expect(me.status).toBe(403);
+      expect(await me.json()).toEqual(refusal);
+    }
+
+    const writing = await anonymous.post("/api/transactions", iceCream, bearer(write.secret));
+    expect(writing.status).toBe(403);
+    expect(await writing.json()).toEqual(refusal);
+    expect(await transactionCount(off)).toBe(0);
+
+    // A token that was never issued is told the same, so the answer says nothing about any one token.
+    const unknown = await anonymous.get("/api/periods/current", bearer(`ppb_${"x".repeat(43)}`));
+    expect(unknown.status).toBe(403);
+    expect(await unknown.json()).toEqual(refusal);
+  });
+
+  it("does not record a refused token as used", async () => {
+    const { secret, token } = await createToken(ann);
+    await server(false).get("/api/periods/current", bearer(secret));
+    const listed = (await (await ann.get("/api/auth/tokens")).json()).tokens as Array<{ id: string; lastUsedAt: string | null }>;
+    expect(listed.find((each) => each.id === token.id)?.lastUsedAt).toBeNull();
+  });
+
+  it("leaves signed-in sessions alone: the web app's cookie and the phone's bearer session", async () => {
+    const off = server(false);
+    expect((await off.get("/api/periods/current")).status).toBe(200);
+    expect((await off.post("/api/transactions", iceCream)).status).toBe(201);
+
+    const phone = signedOut(false);
+    const signedIn = await phone.post("/api/auth/login", { identifier: "ann", password: PASSWORD, transport: "token" });
+    expect(signedIn.status).toBe(200);
+    const session = (await signedIn.json()).token as string;
+    expect((await phone.get("/api/periods/current", bearer(session))).status).toBe(200);
+    expect((await phone.get("/api/auth/sessions", bearer(session))).status).toBe(200);
+  });
+
+  it("makes no new tokens while off, but still lists and revokes the ones there are", async () => {
+    const kept = await createToken(ann, { name: "Kept" });
+    const dropped = await createToken(ann, { name: "Dropped" });
+    const off = server(false);
+
+    const made = await off.post("/api/auth/tokens", { name: "Another", scope: "read" });
+    expect(made.status).toBe(403);
+    expect(await made.json()).toEqual(refusal);
+
+    const names = async () =>
+      ((await (await off.get("/api/auth/tokens")).json()).tokens as Array<{ name: string }>).map((each) => each.name).sort();
+    expect(await names()).toEqual(["Dropped", "Kept"]);
+    expect((await off.delete(`/api/auth/tokens/${dropped.token.id}`)).status).toBe(204);
+    expect(await names()).toEqual(["Kept"]);
+    expect(kept.token.id).toEqual(expect.any(String));
+  });
+
+  it("keeps the tokens: one made before works again when it is turned back on", async () => {
+    const { secret } = await createToken(ann);
+    expect((await server(false).get("/api/periods/current", bearer(secret))).status).toBe(403);
+
+    const backOn = signedOut(true);
+    expect((await backOn.get("/api/periods/current", bearer(secret))).status).toBe(200);
+    expect((await backOn.post("/api/transactions", iceCream, bearer(secret))).status).toBe(201);
   });
 });

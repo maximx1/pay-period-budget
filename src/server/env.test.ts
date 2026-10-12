@@ -24,4 +24,11 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ IDLE_TIMEOUT_MINUTES: "-5" })).toThrow();
     expect(() => loadConfig({ IDLE_TIMEOUT_MINUTES: "soon" })).toThrow();
   });
+
+  it("allows API tokens, and with them an assistant, unless told not to", () => {
+    expect(loadConfig({}).allowApiTokens).toBe(true);
+    expect(loadConfig({ ALLOW_API_TOKENS: "true" }).allowApiTokens).toBe(true);
+    expect(loadConfig({ ALLOW_API_TOKENS: "false" }).allowApiTokens).toBe(false);
+    expect(() => loadConfig({ ALLOW_API_TOKENS: "off" })).toThrow();
+  });
 });

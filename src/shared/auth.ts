@@ -75,7 +75,12 @@ export type AuthConfigResponse = {
    * 0: neither happens.
    */
   idleTimeoutMinutes: number;
+  /** False when the server refuses every API token, and with them any assistant. */
+  apiTokensEnabled: boolean;
 };
+
+/** What a request carrying an API token is told, and one that tries to create one, when the server has them turned off. */
+export const API_TOKENS_OFF_MESSAGE = "API tokens are turned off on this server";
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Enter your current password").max(PASSWORD_MAX_LENGTH),

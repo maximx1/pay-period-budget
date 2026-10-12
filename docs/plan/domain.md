@@ -443,9 +443,17 @@ budget data only: every endpoint below outside `/api/auth`, plus `GET /api/auth/
 the rest of `/api/auth` it gets a 403. A `read` token may only send `GET`; a `write` token
 may send anything. Changing the password revokes them all.
 
+**API tokens can be turned off for the whole server** with `ALLOW_API_TOKENS=false` (on by
+default). Then anything sent as an API token, valid or not, gets a 403 that says "API
+tokens are turned off on this server", on every endpoint; and `POST /api/auth/tokens`
+gets the same from a signed-in session. Tokens are kept: listing and revoking still work,
+and they are usable again when it is turned back on. Sessions are untouched. This is how
+assistant (MCP) access is switched off, since an API token is all the MCP server has.
+`GET /api/auth/config` reports it as `apiTokensEnabled`.
+
 ```
 GET    /api/health                     200 when the server and database are up
-GET    /api/auth/config                → { registrationOpen, idleTimeoutMinutes }
+GET    /api/auth/config                → { registrationOpen, idleTimeoutMinutes, apiTokensEnabled }
 POST   /api/auth/register              body may include transport: "cookie" | "token"
 POST   /api/auth/login                 likewise; "token" returns { user, token, expiresAt }
 POST   /api/auth/logout

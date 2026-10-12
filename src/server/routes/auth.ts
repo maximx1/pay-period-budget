@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  API_TOKENS_OFF_MESSAGE,
   type ApiTokenCreatedResponse,
   apiTokenInputSchema,
   type ApiTokenListResponse,
@@ -61,6 +62,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
     c.json<AuthConfigResponse>({
       registrationOpen: config.allowRegistration,
       idleTimeoutMinutes: config.idleTimeoutMs / MINUTE,
+      apiTokensEnabled: config.allowApiTokens,
     }),
   );
 
@@ -153,6 +155,8 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
   );
 
   routes.post("/tokens", signedIn, async (c) => {
+    // Listing and revoking still work while they are off; only making one that could not be used is refused.
+    if (!config.allowApiTokens) throw new AppError(403, "forbidden", API_TOKENS_OFF_MESSAGE);
     const input = await parseJson(c, apiTokenInputSchema);
     return c.json<ApiTokenCreatedResponse>(await auth.createApiToken(c.var.user.id, input), 201);
   });

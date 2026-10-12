@@ -45,7 +45,7 @@ different app.
 | [14](phase-14-schedule-switch.md) | "On a schedule" or "As it happens": a switch at the top of the bill or income dialog, and a filter for the ones with no schedule | Done 2026-10-12. Not yet deployed | n/a |
 | [15](phase-15-transfers.md) | Transfers: a third kind of bill or income for another account of your own (savings, joint, a loan), where money goes out and comes back, with a balance. Also Income and Expenses on the home card | Done 2026-10-12. Not yet deployed; adds migration `0009` | n/a |
 | [16](phase-16-swipe-periods.md) | Swipe left and right on the home screen for the next and previous pay period | Built 2026-10-12. Driven with simulated touches only; not yet tried with a finger | n/a |
-| [17](phase-17-mcp-switch.md) | A server setting that turns assistant (MCP) access on and off; on by default | Planned 2026-10-12, not started | Sonnet |
+| [17](phase-17-mcp-switch.md) | A server setting that turns assistant (MCP) access on and off; on by default | Done 2026-10-12. Not yet deployed | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

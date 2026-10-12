@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
+import { API_TOKENS_OFF_MESSAGE } from "../../shared/auth.ts";
 import type { AppConfig } from "../env.ts";
 import { type AppEnv, SAFE_METHODS } from "../http.ts";
 import { AppError } from "../lib/errors.ts";
@@ -12,6 +13,7 @@ export const SESSION_COOKIE = "ppb_session";
 export const SESSION_EXPIRES_HEADER = "X-Session-Expires";
 
 type CookieConfig = Pick<AppConfig, "cookieSecure">;
+type AuthConfig = Pick<AppConfig, "cookieSecure" | "allowApiTokens">;
 
 export function setSessionCookie(c: Context, config: CookieConfig, token: string, expiresAt: Date) {
   setCookie(c, SESSION_COOKIE, token, {
@@ -40,11 +42,15 @@ export function readSessionToken(c: Context): { token: string; via: "header" | "
   return cookie ? { token: cookie, via: "cookie" } : null;
 }
 
-function authenticate(auth: AuthService, config: CookieConfig, accept: { apiTokens: boolean }) {
+function authenticate(auth: AuthService, config: AuthConfig, accept: { apiTokens: boolean }) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const carried = readSessionToken(c);
 
     if (carried?.via === "header" && looksLikeApiToken(carried.token)) {
+      // Turned off for the whole server: anything shaped like an API token gets this answer,
+      // good or not, and is told why. It gives away nothing /api/auth/config does not say.
+      if (!config.allowApiTokens) throw new AppError(403, "forbidden", API_TOKENS_OFF_MESSAGE);
+
       const apiToken = await auth.authenticateApiToken(carried.token);
       // An unknown one falls through: it is refused below like any other bad credential.
       if (apiToken) {
@@ -81,7 +87,7 @@ function authenticate(auth: AuthService, config: CookieConfig, accept: { apiToke
  * user as c.var.user. A read-only token is refused (403) on anything but a read. For
  * budget data; anything that manages the account takes requireSession instead.
  */
-export function requireAuth(auth: AuthService, config: CookieConfig) {
+export function requireAuth(auth: AuthService, config: AuthConfig) {
   return authenticate(auth, config, { apiTokens: true });
 }
 
@@ -89,6 +95,6 @@ export function requireAuth(auth: AuthService, config: CookieConfig) {
  * As requireAuth, but only a signed-in session will do: an API token gets a 403. A leaked
  * token must not be able to change the password, sign devices out or mint another token.
  */
-export function requireSession(auth: AuthService, config: CookieConfig) {
+export function requireSession(auth: AuthService, config: AuthConfig) {
   return authenticate(auth, config, { apiTokens: false });
 }

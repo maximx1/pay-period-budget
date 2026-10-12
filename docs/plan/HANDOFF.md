@@ -34,7 +34,7 @@ Kick-off prompt for the next session:
 | 14 Schedule switch and filter | Done 2026-10-12, **not yet deployed**. "On a schedule" / "As it happens" is a switch at the top of the dialog and a filter on the page. Rebuild the MCP file (`npm run build:mcp`) with it |
 | 15 Transfers | Done 2026-10-12, **not yet deployed**; adds migration `0009`. A third kind of bill or income, "Transfer", for another account of the owner's own (savings, joint, a loan): money both ways and a worked-out balance. The home card shows Income and Expenses instead of a net Paid. The word "Transfer" is a default the owner may change (decision 1 in the phase file). Rebuild the MCP file with it |
 | 16 Swipe between periods | Built 2026-10-12. **Never swiped with a real finger**: checked in a browser with simulated touches. The phase file ends with what to try on a phone |
-| 17 Assistant access switch | **Planned only** (2026-10-12). `ALLOW_API_TOKENS`, on by default; off refuses every API token, which is all the MCP server has |
+| 17 Assistant access switch | Done 2026-10-12, **not yet deployed**. `ALLOW_API_TOKENS=false` on the server refuses every API token, which is all the MCP server has; on by default, and tokens are kept through it |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 

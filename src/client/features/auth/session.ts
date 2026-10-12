@@ -49,6 +49,16 @@ export function useRegistrationOpen(): boolean | undefined {
 }
 
 /**
+ * Whether this server accepts API tokens, and so an assistant. Undefined until known; if
+ * the server cannot be asked it is taken to be on, and the server has the last word anyway.
+ */
+export function useApiTokensEnabled(): boolean | undefined {
+  const config = useAuthConfig();
+  if (config.data) return config.data.apiTokensEnabled ?? true;
+  return config.isError ? true : undefined;
+}
+
+/**
  * Minutes without use after which the app closes itself: 0 for never, undefined until the
  * server has answered. If it cannot be asked, the usual ten minutes apply.
  */

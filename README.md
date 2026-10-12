@@ -67,6 +67,7 @@ project folder is read as well (see `.env.example`).
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so rate limits see the visitor's address rather than the proxy's |
 | `COOKIE_SECURE` | `true` in production | Session cookie is HTTPS-only |
 | `ALLOW_REGISTRATION` | `true` | `false` stops new accounts being created |
+| `ALLOW_API_TOKENS` | `true` | `false` turns assistant (MCP) access off: every API token is refused. Tokens are kept and work again when it is turned back on |
 | `SESSION_TTL_DAYS` | `30` | The longest a sign-in lasts without use; it is extended while in use |
 | `IDLE_TIMEOUT_MINUTES` | `10` | Minutes without activity before the web app signs out and the Android app locks. `0` turns both off |
 
@@ -107,6 +108,12 @@ same:
   pasted them into it. Only a model running on your own machine keeps them there.
 - The token sits in the assistant's configuration file in plain text. Anyone who can read
   that file can use it until you revoke it.
+
+**Turning it off.** Assistant access is on unless the server is told otherwise. Setting
+`ALLOW_API_TOKENS=false` on the server and restarting it refuses every API token, which is
+the only way in the MCP server has; the assistant is told why. The web app and the Android
+app are not affected. Tokens are kept, so setting it back to `true` is all it takes to
+turn it on again.
 
 ### 1. Create a token
 
