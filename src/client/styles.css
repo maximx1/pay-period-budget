@@ -98,19 +98,6 @@ body {
 html:has(dialog[open]) [data-scroll-root] {
   overflow: hidden;
 }
-/* ...and don't let a scroll started on the dialog or its backdrop pass through to the page
-   (touch rubber-banding, or a dialog's own scroller reaching its end). */
-html:has(dialog[open]),
-html:has(dialog[open]) body {
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-dialog {
-  overscroll-behavior: contain;
-}
-dialog .overflow-y-auto {
-  overscroll-behavior: contain;
-}
 
 @media (prefers-reduced-motion: no-preference) {
   dialog.modal-sheet,
