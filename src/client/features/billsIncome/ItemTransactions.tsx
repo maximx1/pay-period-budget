@@ -2,12 +2,24 @@ import { Circle, CircleCheck } from "lucide-react";
 import { Link } from "react-router";
 import type { PeriodSummary } from "../../../shared/budget.ts";
 import { dateOf, formatLongDate, type LocalDate } from "../../../shared/dates.ts";
+import { type BillOrIncome, type BillOrIncomeTotals, entryKindOf } from "../../../shared/billsIncome.ts";
 import { formatCents } from "../../../shared/money.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { cn } from "../../lib/cn.ts";
 
 /** An amount the way the home screen shows it: money in with a plus, money out bare. */
-export const shownAmount = (cents: number) => (cents > 0 ? formatCents(cents, { showPlus: true }) : formatCents(-cents));
+export const shownAmount = (cents: number) =>
+  // The absolute value, not a negation: negating zero would print "-$0.00".
+  cents > 0 ? formatCents(cents, { showPlus: true }) : formatCents(Math.abs(cents));
+
+export const KIND_LABELS = { expense: "Bill", income: "Income", transfer: "Transfer" } as const;
+
+/** An item's usual amount with the sign its own entries carry. A transfer's is money out. */
+export const signedUsualOf = (item: Pick<BillOrIncome, "kind" | "defaultAmountCents">) =>
+  entryKindOf(item.kind) === "income" ? item.defaultAmountCents : -item.defaultAmountCents;
+
+/** A transfer's balance: what is there, or what is owed when it is below zero. */
+export const shownBalance = (cents: number) => (cents < 0 ? `${formatCents(-cents)} owed` : formatCents(cents));
 
 /**
  * Where a transaction can be seen in context: the pay period that covers its date, opened
@@ -80,15 +92,9 @@ export function ItemTransactionList({ transactions, periods, today, onNavigate }
   );
 }
 
-/** The three figures for one bill or income: what has been paid, what is still to come, and how many. */
-export function ItemTotals({ totals }: { totals: { count: number; paidCents: number; upcomingCents: number } }) {
-  const figures = [
-    { label: "Paid", value: shownAmount(totals.paidCents) },
-    { label: "Upcoming", value: shownAmount(totals.upcomingCents) },
-    { label: "Transactions", value: String(totals.count) },
-  ];
+function Figures({ figures, className }: { figures: ReadonlyArray<{ label: string; value: string }>; className: string }) {
   return (
-    <dl className="grid grid-cols-3 gap-2">
+    <dl className={cn("grid gap-2", className)}>
       {figures.map(({ label, value }) => (
         <div key={label} className="min-w-0 rounded-lg bg-surface-2 px-3 py-2">
           <dt className="truncate text-xs text-muted">{label}</dt>
@@ -96,5 +102,33 @@ export function ItemTotals({ totals }: { totals: { count: number; paidCents: num
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * The figures for one bill or income: what has been paid, what is still to come, and how
+ * many. A transfer's money moves both ways, so it shows each way and what that leaves there.
+ */
+export function ItemTotals({ totals }: { totals: BillOrIncomeTotals }) {
+  const rest = [
+    { label: "Upcoming", value: shownAmount(totals.upcomingCents) },
+    { label: "Transactions", value: String(totals.count) },
+  ];
+  if (totals.balanceCents === null) {
+    return <Figures className="grid-cols-3" figures={[{ label: "Paid", value: shownAmount(totals.paidCents) }, ...rest]} />;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {/* A row to itself: "owed" after a large amount needs the width. */}
+      <Figures className="grid-cols-1" figures={[{ label: "Balance", value: shownBalance(totals.balanceCents) }]} />
+      <Figures
+        className="grid-cols-2"
+        figures={[
+          { label: "Sent", value: formatCents(totals.paidOutCents) },
+          { label: "Brought back", value: formatCents(totals.paidInCents) },
+          ...rest,
+        ]}
+      />
+    </div>
   );
 }

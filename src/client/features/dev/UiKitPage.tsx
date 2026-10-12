@@ -30,6 +30,7 @@ export function UiKitPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [schedule, setSchedule] = useState<"any" | "scheduled" | "unscheduled">("any");
 
   return (
     <>
@@ -78,6 +79,19 @@ export function UiKitPage() {
               { value: "week", label: "weeks" },
             ]}
           />
+          <div className="justify-self-start">
+            <SegmentedControl
+              label="Segments as wide as their labels"
+              fitLabels
+              options={[
+                { value: "any", label: "Any" },
+                { value: "scheduled", label: "Scheduled" },
+                { value: "unscheduled", label: "As it happens" },
+              ]}
+              value={schedule}
+              onChange={setSchedule}
+            />
+          </div>
           <div className="sm:col-span-2">
             <TextAreaField label="Description" hint="Free text; links become clickable." />
           </div>

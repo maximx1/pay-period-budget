@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { atStartOfDay } from "../../shared/dates.ts";
+import { entryKindOf } from "../../shared/billsIncome.ts";
 import { occurrencesBetween, type Recurrence } from "../../shared/recurrence.ts";
 import type { PeriodRecord, BillOrIncomeRecord, Repos } from "../repos/types.ts";
 
@@ -23,7 +24,7 @@ export async function materializeInPeriod(
   now: Date,
   options: { dryRun?: boolean } = {},
 ): Promise<{ count: number; sumCents: number; dates: string[] }> {
-  const amountCents = item.kind === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
+  const amountCents = entryKindOf(item.kind) === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
   const added: string[] = [];
 
   for (const date of occurrencesBetween(ruleOf(item), period.startDate, period.endDate, period.startDate)) {

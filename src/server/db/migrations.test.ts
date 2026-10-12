@@ -104,3 +104,44 @@ describe("0008: recurring_items becomes bills_income", () => {
     now.close();
   });
 });
+
+describe("0009: a starting balance for transfers", () => {
+  it("gives every item that already exists a starting balance of zero, and changes nothing else", async () => {
+    const url = await databaseBefore("0009_bill_income_opening");
+
+    const old = createClient({ url });
+    await old.execute("PRAGMA foreign_keys = ON");
+    await old.batch([
+      "insert into users (id, username, email, password_hash, created_at, updated_at) values ('u1', 'ann', 'ann@example.com', 'x', 1, 1)",
+      `insert into bills_income (id, user_id, name, description, kind, default_amount_cents, recurrence_unit, recurrence_interval, first_due_date, end_date, created_at, updated_at)
+       values ('rent', 'u1', 'Rent', 'to the landlord', 'expense', 90000, 'month', 1, '2026-01-25', null, 1, 1),
+              ('taxes', 'u1', 'Taxes savings', '', 'expense', 0, 'none', 1, '2026-01-02', null, 1, 1)`,
+      `insert into transactions (id, user_id, name, amount_cents, occurs_at, status, paid_at, sort_order, note, bill_income_id, occurrence_date, import_key, created_at, updated_at)
+       values ('t1', 'u1', 'Taxes savings', -40000, '2026-01-05T00:00', 'paid', 5, 0, null, 'taxes', null, null, 1, 1)`,
+    ]);
+    old.close();
+
+    const { close } = await openDatabase(url);
+    close();
+
+    const now = createClient({ url });
+    await now.execute("PRAGMA foreign_keys = ON");
+    const rows = async (sql: string) => (await now.execute(sql)).rows.map((row) => Object.values(row));
+
+    expect(await rows("select id, kind, default_amount_cents, recurrence_unit, opening_cents from bills_income order by id")).toEqual([
+      ["rent", "expense", 90000, "month", 0],
+      ["taxes", "expense", 0, "none", 0],
+    ]);
+    expect(await rows("select id, bill_income_id, amount_cents from transactions")).toEqual([["t1", "taxes", -40000]]);
+    expect(await rows("select * from pragma_foreign_key_check")).toEqual([]);
+
+    // A new row that does not mention it gets zero too, and it cannot be null.
+    await now.execute(
+      `insert into bills_income (id, user_id, name, kind, default_amount_cents, recurrence_unit, first_due_date, created_at, updated_at)
+       values ('gym', 'u1', 'Gym', 'expense', 3000, 'month', '2026-01-10', 1, 1)`,
+    );
+    expect(await rows("select opening_cents from bills_income where id = 'gym'")).toEqual([[0]]);
+    await expect(now.execute("update bills_income set opening_cents = null where id = 'gym'")).rejects.toThrow(/NOT NULL/);
+    now.close();
+  });
+});

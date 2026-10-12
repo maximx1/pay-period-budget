@@ -142,14 +142,23 @@ export function createTransactionRepo(db: Db): TransactionRepo {
     async sumForBillOrIncome(userId, billIncomeId) {
       const sumWhere = (status: "paid" | "upcoming") =>
         sql<number>`coalesce(sum(case when ${transactions.status} = ${status} then ${transactions.amountCents} end), 0)`;
+      const paid = sql`${transactions.status} = 'paid'`;
       const [row] = await db
-        .select({ count: sql<number>`count(*)`, paidCents: sumWhere("paid"), upcomingCents: sumWhere("upcoming") })
+        .select({
+          count: sql<number>`count(*)`,
+          paidCents: sumWhere("paid"),
+          upcomingCents: sumWhere("upcoming"),
+          paidOutCents: sql<number>`coalesce(sum(case when ${paid} and ${transactions.amountCents} < 0 then -${transactions.amountCents} end), 0)`,
+          paidInCents: sql<number>`coalesce(sum(case when ${paid} and ${transactions.amountCents} > 0 then ${transactions.amountCents} end), 0)`,
+        })
         .from(transactions)
         .where(and(eq(transactions.userId, userId), eq(transactions.billIncomeId, billIncomeId)));
       return {
         count: Number(row?.count ?? 0),
         paidCents: Number(row?.paidCents ?? 0),
         upcomingCents: Number(row?.upcomingCents ?? 0),
+        paidOutCents: Number(row?.paidOutCents ?? 0),
+        paidInCents: Number(row?.paidInCents ?? 0),
       };
     },
     async listUpcomingForBillOrIncomeAfter(userId, billIncomeId, date) {

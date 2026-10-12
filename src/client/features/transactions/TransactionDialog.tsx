@@ -147,12 +147,21 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     const item = choices.find((choice) => choice.id === itemId);
     if (!item || transaction) return;
     if (getValues("name").trim() === "") setValue("name", item.name);
-    setValue("kind", item.kind);
+    // A transfer goes either way, so whichever way this one was said to go stands.
+    if (item.kind !== "transfer") setValue("kind", item.kind);
     if (getValues("amount").trim() === "" && item.defaultAmountCents > 0) {
       setValue("amount", centsToInput(item.defaultAmountCents));
     }
   }
   const itemField = register("billIncomeId");
+  const chosen = choices.find((choice) => choice.id === chosenId);
+  // Says which way this one counts, so that what the money is then spent on is not tied here by mistake.
+  const transferHint =
+    chosen?.kind === "transfer"
+      ? chosenKind === "income"
+        ? `Money coming back from ${chosen.name}.`
+        : `Money going to ${chosen.name}.`
+      : undefined;
 
   function finish({ period, countedToward }: TransactionResponse) {
     onClose();
@@ -254,7 +263,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
         <SelectField
           label="Bill or income"
           options={itemOptions}
-          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : undefined}
+          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : transferHint}
           error={errors.billIncomeId?.message}
           {...itemField}
           onChange={(event) => {

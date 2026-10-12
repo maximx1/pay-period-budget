@@ -64,6 +64,13 @@
       "when": 1791829896400,
       "tag": "0008_rename_bills_income",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791840548792,
+      "tag": "0009_bill_income_opening",
+      "breakpoints": true
     }
   ]
 }

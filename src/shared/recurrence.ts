@@ -95,7 +95,7 @@ function ordinal(n: number): string {
 /** The rule in words: "Every 2 weeks on Saturday", "Every month on the 25th, until Oct 12, 2027". */
 export function describeRecurrence(rule: Recurrence): string {
   const { unit, interval, firstDueDate, endDate } = rule;
-  if (unit === "none") return "No schedule";
+  if (unit === "none") return "As it happens";
   const every = (noun: string) => (interval === 1 ? `Every ${noun}` : `Every ${interval} ${noun}s`);
 
   let text: string;

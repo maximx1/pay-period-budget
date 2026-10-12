@@ -84,6 +84,14 @@ const COUNTS_TOWARD_RULE =
   "The id of an upcoming transaction that a bill or income generated, when this one pays part or all of it. " +
   "That entry shrinks by this amount and is removed once nothing is left, so the bill is not counted twice. " +
   "It also ties this transaction to the same item. Leave it out for a payment on top of the scheduled one.";
+const KIND_RULE =
+  '"expense" is a bill and "income" is money coming in. "transfer" is another account of the owner\'s own that money ' +
+  "is moved to and may come back from: savings, a joint account, a HELOC or other loan. A transfer's transactions go " +
+  'either way ("expense" for money sent to it, "income" for money brought back), its own scheduled entries are money ' +
+  "out, and it has a balance worked out from them.";
+const OPENING_RULE =
+  "Only for a transfer: what the other account held before its first transaction in the budget, in whole cents. " +
+  "Negative for money owed, such as a loan. It moves no money in any pay period; it only sets where the balance starts.";
 const UNIT_RULE =
   '"week", "month" or "year" repeat every `recurrenceInterval` of those from `firstDueDate`; "period" is once every ' +
   'pay period, on its first day (a paycheck); "none" is no schedule at all: nothing is ever added by itself, and the ' +
@@ -365,7 +373,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       description:
         "The bills and income the budget knows about. One with a schedule is added by itself as an " +
         "upcoming transaction, one per occurrence, whenever a pay period is created; one with no schedule only gathers " +
-        "the transactions tied to it. A bank row for a scheduled one usually matches an upcoming transaction that " +
+        "the transactions tied to it. A transfer is another account of the owner's own, with money going both ways. A bank row for a scheduled one usually matches an upcoming transaction that " +
         "already exists: import it with countsToward rather than adding a second.",
       inputSchema: {
         includeArchived: z.boolean().default(false).describe("Also list items whose end date has passed."),
@@ -399,6 +407,13 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         );
         return [
           `${plural(totals.count, "transaction")} tied to this item in all: paid ${money(totals.paidCents)}, upcoming ${money(totals.upcomingCents)}.`,
+          // Only a transfer has a balance.
+          ...(totals.balanceCents === null
+            ? []
+            : [
+                `Sent to it ${money(totals.paidOutCents)}, brought back ${money(totals.paidInCents)}, balance ${money(totals.balanceCents)}` +
+                  `${totals.balanceCents < 0 ? " (owed)" : ""}: its starting balance, plus what was sent, less what came back, paid transactions only.`,
+              ]),
           `${transactions.length === totals.count ? "All of them" : `These ${transactions.length}`}, newest first:`,
           transactionList(transactions),
           ...(nextCursor ? [`There are older ones. Call again with before: "${nextCursor}"`] : []),
@@ -416,7 +431,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         "without saving; show the owner, then call again with dryRun: false.",
       inputSchema: {
         name: billOrIncomeFields.name,
-        kind: billOrIncomeFields.kind.describe('"expense" for a bill, "income" for money coming in.'),
+        kind: billOrIncomeFields.kind.describe(KIND_RULE),
+        openingCents: billOrIncomeFields.openingCents.describe(OPENING_RULE),
         defaultAmountCents: billOrIncomeFields.defaultAmountCents.describe(
           'The usual amount, as a positive whole number of cents. 0 ("no usual amount") only with recurrenceUnit "none".',
         ),
@@ -446,11 +462,16 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       title: "Change a bill or income",
       description:
         "Changes a bill or income; give only the fields that change. It never touches transactions that already exist: " +
-        "a new amount or schedule applies to pay periods created from now on.",
+        "a new amount or schedule applies to pay periods created from now on. To turn a bill that is really a savings " +
+        'account or a loan into a transfer, send kind: "transfer" (and openingCents if it held something already): ' +
+        "everything tied to it stays tied, and its balance is worked out from those transactions at once.",
       inputSchema: {
         id: z.string().min(1).describe(BILL_INCOME_ID_RULE),
         name: billOrIncomePatchFields.name,
-        kind: billOrIncomePatchFields.kind,
+        kind: billOrIncomePatchFields.kind.describe(KIND_RULE),
+        openingCents: billOrIncomePatchFields.openingCents.describe(
+          `${OPENING_RULE} A transfer with one must be sent openingCents: 0 in the same call that turns it into a bill or an income.`,
+        ),
         defaultAmountCents: billOrIncomePatchFields.defaultAmountCents.describe("Positive whole cents."),
         recurrenceUnit: billOrIncomePatchFields.recurrenceUnit.describe(UNIT_RULE),
         recurrenceInterval: billOrIncomePatchFields.recurrenceInterval,

@@ -1,0 +1,1 @@
+ALTER TABLE `bills_income` ADD `opening_cents` integer DEFAULT 0 NOT NULL;

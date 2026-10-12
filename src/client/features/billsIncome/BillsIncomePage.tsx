@@ -12,23 +12,22 @@ import { useBillsIncome } from "./api.ts";
 import { BillOrIncomeCard } from "./BillOrIncomeCard.tsx";
 import { BillOrIncomeDetailDialog } from "./BillOrIncomeDetailDialog.tsx";
 import { BillOrIncomeDialog } from "./BillOrIncomeDialog.tsx";
-
-type KindFilter = "all" | "expense" | "income";
+import { type KindFilter, matchesFilters, type ScheduleFilter } from "./filter.ts";
 
 const kindFilters = [
   { value: "all", label: "All" },
   { value: "expense", label: "Bills" },
   { value: "income", label: "Income" },
-] as const;
+  { value: "transfer", label: "Transfers" },
+] as const satisfies ReadonlyArray<{ value: KindFilter; label: string }>;
+
+const scheduleFilters = [
+  { value: "any", label: "Any" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "unscheduled", label: "As it happens" },
+] as const satisfies ReadonlyArray<{ value: ScheduleFilter; label: string }>;
 
 const gridClass = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
-
-function matches(item: BillOrIncome, search: string, kind: KindFilter, showArchived: boolean): boolean {
-  if (item.archived && !showArchived) return false;
-  if (kind !== "all" && item.kind !== kind) return false;
-  const needle = search.trim().toLowerCase();
-  return needle === "" || `${item.name}\n${item.description}`.toLowerCase().includes(needle);
-}
 
 /** Bills and income, as a filterable grid of cards. */
 export function BillsIncomePage() {
@@ -36,6 +35,7 @@ export function BillsIncomePage() {
   const budget = useBudget();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
+  const [schedule, setSchedule] = useState<ScheduleFilter>("any");
   const [showArchived, setShowArchived] = useState(false);
   // `item` is kept after closing so the dialog doesn't change its title while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; item?: BillOrIncome }>({ open: false });
@@ -72,13 +72,13 @@ export function BillsIncomePage() {
         <EmptyState
           icon={ReceiptText}
           title="No bills or income yet"
-          description="Add a bill or a paycheck once and it shows up in every period it falls in. Or add one with no schedule, to gather payments as they happen."
+          description="Add a bill or a paycheck on a schedule and it shows up in every period it falls in. Or add one as it happens, to gather payments that come when they come. A transfer is for money you move to another account of yours, and back."
           action={addButton}
         />
       </Card>
     );
   } else {
-    const visible = items.data.filter((item) => matches(item, search, kind, showArchived));
+    const visible = items.data.filter((item) => matchesFilters(item, { search, kind, schedule, showArchived }));
     const archivedCount = items.data.filter((item) => item.archived).length;
 
     content = (
@@ -95,7 +95,8 @@ export function BillsIncomePage() {
               className="min-h-11 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-base text-fg placeholder:text-muted focus:outline-2 focus:outline-offset-1 focus:outline-ring"
             />
           </div>
-          <SegmentedControl label="Show" hideLabel options={kindFilters} value={kind} onChange={setKind} />
+          <SegmentedControl label="Show" hideLabel fitLabels options={kindFilters} value={kind} onChange={setKind} />
+          <SegmentedControl label="Schedule" hideLabel fitLabels options={scheduleFilters} value={schedule} onChange={setSchedule} />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-fg">
             <input
               type="checkbox"
@@ -129,7 +130,7 @@ export function BillsIncomePage() {
 
   return (
     <>
-      <PageHeader title="Bills & Income" subtitle="What you pay and what you're paid, on a schedule or not." actions={items.data?.length ? addButton : undefined} />
+      <PageHeader title="Bills & Income" subtitle="What you pay and what you're paid, on a schedule or as it happens." actions={items.data?.length ? addButton : undefined} />
       {content}
       <BillOrIncomeDialog
         open={dialog.open}

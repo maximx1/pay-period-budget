@@ -466,6 +466,32 @@ describe("suggesting the bill or income a row belongs to", () => {
     ).toEqual([{ index: 0, billIncomeId: cardId, billIncomeName: "Credit card", reason: "same_description" }]);
   });
 
+  it("recognises money coming back from a transfer, and never offers it toward the money-out entry", async () => {
+    // $200 goes to savings on the 20th of each month: an upcoming money-out entry exists for January.
+    const savingsId = await addItem(ann, { name: "Taxes savings", kind: "transfer", defaultAmountCents: 20_000, firstDueDate: "2026-01-20" });
+    const out = bank("2026-01-14", "ONLINE TRANSFER TO SAV 8841", { name: "Transfer", amountCents: 40_000 });
+    const back = (date: string, overrides: Row = {}) =>
+      bank(date, "ONLINE TRANSFER FROM SAV 8841", { name: "Transfer", kind: "income", amountCents: 20_000, ...overrides });
+
+    // The same amount as the upcoming entry, two days from it, but the other way: not that entry.
+    const first = await importRows([out, back("2026-01-22")]);
+    expect(first.billOrIncomeSuggestions).toEqual([]);
+    expect(first.possibleDuplicates).toEqual([]);
+
+    // Tied once by hand, each direction's wording is known from then on, whichever way the money goes.
+    await importRows(
+      [
+        { ...out, billIncomeId: savingsId, importKey: "out-1" },
+        { ...back("2026-01-22"), billIncomeId: savingsId, importKey: "back-1" },
+      ],
+      {},
+    );
+    expect(await suggestions([back("2026-02-03", { amountCents: 150_000 }), { ...out, occursAt: "2026-02-04T00:00" }])).toEqual([
+      { index: 0, billIncomeId: savingsId, billIncomeName: "Taxes savings", reason: "same_description" },
+      { index: 1, billIncomeId: savingsId, billIncomeName: "Taxes savings", reason: "same_description" },
+    ]);
+  });
+
   it("also learns from the name, and lets the latest use decide between two items", async () => {
     await create(ann, payment("2026-01-10", { name: "Venmo Sam", billIncomeId: rentId }));
     await create(ann, payment("2026-01-20", { name: "Venmo Sam", billIncomeId: cardId }));

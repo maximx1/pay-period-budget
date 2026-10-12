@@ -81,16 +81,30 @@ describe("a bill or income's transactions", () => {
       ["2026-01-05T00:00", "Credit card", -20_000, "upcoming", "2026-01-05"],
     ]);
     expect(result.transactions.every((tx) => tx.billIncomeId === cardId)).toBe(true);
-    expect(result.totals).toEqual({ count: 5, paidCents: -16_000, upcomingCents: -40_000 });
+    expect(result.totals).toEqual({
+      count: 5,
+      paidCents: -16_000,
+      upcomingCents: -40_000,
+      paidOutCents: 16_000,
+      paidInCents: 0,
+      balanceCents: null,
+    });
     expect(result.nextCursor).toBeNull();
   });
 
   it("follows a transaction as it is tied, paid and untied", async () => {
     const id = await pay(ann, "2026-01-20", 5000);
-    expect((await page(ann, cardId)).totals).toEqual({ count: 2, paidCents: 0, upcomingCents: -40_000 });
+    expect((await page(ann, cardId)).totals).toMatchObject({ count: 2, paidCents: 0, paidOutCents: 0, upcomingCents: -40_000 });
 
     await ann.patch(`/api/transactions/${id}`, { billIncomeId: cardId });
-    expect((await page(ann, cardId)).totals).toEqual({ count: 3, paidCents: -5000, upcomingCents: -40_000 });
+    expect((await page(ann, cardId)).totals).toEqual({
+      count: 3,
+      paidCents: -5000,
+      upcomingCents: -40_000,
+      paidOutCents: 5000,
+      paidInCents: 0,
+      balanceCents: null,
+    });
 
     await ann.patch(`/api/transactions/${id}`, { billIncomeId: null });
     expect((await page(ann, cardId)).totals.count).toBe(2);
@@ -101,7 +115,7 @@ describe("a bill or income's transactions", () => {
     expect(await page(ann, later)).toEqual({
       transactions: [],
       nextCursor: null,
-      totals: { count: 0, paidCents: 0, upcomingCents: 0 },
+      totals: { count: 0, paidCents: 0, upcomingCents: 0, paidOutCents: 0, paidInCents: 0, balanceCents: null },
     });
   });
 });
@@ -198,8 +212,8 @@ describe("who may read them", () => {
     const bobsCard = await addItem(bob);
     await pay(bob, "2026-01-20", 4200, { billIncomeId: bobsCard });
 
-    expect((await page(ann, cardId)).totals).toEqual({ count: 2, paidCents: 0, upcomingCents: -40_000 });
-    expect((await page(bob, bobsCard)).totals).toEqual({ count: 3, paidCents: -4200, upcomingCents: -40_000 });
+    expect((await page(ann, cardId)).totals).toMatchObject({ count: 2, paidCents: 0, paidOutCents: 0, upcomingCents: -40_000 });
+    expect((await page(bob, bobsCard)).totals).toMatchObject({ count: 3, paidCents: -4200, paidOutCents: 4200, upcomingCents: -40_000 });
   });
 
   it("can be read with a read-only API token", async () => {

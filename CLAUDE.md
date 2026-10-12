@@ -136,7 +136,10 @@ android/      Capacitor's Android project. Generated once, then edited by hand; 
   and in the code: the table is `bills_income`, the API `/api/bills-income`, the folder
   `features/billsIncome`, one of them a `BillOrIncome`, and a transaction points at one
   with `billIncomeId`. (Until 2026-10-12 they were "recurring items"; `recurrenceUnit` and
-  `recurrenceInterval` keep their names because they describe the schedule.) Never name
+  `recurrenceInterval` keep their names because they describe the schedule.) A third kind,
+  `transfer`, is another account of the owner's own (savings, joint, a loan) with money
+  going both ways; ask "which way does its own entry go" with `entryKindOf`, never by
+  comparing `kind` to `"income"`. Never name
   them "accounts": that word is reserved for a future
   feature (savings accounts, payees) described in `docs/plan/backlog.md`.
 - Folders next to this one are unrelated projects. Do not read from or modify them.

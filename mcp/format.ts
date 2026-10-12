@@ -2,7 +2,7 @@
 // dollars and as the integer cents the API uses, so nothing has to be converted by eye.
 import type { PeriodView } from "../src/shared/budget.ts";
 import { formatCents } from "../src/shared/money.ts";
-import type { BillOrIncome } from "../src/shared/billsIncome.ts";
+import { type BillOrIncome, entryKindOf } from "../src/shared/billsIncome.ts";
 import type { Transaction } from "../src/shared/transactions.ts";
 
 export const money = (cents: number) => `${formatCents(cents)} (${cents} cents)`;
@@ -58,13 +58,16 @@ export function periodReport({ period, totals, transactions }: PeriodView): stri
 }
 
 export function billOrIncomeLine(item: BillOrIncome): string {
-  const signedCents = item.kind === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
+  // A transfer's own entries are money out, like a bill's.
+  const signedCents = entryKindOf(item.kind) === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
   return [
     item.name,
     item.kind,
     item.defaultAmountCents === 0 ? "no usual amount" : `${money(signedCents)} each time`,
-    item.scheduleText,
+    // The screen says "As it happens"; an assistant is told what the field holds.
+    item.recurrenceUnit === "none" ? "No schedule" : item.scheduleText,
     ...(item.recurrenceUnit === "none" ? [] : [`first due ${item.firstDueDate}`]),
+    ...(item.kind === "transfer" && item.openingCents !== 0 ? [`starting balance ${money(item.openingCents)}`] : []),
     ...(item.endDate ? [`ends ${item.endDate}`] : []),
     ...(item.archived ? ["archived"] : item.nextDueDate ? [`next due ${item.nextDueDate}`] : []),
     ...(item.description ? [`description: ${item.description}`] : []),

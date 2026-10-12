@@ -37,14 +37,20 @@ const noticeButton =
 
 /**
  * The period's money at a glance. Leftover leads, shown as what is left so far (paid items
- * only) out of what is projected once everything upcoming is paid too. A line at the foot
- * appears when the starting amount was set by hand or may be out of date.
+ * only) out of what is projected once everything upcoming is paid too. Beside it: what the
+ * period started with, all the money coming in, all the money going out (paid or not, so
+ * the three make the projected figure), and how much of the net is still upcoming. A line
+ * at the foot appears when the starting amount was set by hand or may be out of date.
  */
 export function PeriodSummary({ view }: { view: PeriodView }) {
   const { period, totals } = view;
   const toast = useToast();
   const revert = useRevertStartingAmount();
   const recalculate = useRecalculateStartingAmount();
+
+  // Each direction by itself, over everything in the period. Netted together they would hide both.
+  const incomeCents = view.transactions.reduce((sum, { amountCents }) => (amountCents > 0 ? sum + amountCents : sum), 0);
+  const expenseCents = view.transactions.reduce((sum, { amountCents }) => (amountCents < 0 ? sum - amountCents : sum), 0);
 
   const manual = period.startingMode === "manual";
   const stale = period.carryStale;
@@ -87,7 +93,8 @@ export function PeriodSummary({ view }: { view: PeriodView }) {
             ) : null
           }
         />
-        <Stat label="Paid" cents={totals.paidCents} net />
+        <Stat label="Income" cents={incomeCents} net />
+        <Stat label="Expenses" cents={expenseCents} />
         <Stat label="Upcoming" cents={totals.upcomingCents} net />
       </dl>
 

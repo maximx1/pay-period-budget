@@ -6,15 +6,17 @@ import { z } from "zod";
 import { localDateSchema } from "../../../shared/budget.ts";
 import { isLocalDate, todayIn } from "../../../shared/dates.ts";
 import { centsToInput, parseMoneyInput } from "../../../shared/money.ts";
-import { describeRecurrence, RECURRENCE_UNITS } from "../../../shared/recurrence.ts";
+import { describeRecurrence, RECURRENCE_UNITS, type RecurrenceUnit } from "../../../shared/recurrence.ts";
 import {
+  BILL_OR_INCOME_KINDS,
   END_BEFORE_START_MESSAGE,
+  MAX_OPENING_CENTS,
   MAX_RECURRENCE_INTERVAL,
   type BillOrIncomeInput,
   type BillOrIncome,
   type BillOrIncomePreview,
 } from "../../../shared/billsIncome.ts";
-import { MAX_TRANSACTION_CENTS, TRANSACTION_KINDS } from "../../../shared/transactions.ts";
+import { MAX_TRANSACTION_CENTS } from "../../../shared/transactions.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
@@ -39,6 +41,13 @@ const parseAmount = (text: string) => {
   return cents !== null && cents > 0 && cents <= MAX_TRANSACTION_CENTS ? cents : null;
 };
 
+/** A transfer's starting balance: empty for none, and a minus for money owed. */
+const parseOpening = (text: string) => {
+  if (text.trim() === "") return 0;
+  const cents = parseMoneyInput(text, { allowNegative: true });
+  return cents !== null && Math.abs(cents) <= MAX_OPENING_CENTS ? cents : null;
+};
+
 const parseInterval = (text: string) => {
   const value = Number(text);
   return /^\d+$/.test(text.trim()) && value >= 1 && value <= MAX_RECURRENCE_INTERVAL ? value : null;
@@ -47,8 +56,9 @@ const parseInterval = (text: string) => {
 const formSchema = z
   .object({
     name: z.string().trim().min(1, "Enter a name").max(80, "Keep the name under 80 characters"),
-    kind: z.enum(TRANSACTION_KINDS),
+    kind: z.enum(BILL_OR_INCOME_KINDS),
     amount: z.string(),
+    opening: z.string().refine((text) => parseOpening(text) !== null, "Enter an amount like 2500.00, or -2500.00 if it is owed"),
     recurrenceUnit: z.enum(RECURRENCE_UNITS),
     recurrenceInterval: z.string().refine((text) => parseInterval(text) !== null, `1 to ${MAX_RECURRENCE_INTERVAL}`),
     firstDueDate: localDateSchema,
@@ -74,6 +84,8 @@ const toInput = (values: FormValues): BillOrIncomeInput => {
     name: values.name.trim(),
     kind: values.kind,
     defaultAmountCents: parseAmount(values.amount) ?? 0,
+    // Only a transfer has a balance to start from.
+    openingCents: values.kind === "transfer" ? (parseOpening(values.opening) ?? 0) : 0,
     recurrenceUnit: values.recurrenceUnit,
     // A pay-period item, or one with no schedule, has no interval to speak of; store the neutral value.
     recurrenceInterval:
@@ -88,18 +100,24 @@ const toInput = (values: FormValues): BillOrIncomeInput => {
 const kindOptions = [
   { value: "expense", label: "Bill" },
   { value: "income", label: "Income" },
+  { value: "transfer", label: "Transfer" },
 ] as const;
 
+const editTitles = { expense: "Edit bill", income: "Edit income", transfer: "Edit transfer" } as const;
+
+// Whether it has a schedule at all is asked first, and apart from how often it repeats.
+const whenOptions = [
+  { value: "schedule", label: "On a schedule" },
+  { value: "none", label: "As it happens" },
+] as const;
+
+// Read as a sentence beside "Every 1": "Every 1 months".
 const unitOptions = [
   { value: "month", label: "months" },
   { value: "week", label: "weeks" },
   { value: "year", label: "years" },
   { value: "period", label: "pay period" },
 ];
-const NO_SCHEDULE_OPTION = { value: "none", label: "No schedule" };
-// Read as a sentence beside "Every 1": "Every 1 months". "No schedule" stands apart from that.
-const repeatOptions = (everyLabel: boolean) =>
-  everyLabel ? [...unitOptions, NO_SCHEDULE_OPTION] : [...unitOptions, { ...NO_SCHEDULE_OPTION, label: "never (no schedule)" }];
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
@@ -141,7 +159,7 @@ export function BillOrIncomeDialog({ open, onClose, item, timezone }: BillOrInco
     <Dialog
       open={open}
       onClose={onClose}
-      title={item ? (item.kind === "income" ? "Edit income" : "Edit bill") : "Add a bill or income"}
+      title={item ? editTitles[item.kind] : "Add a bill or income"}
     >
       <BillOrIncomeForm onClose={onClose} item={item} timezone={timezone} />
     </Dialog>
@@ -156,12 +174,18 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"end" | "delete" | null>(null);
   const [removeUpcoming, setRemoveUpcoming] = useState(true);
+  // What "On a schedule" goes back to after a look at "As it happens".
+  const [scheduledUnit, setScheduledUnit] = useState<RecurrenceUnit>(
+    item && item.recurrenceUnit !== "none" ? item.recurrenceUnit : "month",
+  );
+  const today = todayIn(timezone, new Date());
 
   const {
     register,
     control,
     handleSubmit,
     setError,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<FormValues>({
@@ -171,9 +195,11 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           name: item.name,
           kind: item.kind,
           amount: item.defaultAmountCents === 0 ? "" : centsToInput(item.defaultAmountCents),
+          opening: item.openingCents === 0 ? "" : `${item.openingCents < 0 ? "-" : ""}${centsToInput(item.openingCents)}`,
           recurrenceUnit: item.recurrenceUnit,
           recurrenceInterval: String(item.recurrenceInterval),
-          firstDueDate: item.firstDueDate,
+          // Without a schedule the stored date is only the day it was added; a schedule starts from today.
+          firstDueDate: item.recurrenceUnit === "none" ? today : item.firstDueDate,
           endDate: item.endDate ?? "",
           description: item.description,
         }
@@ -181,9 +207,10 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           name: "",
           kind: "expense",
           amount: "",
+          opening: "",
           recurrenceUnit: "month",
           recurrenceInterval: "1",
-          firstDueDate: todayIn(timezone, new Date()),
+          firstDueDate: today,
           endDate: "",
           description: "",
         },
@@ -193,14 +220,22 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const parsed = formSchema.safeParse(values);
   const everyPeriod = values.recurrenceUnit === "period";
   const noSchedule = values.recurrenceUnit === "none";
+  const transfer = values.kind === "transfer";
   // Neither has a number of weeks or months to ask for.
   const noInterval = everyPeriod || noSchedule;
 
+  function chooseWhen(when: (typeof whenOptions)[number]["value"]) {
+    if (when === "none" && !noSchedule) setScheduledUnit(values.recurrenceUnit);
+    setValue("recurrenceUnit", when === "none" ? "none" : scheduledUnit, { shouldDirty: true });
+  }
+
   // The schedule in words needs only the schedule fields to be valid, not the whole form.
   const interval = noInterval ? 1 : parseInterval(values.recurrenceInterval);
-  const scheduleText = noSchedule
-    ? "Nothing is added by itself. Tie transactions to it as they happen."
-    : interval !== null && isLocalDate(values.firstDueDate) && (values.endDate === "" || isLocalDate(values.endDate))
+  const scheduleText =
+    !noSchedule &&
+    interval !== null &&
+    isLocalDate(values.firstDueDate) &&
+    (values.endDate === "" || isLocalDate(values.endDate))
       ? describeRecurrence({
           unit: values.recurrenceUnit,
           interval,
@@ -222,6 +257,9 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
     } catch (error) {
       if (error instanceof ApiError && error.fields?.defaultAmountCents) {
         setError("amount", { message: error.fields.defaultAmountCents });
+      }
+      if (error instanceof ApiError && error.fields?.openingCents) {
+        setError("opening", { message: error.fields.openingCents });
       }
       setFormError(
         applyApiError(error, setError, ["name", "recurrenceInterval", "firstDueDate", "endDate", "description"]),
@@ -249,9 +287,31 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert>{formError}</Alert>}
 
+      <div>
+        <SegmentedControl label="When" options={whenOptions} value={noSchedule ? "none" : "schedule"} onChange={chooseWhen} />
+        {noSchedule && (
+          <p className="mt-1.5 text-sm text-muted">Nothing is added by itself. Tie transactions to it as they happen.</p>
+        )}
+      </div>
+
       <TextField label="Name" autoComplete="off" data-autofocus error={errors.name?.message} {...register("name")} />
 
-      <div className="grid grid-cols-2 items-start gap-3">
+      <div>
+        <Controller
+          control={control}
+          name="kind"
+          render={({ field }) => (
+            <SegmentedControl label="Type" options={kindOptions} value={field.value} onChange={field.onChange} />
+          )}
+        />
+        {transfer && (
+          <p className="mt-1.5 text-sm text-muted">
+            Money you move to another account of yours and may bring back: savings, a joint account, a loan.
+          </p>
+        )}
+      </div>
+
+      <div className={cn("grid grid-cols-1 items-start gap-3", transfer && "sm:grid-cols-2")}>
         <TextField
           label={noSchedule ? "Usual amount (optional)" : "Amount"}
           inputMode="decimal"
@@ -260,34 +320,39 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           error={errors.amount?.message}
           {...register("amount")}
         />
-        <Controller
-          control={control}
-          name="kind"
-          render={({ field }) => (
-            <SegmentedControl label="Type" options={kindOptions} value={field.value} onChange={field.onChange} />
-          )}
-        />
+        {transfer && (
+          <TextField
+            label="Starting balance (optional)"
+            placeholder="0.00"
+            autoComplete="off"
+            hint="What it held before the first transaction here. A minus for money owed."
+            error={errors.opening?.message}
+            {...register("opening")}
+          />
+        )}
       </div>
 
-      <div>
-        <div className={cn("grid items-start gap-3", noInterval ? "grid-cols-1" : "grid-cols-[5.5rem_minmax(0,1fr)]")}>
-          {!noInterval && (
-            <TextField
-              label="Every"
-              inputMode="numeric"
-              autoComplete="off"
-              error={errors.recurrenceInterval?.message}
-              {...register("recurrenceInterval")}
+      {!noSchedule && (
+        <div>
+          <div className={cn("grid items-start gap-3", noInterval ? "grid-cols-1" : "grid-cols-[5.5rem_minmax(0,1fr)]")}>
+            {!noInterval && (
+              <TextField
+                label="Every"
+                inputMode="numeric"
+                autoComplete="off"
+                error={errors.recurrenceInterval?.message}
+                {...register("recurrenceInterval")}
+              />
+            )}
+            <SelectField
+              label={everyPeriod ? "Repeats every" : "Repeats"}
+              options={unitOptions}
+              {...register("recurrenceUnit")}
             />
-          )}
-          <SelectField
-            label={everyPeriod ? "Repeats every" : "Repeats"}
-            options={repeatOptions(noSchedule)}
-            {...register("recurrenceUnit")}
-          />
+          </div>
+          {scheduleText && <p className="mt-1.5 text-sm text-muted">{scheduleText}</p>}
         </div>
-        {scheduleText && <p className="mt-1.5 text-sm text-muted">{scheduleText}</p>}
-      </div>
+      )}
 
       {!noSchedule && (
         <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">

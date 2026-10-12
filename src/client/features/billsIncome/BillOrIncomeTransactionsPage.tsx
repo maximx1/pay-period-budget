@@ -10,7 +10,7 @@ import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { useBudget } from "../budget/api.ts";
 import { usePeriodList } from "../periods/api.ts";
 import { useAllBillOrIncomeTransactions, useBillsIncome } from "./api.ts";
-import { ItemTotals, ItemTransactionList, shownAmount } from "./ItemTransactions.tsx";
+import { ItemTotals, ItemTransactionList, KIND_LABELS, shownAmount, signedUsualOf } from "./ItemTransactions.tsx";
 
 const backLink = (
   <Link
@@ -105,9 +105,8 @@ export function BillOrIncomeTransactionsPage() {
     );
   }
 
-  const signedUsual = item ? (item.kind === "income" ? item.defaultAmountCents : -item.defaultAmountCents) : 0;
   const subtitle = item
-    ? [item.kind === "income" ? "Income" : "Bill", item.scheduleText, item.defaultAmountCents > 0 ? shownAmount(signedUsual) : null]
+    ? [KIND_LABELS[item.kind], item.scheduleText, item.defaultAmountCents > 0 ? shownAmount(signedUsualOf(item)) : null]
         .filter(Boolean)
         .join(" · ")
     : undefined;

@@ -4,6 +4,7 @@ import { describeRecurrence, nextOccurrence } from "../../shared/recurrence.ts";
 import {
   AMOUNT_NEEDED_MESSAGE,
   END_BEFORE_START_MESSAGE,
+  OPENING_ONLY_FOR_TRANSFER_MESSAGE,
   type BillOrIncomeInput,
   type BillOrIncome,
   type BillOrIncomePatch,
@@ -30,6 +31,7 @@ function toItem(record: BillOrIncomeRecord, today: LocalDate): BillOrIncome {
     name: record.name,
     description: record.description,
     kind: record.kind,
+    openingCents: record.openingCents,
     defaultAmountCents: record.defaultAmountCents,
     recurrenceUnit: record.recurrenceUnit,
     recurrenceInterval: record.recurrenceInterval,
@@ -51,6 +53,7 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
     name: input.name,
     description: input.description,
     kind: input.kind,
+    openingCents: input.openingCents,
     defaultAmountCents: input.defaultAmountCents,
     recurrenceUnit: input.recurrenceUnit,
     recurrenceInterval: input.recurrenceInterval,
@@ -126,6 +129,13 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
           });
         }
 
+        // A starting balance belongs to a transfer; turning one into a bill has to give it up.
+        if (after.kind !== "transfer" && after.openingCents !== 0) {
+          throw new AppError(400, "validation", "Some fields need attention", {
+            openingCents: OPENING_ONLY_FOR_TRANSFER_MESSAGE,
+          });
+        }
+
         const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...changes } = after;
         await repos.billsIncome.update(userId, id, changes, updatedAt);
         return toItem(after, await periods.today(repos, userId));
@@ -141,7 +151,8 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
       id: string,
       { limit, before }: BillOrIncomeTransactionsQuery,
     ): Promise<BillOrIncomeTransactionsResponse> {
-      if (!(await store.billsIncome.findById(userId, id))) throw notFound();
+      const item = await store.billsIncome.findById(userId, id);
+      if (!item) throw notFound();
 
       const separator = before?.indexOf("_") ?? -1;
       const position = before ? { occursAt: before.slice(0, separator), id: before.slice(separator + 1) } : undefined;
@@ -149,10 +160,14 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
       const records = await store.transactions.listForBillOrIncome(userId, id, { limit: limit + 1, before: position });
       const page = records.slice(0, limit);
       const last = page.at(-1);
+      const sums = await store.transactions.sumForBillOrIncome(userId, id);
       return {
         transactions: page.map(toTransaction),
         nextCursor: records.length > limit && last ? `${last.occursAt}_${last.id}` : null,
-        totals: await store.transactions.sumForBillOrIncome(userId, id),
+        totals: {
+          ...sums,
+          balanceCents: item.kind === "transfer" ? item.openingCents + sums.paidOutCents - sums.paidInCents : null,
+        },
       };
     },
 

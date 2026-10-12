@@ -217,7 +217,7 @@ describe("an item with no schedule", () => {
 
   it("has no next occurrence and says so in words", () => {
     expect(nextOccurrence(never, "2026-01-01")).toBeNull();
-    expect(describeRecurrence(never)).toBe("No schedule");
-    expect(describeRecurrence({ ...never, interval: 3, endDate: "2027-01-01" })).toBe("No schedule");
+    expect(describeRecurrence(never)).toBe("As it happens");
+    expect(describeRecurrence({ ...never, interval: 3, endDate: "2027-01-01" })).toBe("As it happens");
   });
 });

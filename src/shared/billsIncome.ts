@@ -2,14 +2,27 @@ import { z } from "zod";
 import { localDateSchema } from "./budget.ts";
 import type { LocalDate } from "./dates.ts";
 import { RECURRENCE_UNITS, type RecurrenceUnit } from "./recurrence.ts";
-import {
-  MAX_TRANSACTION_CENTS,
-  type Transaction,
-  TRANSACTION_KINDS,
-  type TransactionKind,
-} from "./transactions.ts";
+import { MAX_TRANSACTION_CENTS, type Transaction, type TransactionKind } from "./transactions.ts";
+
+/**
+ * A bill is money out and an income is money in. A transfer is money moved to another
+ * account of your own (savings, a joint account, a loan), which may come back: its
+ * transactions go either way, and it has a balance worked out from them.
+ */
+export const BILL_OR_INCOME_KINDS = ["expense", "income", "transfer"] as const;
+export type BillOrIncomeKind = (typeof BILL_OR_INCOME_KINDS)[number];
+
+/**
+ * Which way an item's own entries go: the ones its schedule adds, and what choosing it for
+ * a new transaction suggests. A transfer's own direction is money out; bringing money back
+ * is always entered by hand.
+ */
+export const entryKindOf = (kind: BillOrIncomeKind): TransactionKind => (kind === "income" ? "income" : "expense");
 
 export const MAX_RECURRENCE_INTERVAL = 52;
+/** The most a transfer's starting balance may be, either side of zero. */
+export const MAX_OPENING_CENTS = 1_000_000_000; // $10,000,000.00
+export const OPENING_ONLY_FOR_TRANSFER_MESSAGE = "Only a transfer has a starting balance";
 export const AMOUNT_NEEDED_MESSAGE = "Enter an amount greater than zero";
 export const FIRST_DUE_NEEDED_MESSAGE = "Enter the first due date";
 
@@ -18,7 +31,16 @@ export const FIRST_DUE_NEEDED_MESSAGE = "Enter the first due date";
 const fields = {
   name: z.string().trim().min(1, "Enter a name").max(80, "Keep the name under 80 characters"),
   description: z.string().trim().max(2000, "Keep the description under 2,000 characters"),
-  kind: z.enum(TRANSACTION_KINDS),
+  kind: z.enum(BILL_OR_INCOME_KINDS),
+  /**
+   * What the other account held before its first transaction here: signed, negative for
+   * money owed (a loan). Only a transfer has one.
+   */
+  openingCents: z
+    .number("Enter an amount")
+    .int("Enter a whole number of cents")
+    .min(-MAX_OPENING_CENTS, "That amount is too large")
+    .max(MAX_OPENING_CENTS, "That amount is too large"),
   /**
    * Never negative; `kind` says which way the money moves. 0 means "no usual amount" and is
    * allowed only for an item with no schedule.
@@ -45,6 +67,7 @@ export const billOrIncomeInputSchema = z
     ...fields,
     description: fields.description.default(""),
     recurrenceInterval: fields.recurrenceInterval.default(1),
+    openingCents: fields.openingCents.default(0),
     /** Needed for anything with a schedule. Without one it is not used and may be left out. */
     firstDueDate: fields.firstDueDate.optional(),
     endDate: fields.endDate.default(null),
@@ -60,6 +83,10 @@ export const billOrIncomeInputSchema = z
   .refine((item) => item.endDate === null || item.firstDueDate === undefined || item.endDate >= item.firstDueDate, {
     path: ["endDate"],
     message: END_BEFORE_START_MESSAGE,
+  })
+  .refine((item) => item.kind === "transfer" || item.openingCents === 0, {
+    path: ["openingCents"],
+    message: OPENING_ONLY_FOR_TRANSFER_MESSAGE,
   });
 export type BillOrIncomeInput = z.output<typeof billOrIncomeInputSchema>;
 
@@ -69,6 +96,7 @@ export const billOrIncomePatchSchema = z
     name: fields.name.optional(),
     description: fields.description.optional(),
     kind: fields.kind.optional(),
+    openingCents: fields.openingCents.optional(),
     defaultAmountCents: fields.defaultAmountCents.optional(),
     recurrenceUnit: fields.recurrenceUnit.optional(),
     recurrenceInterval: fields.recurrenceInterval.optional(),
@@ -87,7 +115,9 @@ export type BillOrIncome = {
   id: string;
   name: string;
   description: string;
-  kind: TransactionKind;
+  kind: BillOrIncomeKind;
+  /** A transfer's starting balance, signed; 0 for anything else. */
+  openingCents: number;
   /** 0 when the item has no schedule and no usual amount. */
   defaultAmountCents: number;
   recurrenceUnit: RecurrenceUnit;
@@ -138,6 +168,22 @@ export type BillOrIncomeTransactionsResponse = {
   transactions: Transaction[];
   /** Pass as `before` for the next, older page. Null when this page reaches the oldest. */
   nextCursor: string | null;
-  /** Over all of the item's transactions, not only this page. Amounts are signed. */
-  totals: { count: number; paidCents: number; upcomingCents: number };
+  /** Over all of the item's transactions, not only this page. */
+  totals: BillOrIncomeTotals;
+};
+
+export type BillOrIncomeTotals = {
+  count: number;
+  /** Signed nets: money out counts against money in. */
+  paidCents: number;
+  upcomingCents: number;
+  /** The paid ones by direction, each as a positive amount. */
+  paidOutCents: number;
+  paidInCents: number;
+  /**
+   * For a transfer, what the other account holds as far as the budget knows: its starting
+   * balance, plus what was paid out to it, less what was paid back in. Negative is money
+   * owed. Null for a bill or an income.
+   */
+  balanceCents: number | null;
 };

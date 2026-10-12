@@ -480,6 +480,32 @@ describe("bills and income", () => {
     expect(await call("update_transaction", { id: lateFee, billIncomeId: null })).not.toContain("bill or income");
     expect(await call("list_bill_or_income_transactions", { id })).toMatch(/^2 transactions tied/);
   });
+
+  it("turns a bill that was really a savings account into a transfer, and gives its balance", async () => {
+    // Entered before transfers existed: a bill with no schedule, and money sent to it.
+    const bill = { name: "Taxes savings", kind: "expense", defaultAmountCents: 0, recurrenceUnit: "none" };
+    const id = idIn(await call("create_bill_or_income", { ...bill, dryRun: false }));
+    await call("create_transaction", row("2026-01-14", { name: "To taxes", amountCents: 40_000, paid: true, billIncomeId: id }));
+    expect((await call("list_bill_or_income_transactions", { id })).split("\n")[1]).toBe("All of them, newest first:");
+
+    const changed = await call("update_bill_or_income", { id, kind: "transfer", openingCents: 250_000 });
+    expect(changed).toMatch(
+      /^Changed: Taxes savings \| transfer \| no usual amount \| No schedule \| starting balance \$2,500\.00 \(250000 cents\) \| id [\w-]+\nTransactions that already exist are as they were\.$/,
+    );
+
+    // Money coming back is an income tied to the same item.
+    await call("create_transaction", row("2026-01-20", { name: "From taxes", kind: "income", amountCents: 100_000, paid: true, billIncomeId: id }));
+    expect((await call("list_bill_or_income_transactions", { id })).split("\n").slice(0, 2)).toEqual([
+      "2 transactions tied to this item in all: paid $600.00 (60000 cents), upcoming $0.00 (0 cents).",
+      "Sent to it $400.00 (40000 cents), brought back $1,000.00 (100000 cents), balance $1,900.00 (190000 cents): " +
+        "its starting balance, plus what was sent, less what came back, paid transactions only.",
+    ]);
+
+    // A balance belongs to a transfer: going back to a bill has to give it up.
+    const refused = await call("update_bill_or_income", { id, kind: "expense" }).catch((caught: unknown) => caught);
+    expect(failureText(refused)).toContain("- openingCents: Only a transfer has a starting balance");
+    expect(await call("update_bill_or_income", { id, kind: "expense", openingCents: 0 })).toMatch(/^Changed: Taxes savings \| expense \| /);
+  });
 });
 
 describe("links in an imported file", () => {

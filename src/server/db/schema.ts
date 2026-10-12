@@ -1,8 +1,9 @@
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
+import { BILL_OR_INCOME_KINDS } from "../../shared/billsIncome.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
-import { TRANSACTION_KINDS, TRANSACTION_STATUSES } from "../../shared/transactions.ts";
+import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
 
 // Conventions: text UUID primary keys, instants as integer milliseconds (timestamp_ms),
 // money as integer cents, calendar dates as "YYYY-MM-DD" text.
@@ -146,7 +147,9 @@ export const billsIncome = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
-    kind: text("kind", { enum: TRANSACTION_KINDS }).notNull(),
+    kind: text("kind", { enum: BILL_OR_INCOME_KINDS }).notNull(),
+    /** A transfer's starting balance, signed (negative is money owed). 0 for a bill or an income. */
+    openingCents: integer("opening_cents").notNull().default(0),
     /** Positive; `kind` gives the direction. Used when an occurrence is turned into a transaction. */
     defaultAmountCents: integer("default_amount_cents").notNull(),
     recurrenceUnit: text("recurrence_unit", { enum: RECURRENCE_UNITS }).notNull(),

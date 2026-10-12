@@ -65,7 +65,7 @@ describe("an item with no schedule", () => {
       endDate: null,
       archived: false,
       nextDueDate: null,
-      scheduleText: "No schedule",
+      scheduleText: "As it happens",
     });
 
     const listed = (await (await ann.get("/api/bills-income")).json()).items as BillOrIncome[];
@@ -117,7 +117,7 @@ describe("an item with no schedule", () => {
       ["2026-01-14", "Moved a couch", 4000],
       ["2025-12-20", "Roofing for Mike", 20_000],
     ]);
-    expect(result.totals).toEqual({ count: 3, paidCents: 49_000, upcomingCents: 0 });
+    expect(result.totals).toEqual({ count: 3, paidCents: 49_000, upcomingCents: 0, paidOutCents: 0, paidInCents: 49_000, balanceCents: null });
   });
 
   it("can be ended, which archives it", async () => {
@@ -128,7 +128,7 @@ describe("an item with no schedule", () => {
 
     t.clock.advance(24 * 60 * 60 * 1000);
     const [listed] = (await (await ann.get("/api/bills-income")).json()).items as BillOrIncome[];
-    expect(listed).toMatchObject({ archived: true, scheduleText: "No schedule" });
+    expect(listed).toMatchObject({ archived: true, scheduleText: "As it happens" });
   });
 });
 
@@ -184,7 +184,7 @@ describe("anything that does repeat", () => {
 
     const dropped = await ann.patch(`/api/bills-income/${loose.id}`, { recurrenceUnit: "none", defaultAmountCents: 0 });
     expect(dropped.status).toBe(200);
-    expect((await dropped.json()).item).toMatchObject({ scheduleText: "No schedule", nextDueDate: null });
+    expect((await dropped.json()).item).toMatchObject({ scheduleText: "As it happens", nextDueDate: null });
     expect((await ann.post("/api/periods/locate", { date: "2026-05-10" })).status).toBe(200);
     expect(await transactionCount()).toBe(1);
   });

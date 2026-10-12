@@ -13,8 +13,10 @@ say what to build; this file says what must always be true.
 - **Bill or income**: something you pay or are paid, tracked by name: the rent, a credit
   card, a paycheck, money from side jobs. Most have a schedule, and are then a template
   that produces transactions; one with no schedule only gathers the transactions tied to
-  it. Either way it holds no balance. Income is not special: it is one whose amount is
-  positive. On screen the page is "Bills & Income"; in the code the table is
+  it. Income is not special: it is one whose amount is positive. A third kind, a
+  **transfer**, is another account of the user's own that money is moved to and may come
+  back from (savings, a joint account, a HELOC or other loan); only a transfer has a
+  balance, and it is worked out, not stored. On screen the page is "Bills & Income"; in the code the table is
   `bills_income` and one of them is a `BillOrIncome`. (They were called *recurring items*
   until 2026-10-12, which older plan files still say. The word **account** is reserved
   for a future feature: the places money lives or goes, such as a savings account or a
@@ -148,7 +150,12 @@ projectedCents  = startingCents + paidCents + upcomingCents    (projected leftov
 ```
 
 Totals are computed on read. Only `startingCents` is stored. The home view shows the pair
-together, as "`leftoverCents` of `projectedCents` projected".
+together, as "`leftoverCents` of `projectedCents` projected". Beside them it shows
+**Starting**, **Income** (every positive transaction in the period, paid or not),
+**Expenses** (every negative one, as a positive amount) and **Upcoming** (`upcomingCents`),
+so that Starting + Income − Expenses = projected. Income and Expenses are added up on the
+client from the period's transactions. `paidCents`, a net of both directions, is the Paid
+section's own total and is no longer shown in the summary: netted, it read as neither.
 
 ### Carrying leftover forward
 
@@ -294,8 +301,8 @@ effect on starting amounts as creating them one at a time.
 
 ## Bills and income
 
-Fields: `id`, `userId`, `name`, `description`, `kind` (`expense` | `income`),
-`defaultAmountCents` (positive; 0 only with no schedule), `recurrenceUnit` (`week` | `month` | `year` | `period` | `none`),
+Fields: `id`, `userId`, `name`, `description`, `kind` (`expense` | `income` | `transfer`),
+`openingCents` (signed; non-zero only for a transfer), `defaultAmountCents` (positive; 0 only with no schedule), `recurrenceUnit` (`week` | `month` | `year` | `period` | `none`),
 `recurrenceInterval` (≥ 1), `firstDueDate`, `endDate` (nullable).
 
 ### Recurrence
@@ -318,10 +325,39 @@ Occurrences are `firstDueDate` + k × interval units, for k = 0, 1, 2 …, never
   that start after `endDate`. Meant for the paycheck: an item first due mid-period still
   shows up in that period, per decision 7.
 
+### Transfers
+
+A transfer stands for another account of the user's own. Money sent to it is money out of
+the budget; money brought back is money in. Both are ordinary transactions tied to it with
+`billIncomeId`, and nothing about periods, totals or carrying forward treats them specially.
+
+| When | At the bank | In the budget |
+| --- | --- | --- |
+| Now and then | $400 moves from checking to "Taxes" savings | Money out, tied to the transfer |
+| Tax time | $1,500 moves from "Taxes" savings back to checking | Money in, tied to the transfer |
+| Same day | A $1,500 check goes to the tax office | Money out, **not** tied to the transfer |
+
+- **Its own direction is money out** (`entryKindOf` in `src/shared/billsIncome.ts`): what a
+  scheduled transfer generates, and what choosing it for a new transaction suggests.
+  Bringing money back is always entered by hand or imported.
+- **Balance** = `openingCents` + paid money out − paid money in, over the transactions tied
+  to it. Upcoming ones do not count. Negative is money owed, which is how a loan is held:
+  a payment raises it toward zero and a draw lowers it. It is computed on read
+  (`totals.balanceCents`; null for a bill or an income) and is never reconciled: interest
+  is not in it unless it is entered.
+- `openingCents` is what the account held before its first transaction in the budget.
+  Setting it moves no money in any period. Only a transfer may have one: any other kind
+  with a non-zero value is a field error, on create and after an edit is merged.
+- Changing an item's kind, to or from `transfer`, changes nothing that exists. A bill that
+  was really a savings account becomes a transfer with its transactions still tied, and
+  its balance is there at once.
+- A bill or an income also accepts transactions in either direction (a refund tied to a
+  bill), and its paid total is their net; it simply has no balance.
+
 ### Turning occurrences into transactions
 
 An occurrence becomes a transaction: `name` = the item's name, amount = default amount with
-the sign for its kind, `occursAt` = occurrence date at `00:00`, `status` = `upcoming`,
+the sign for its kind (a transfer's is money out), `occursAt` = occurrence date at `00:00`, `status` = `upcoming`,
 `billIncomeId` and `occurrenceDate` set. A unique index on `(billIncomeId, occurrenceDate)`
 (one-off transactions have a null `billIncomeId`, which a unique index ignores)
 makes this idempotent; insert with "do nothing on conflict".
@@ -376,7 +412,7 @@ transactions       id, user_id → users, name, amount_cents, occurs_at, status,
                    index (user_id, occurs_at)
                    unique (bill_income_id, occurrence_date)   -- nulls don't collide
                    unique (user_id, import_key)             -- likewise
-bills_income       id, user_id → users, name, description, kind, default_amount_cents,
+bills_income       id, user_id → users, name, description, kind, opening_cents, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    created_at, updated_at
 api_tokens         id, user_id → users, name, token_hash, hint, scope, created_at,
@@ -444,6 +480,7 @@ GET    /api/bills-income
 POST   /api/bills-income
 POST   /api/bills-income/preview          what creating this item would add, without saving
 GET    /api/bills-income/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
+                                           totals: { count, paidCents, upcomingCents (signed nets), paidOutCents, paidInCents (positive), balanceCents (a transfer's; else null) }
 PATCH  /api/bills-income/:id
 DELETE /api/bills-income/:id
 POST   /api/bills-income/:id/end

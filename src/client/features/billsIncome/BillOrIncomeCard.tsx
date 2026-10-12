@@ -51,6 +51,7 @@ type BillOrIncomeCardProps = {
 
 export function BillOrIncomeCard({ item, onOpen, onEdit }: BillOrIncomeCardProps) {
   const income = item.kind === "income";
+  const transfer = item.kind === "transfer";
 
   return (
     // The name is the button; its ::after covers the card, so a click anywhere on it opens
@@ -73,7 +74,10 @@ export function BillOrIncomeCard({ item, onOpen, onEdit }: BillOrIncomeCardProps
               {item.name}
             </button>
           </h3>
-          <p className="text-sm text-muted">{item.scheduleText}</p>
+          <p className="text-sm text-muted">
+            {transfer && "Transfer · "}
+            {item.scheduleText}
+          </p>
         </div>
         <IconButton label={`Edit ${item.name}`} onClick={onEdit} className="relative z-10 -mt-2 -mr-2">
           <Pencil className="size-5" aria-hidden />

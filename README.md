@@ -204,7 +204,7 @@ token the server refused.
 | `list_transactions` | Transactions between two dates, at most 366 days |
 | `list_bills_income` | The bills and income the budget knows about |
 | `list_bill_or_income_transactions` | Everything tied to one of them, newest first, with totals |
-| `create_bill_or_income`, `update_bill_or_income`, `end_bill_or_income`, `delete_bill_or_income` | Add (previewed first), change, stop or remove one |
+| `create_bill_or_income`, `update_bill_or_income`, `end_bill_or_income`, `delete_bill_or_income` | Add (previewed first), change, stop or remove one. `update_bill_or_income` with `kind: "transfer"` turns a bill that is really a savings account or a loan into a transfer |
 | `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time; a transaction can be tied to a bill or income, or count toward an upcoming one |
 | `import_transactions` | Many transactions from a JSON file, previewed first |
 
@@ -246,6 +246,12 @@ Two more optional fields tie a row to one of your bills or incomes:
 - `"countsToward"`: the row *is* the payment the app was expecting. It names the upcoming
   entry the item added; that entry is replaced by the real payment (or shrinks, if the row
   pays only part), so the bill is not counted twice.
+
+**Money moved to another account of your own** (savings, a joint account, a loan) belongs
+to a *transfer*: a bill or income whose money goes both ways. Import both rows and tie both
+to the transfer with `billIncomeId`: the one going out as an `expense`, the one coming back
+as an `income`. What the money is finally spent on, such as the check to the tax office, is
+its own row and is not tied to the transfer.
 
 What to ask the assistant to do, in this order:
 

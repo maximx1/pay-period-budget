@@ -42,6 +42,10 @@ different app.
 | [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
 | [12](phase-12-idle-timeout.md) | Idle timeout: the web app signs out and the Android app locks after ten minutes; face unlock | Built 2026-10-12. The Android half has not run on a phone | Opus |
 | [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | Done 2026-10-12, including the rename to bills and income in the code (decision 13). Not yet deployed | Opus for 13.1 to 13.3, Sonnet for the rest |
+| [14](phase-14-schedule-switch.md) | "On a schedule" or "As it happens": a switch at the top of the bill or income dialog, and a filter for the ones with no schedule | Done 2026-10-12. Not yet deployed | n/a |
+| [15](phase-15-transfers.md) | Transfers: a third kind of bill or income for another account of your own (savings, joint, a loan), where money goes out and comes back, with a balance. Also Income and Expenses on the home card | Done 2026-10-12. Not yet deployed; adds migration `0009` | n/a |
+| [16](phase-16-swipe-periods.md) | Swipe left and right on the home screen for the next and previous pay period | Planned 2026-10-12, not started | Sonnet |
+| [17](phase-17-mcp-switch.md) | A server setting that turns assistant (MCP) access on and off; on by default | Planned 2026-10-12, not started | Sonnet |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -217,3 +221,11 @@ unless marked otherwise.
     `recurrenceUnit` and `recurrenceInterval` keep their names: they describe the
     schedule. Phase files written before this, and the "What phase N delivered" notes
     above, use the names of their time.
+14. **A transfer is the third kind of bill or income** (decided 2026-10-12). Money moved to
+    another account of the owner's own, a savings account, the joint account, a HELOC or
+    other loan, is tied to an item of kind `transfer`, on the same page as bills and
+    income. Its transactions go both ways and it shows a balance worked out from them.
+    The owner asked for one word that covers all of those; "Transfer" is it on screen and
+    `transfer` in the code. It is still never called an *account* (decision 11): that
+    feature, if it is built, takes these items as its first rows. See "Transfers" in
+    `domain.md` and `phase-15-transfers.md`.

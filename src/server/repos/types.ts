@@ -3,6 +3,7 @@
 // Swapping the database means writing a new implementation of DataStore.
 
 import type { ApiTokenScope } from "../../shared/auth.ts";
+import type { BillOrIncomeKind } from "../../shared/billsIncome.ts";
 import type { LocalDate, LocalDateTime } from "../../shared/dates.ts";
 import type { RecurrenceUnit } from "../../shared/recurrence.ts";
 import type { ScheduleType } from "../../shared/schedule.ts";
@@ -217,11 +218,14 @@ export interface TransactionRepo {
   listLinkedDescriptions(
     userId: string,
   ): Promise<Array<{ billIncomeId: string; name: string; note: string | null; lastUsedAt: LocalDateTime }>>;
-  /** How many transactions a bill or income has, and their signed totals by status. */
+  /**
+   * How many transactions a bill or income has, their signed totals by status, and the
+   * paid ones split by direction (each a positive amount).
+   */
   sumForBillOrIncome(
     userId: string,
     billIncomeId: string,
-  ): Promise<{ count: number; paidCents: number; upcomingCents: number }>;
+  ): Promise<{ count: number; paidCents: number; upcomingCents: number; paidOutCents: number; paidInCents: number }>;
   /**
    * The upcoming transactions a bill or income generated, dated after `date`. Not ones
    * tied to it by hand: those are the user's own entries.
@@ -236,7 +240,9 @@ export type BillOrIncomeRecord = {
   userId: string;
   name: string;
   description: string;
-  kind: TransactionKind;
+  kind: BillOrIncomeKind;
+  /** A transfer's starting balance, signed. 0 for anything else. */
+  openingCents: number;
   /** Positive; `kind` gives the direction. */
   defaultAmountCents: number;
   recurrenceUnit: RecurrenceUnit;

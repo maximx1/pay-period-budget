@@ -16,6 +16,12 @@ accounts.)
 - Later, possibly: per-account history, and balances for accounts you own.
 - Open questions when this is picked up: whether a transfer is one transaction or a linked
   pair, and whether accounts carry a balance at all.
+- The owner's own other accounts (savings, the joint account, a loan) are covered since
+  2026-10-12 by *transfers*, a third kind of bill or income with a worked-out balance
+  ([phase 15](phase-15-transfers.md), decision 14). What is left for Accounts is people
+  you send money to, a page of its own, transfers between two tracked accounts, and
+  balances that are reconciled. When it is built, the transfer items are its first rows:
+  move them rather than keeping two ways to say the same thing.
 
 ## Deployment
 

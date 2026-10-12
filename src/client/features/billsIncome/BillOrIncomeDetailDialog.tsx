@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
 import { usePeriodList } from "../periods/api.ts";
 import { RECENT_TRANSACTIONS, useRecentBillOrIncomeTransactions } from "./api.ts";
-import { ItemTotals, ItemTransactionList, shownAmount } from "./ItemTransactions.tsx";
+import { ItemTotals, ItemTransactionList, KIND_LABELS, shownAmount, signedUsualOf } from "./ItemTransactions.tsx";
 
 type BillOrIncomeDetailDialogProps = {
   open: boolean;
@@ -32,14 +32,13 @@ function Detail({ item, timezone, onClose, onEdit }: Required<Omit<BillOrIncomeD
   const recent = useRecentBillOrIncomeTransactions(item.id);
   const periods = usePeriodList(true);
   const today = todayIn(timezone, new Date());
-  const signedUsual = item.kind === "income" ? item.defaultAmountCents : -item.defaultAmountCents;
   const more = recent.data ? recent.data.totals.count - recent.data.transactions.length : 0;
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
-        {item.kind === "income" ? "Income" : "Bill"} · {item.scheduleText}
-        {item.defaultAmountCents > 0 && ` · ${shownAmount(signedUsual)}`}
+        {KIND_LABELS[item.kind]} · {item.scheduleText}
+        {item.defaultAmountCents > 0 && ` · ${shownAmount(signedUsualOf(item))}`}
         {item.archived && " · Archived"}
       </p>
 
