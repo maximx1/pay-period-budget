@@ -236,6 +236,26 @@ describe("importing a file", () => {
     expect((await saved()).map((tx) => tx.importKey)).toEqual(["bank-1", "bank-2", "bank-3"]);
   });
 
+  it("leaves out a row whose transaction was deleted, unless asked to bring it back", async () => {
+    writeFile([row("2026-01-05", { importKey: "bank-1", name: "Unwanted" }), row("2026-01-21", { importKey: "bank-2" })]);
+    await call("import_transactions", { file: FILE, dryRun: false });
+    const line = (await call("list_transactions", { from: "2026-01-05", to: "2026-01-05" })).split("\n")[1]!;
+    const deleted = await call("delete_transaction", { id: / id ([\w-]+)$/.exec(line)![1]! });
+    expect(deleted).toMatch(/^Deleted transaction /);
+
+    const again = await call("import_transactions", { file: FILE, dryRun: false });
+    expect(again.split("\n").slice(0, 3)).toEqual([
+      "Imported 0 transactions of the 2 in the file.",
+      "1 row was skipped because its import key is already in the budget.",
+      "1 row was skipped because the owner deleted that transaction from the budget. Run with restoreDeleted: true only if the owner wants them back.",
+    ]);
+    expect((await saved()).map((tx) => tx.name)).toEqual(["Groceries"]);
+
+    const restored = await call("import_transactions", { file: FILE, dryRun: false, restoreDeleted: true });
+    expect(restored.split("\n")[0]).toBe("Imported 1 transaction of the 2 in the file.");
+    expect((await saved()).map((tx) => tx.name)).toEqual(["Unwanted", "Groceries"]);
+  });
+
   it("reports every bad row by its place in the file and sends nothing", async () => {
     writeFile([
       row("2026-01-05", { importKey: "a" }),
@@ -435,7 +455,12 @@ describe("over the protocol", () => {
     ]);
     const importTool = offered.find((tool) => tool.name === "import_transactions")!;
     expect(importTool.inputSchema.required).toEqual(["file"]);
-    expect(Object.keys(importTool.inputSchema.properties ?? {})).toEqual(["file", "dryRun", "addEarlierPeriods"]);
+    expect(Object.keys(importTool.inputSchema.properties ?? {})).toEqual([
+      "file",
+      "dryRun",
+      "addEarlierPeriods",
+      "restoreDeleted",
+    ]);
     expect(client.getInstructions()).toContain("integer cents");
   });
 

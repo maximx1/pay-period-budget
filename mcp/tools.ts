@@ -72,7 +72,12 @@ const periodLine = (period: { startDate: string; endDate: string; id: string }) 
   `${period.startDate} to ${period.endDate} (id ${period.id})`;
 
 export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
-  async function importTransactions(args: { file: string; dryRun: boolean; addEarlierPeriods: boolean }) {
+  async function importTransactions(args: {
+    file: string;
+    dryRun: boolean;
+    addEarlierPeriods: boolean;
+    restoreDeleted: boolean;
+  }) {
     const rows = await readImportFile(args.file, readFile);
     const chunks: ImportRow[][] = [];
     for (let i = 0; i < rows.length; i += MAX_IMPORT_ROWS) chunks.push(rows.slice(i, i + MAX_IMPORT_ROWS));
@@ -90,6 +95,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       api.post<TransactionImportResponse>("/api/transactions/import", {
         dryRun,
         addEarlierPeriods: args.addEarlierPeriods,
+        restoreDeleted: args.restoreDeleted,
         transactions: chunk,
       });
 
@@ -293,8 +299,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       name: "delete_transaction",
       title: "Delete a transaction",
       description:
-        "Deletes one transaction for good. There is no undo. If it was imported, the same row will be imported again " +
-        "the next time a file contains it.",
+        "Deletes one transaction for good. There is no undo. If it was imported, its key is remembered and later " +
+        "imports skip that row, so it stays deleted.",
       inputSchema: { id: z.string().min(1).describe("The transaction's id.") },
       readOnly: false,
       destructive: true,
@@ -333,7 +339,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         '"occursAt": "YYYY-MM-DDTHH:mm", "paid": true, "note"?: string, "importKey"?: string}. ' +
         "Set paid: true for anything that has already cleared. importKey is your own stable name for the row (the bank's " +
         "transaction id, or date + amount + description + a counter among identical rows): a row whose key was imported " +
-        "before is skipped, so the same file, or an overlapping export, can be imported again safely.\n\n" +
+        "before is skipped, so the same file, or an overlapping export, can be imported again safely. A row whose " +
+        "transaction the owner later deleted is skipped too, so it does not come back.\n\n" +
         "dryRun defaults to true: it reports what would happen and saves nothing. Read the report, deal with the " +
         "possible duplicates it lists (take the row out of the file and update the existing transaction instead), show " +
         "the owner the effect on today's figures, and only then call again with dryRun: false. The import is all or " +
@@ -347,6 +354,13 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
           .describe(
             "Allow rows dated before the earliest pay period by adding the periods they need. " +
               "Those periods are history: they do not change today's figures.",
+          ),
+        restoreDeleted: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Import rows even if the owner deleted the transaction once imported under the same key. " +
+              "Only when the owner asks for a deleted transaction back.",
           ),
       },
       readOnly: false,
@@ -429,7 +443,9 @@ function importReport(
   { saved, keyless }: { saved: boolean; keyless: number },
 ): string {
   const created = results.reduce((sum, result) => sum + result.created, 0);
-  const skipped = results.reduce((sum, result) => sum + result.skipped.length, 0);
+  const skippedFor = (reason: "held" | "deleted") =>
+    results.reduce((sum, result) => sum + result.skipped.filter((row) => row.reason === reason).length, 0);
+  const [held, deleted] = [skippedFor("held"), skippedFor("deleted")];
   // A dry run undoes each piece, so every piece adds the same periods again: the most any
   // one needed is what a real run would add. A real run adds them once, piece by piece.
   const added = (end: "earlier" | "later") =>
@@ -459,8 +475,14 @@ function importReport(
       ? `Imported ${plural(created, "transaction")} of the ${rows.length} in the file.`
       : `DRY RUN: nothing was saved. ${plural(created, "transaction")} of the ${rows.length} in the file would be imported.`,
   ];
-  if (skipped > 0) {
-    lines.push(`${plural(skipped, "row was", "rows were")} skipped because ${skipped === 1 ? "its" : "their"} import key is already in the budget.`);
+  if (held > 0) {
+    lines.push(`${plural(held, "row was", "rows were")} skipped because ${held === 1 ? "its" : "their"} import key is already in the budget.`);
+  }
+  if (deleted > 0) {
+    lines.push(
+      `${plural(deleted, "row was", "rows were")} skipped because the owner deleted ${deleted === 1 ? "that transaction" : "those transactions"} from the budget. ` +
+        "Run with restoreDeleted: true only if the owner wants them back.",
+    );
   }
   if (keyless > 0 && !saved) {
     lines.push(`${plural(keyless, "row has", "rows have")} no importKey: importing this file twice would add ${keyless === 1 ? "it" : "them"} twice.`);

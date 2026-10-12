@@ -289,8 +289,8 @@ describe("importing the same rows again", () => {
     expect(again).toMatchObject({
       created: 0,
       skipped: [
-        { index: 0, importKey: "bank-1" },
-        { index: 1, importKey: "bank-2" },
+        { index: 0, importKey: "bank-1", reason: "held" },
+        { index: 1, importKey: "bank-2", reason: "held" },
       ],
       periods: [],
       possibleDuplicates: [],
@@ -307,7 +307,7 @@ describe("importing the same rows again", () => {
       row("2026-01-22", { name: "No key, so always new" }),
     ]);
 
-    expect(result).toMatchObject({ created: 2, skipped: [{ index: 0, importKey: "bank-2" }] });
+    expect(result).toMatchObject({ created: 2, skipped: [{ index: 0, importKey: "bank-2", reason: "held" }] });
     expect((await listed(ann, "2026-01-13", "2026-01-26")).map((tx) => tx.name)).toEqual([
       "Groceries",
       "New",
@@ -322,6 +322,72 @@ describe("importing the same rows again", () => {
     expect(await importRows(ann, rows)).toMatchObject({ created: 2, skipped: [] });
     expect(await listed(bob, "2026-01-01", "2026-01-31")).toHaveLength(2);
     expect(await listed(ann, "2026-01-01", "2026-01-31")).toHaveLength(2);
+  });
+});
+
+describe("an imported transaction the user deleted", () => {
+  const rows = [
+    row("2026-01-05", { importKey: "bank-1", name: "Unwanted" }),
+    row("2026-01-20", { importKey: "bank-2", amountCents: 900 }),
+  ];
+  const idOf = async (client: Client, name: string) =>
+    (await listed(client, "2026-01-01", "2026-01-31")).find((tx) => tx.name === name)!.id;
+  const names = async (client: Client) => (await listed(client, "2026-01-01", "2026-01-31")).map((tx) => tx.name);
+
+  beforeEach(async () => {
+    await importRows(ann, rows);
+    expect((await ann.delete(`/api/transactions/${await idOf(ann, "Unwanted")}`)).status).toBe(204);
+  });
+
+  it("stays deleted when the same rows are imported again", async () => {
+    const afterDelete = await snapshot("ann");
+
+    const again = await importRows(ann, [...rows, row("2026-01-21", { importKey: "bank-3", name: "New" })]);
+    expect(again).toMatchObject({
+      created: 1,
+      skipped: [
+        { index: 0, importKey: "bank-1", reason: "deleted" },
+        { index: 1, importKey: "bank-2", reason: "held" },
+      ],
+      possibleDuplicates: [],
+    });
+    expect(await names(ann)).toEqual(["Groceries", "New"]);
+    // Nothing but the new row moved: the periods before it are as the deletion left them.
+    expect((await snapshot("ann")).periods.slice(0, 3)).toEqual(afterDelete.periods.slice(0, 3));
+  });
+
+  it("comes back only when the import asks for it, and is then an ordinary imported row", async () => {
+    const restored = await importRows(ann, rows, { restoreDeleted: true });
+    expect(restored).toMatchObject({ created: 1, skipped: [{ index: 1, importKey: "bank-2", reason: "held" }] });
+    expect(await names(ann)).toEqual(["Unwanted", "Groceries"]);
+
+    expect((await importRows(ann, rows)).skipped.map((skip) => skip.reason)).toEqual(["held", "held"]);
+
+    // Deleted a second time, it is remembered a second time.
+    expect((await ann.delete(`/api/transactions/${await idOf(ann, "Unwanted")}`)).status).toBe(204);
+    expect((await importRows(ann, rows)).skipped.map((skip) => skip.reason)).toEqual(["deleted", "held"]);
+  });
+
+  it("is not forgotten by a dry run that asks for it back", async () => {
+    const dry = await importRows(ann, rows, { dryRun: true, restoreDeleted: true });
+    expect(dry).toMatchObject({ dryRun: true, created: 1 });
+
+    expect(await importRows(ann, rows)).toMatchObject({ created: 0, skipped: [{ reason: "deleted" }, { reason: "held" }] });
+    expect(await names(ann)).toEqual(["Groceries"]);
+  });
+
+  it("is each user's own business", async () => {
+    const bob = await signUp("bob");
+    expect(await importRows(bob, rows)).toMatchObject({ created: 2, skipped: [] });
+    expect(await names(bob)).toEqual(["Unwanted", "Groceries"]);
+  });
+
+  it("is only remembered when it had been imported", async () => {
+    const typedIn = await (await ann.post("/api/transactions", row("2026-01-22", { name: "typed in" }))).json();
+    expect((await ann.delete(`/api/transactions/${typedIn.transaction.id}`)).status).toBe(204);
+
+    const id = await userId("ann");
+    expect(await t.store.transactions.findDeletedImportKeys(id, ["bank-1", "bank-2", "typed in"])).toEqual(["bank-1"]);
   });
 });
 

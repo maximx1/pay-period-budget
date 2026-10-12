@@ -158,8 +158,13 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
         if (!record) throw notFound();
 
         const period = await repos.periods.findContaining(userId, dateOf(record.occursAt));
+        const deletedAt = now();
         await repos.transactions.delete(userId, id);
-        if (period) await applyLeftoverDelta(repos, userId, period.seq, -record.amountCents, now());
+        // Remembered, so the next import of a file that still lists this row leaves it out.
+        if (record.importKey !== null) {
+          await repos.transactions.rememberDeletedImportKey(userId, record.importKey, deletedAt);
+        }
+        if (period) await applyLeftoverDelta(repos, userId, period.seq, -record.amountCents, deletedAt);
       });
     },
   };

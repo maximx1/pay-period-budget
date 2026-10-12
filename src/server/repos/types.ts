@@ -183,6 +183,12 @@ export interface TransactionRepo {
   createMany(transactions: TransactionRecord[]): Promise<void>;
   /** Which of these import keys the user's transactions already use. */
   findImportKeys(userId: string, importKeys: string[]): Promise<string[]>;
+  /** Records that the user deleted the transaction imported under this key. Safe to repeat. */
+  rememberDeletedImportKey(userId: string, importKey: string, now: Date): Promise<void>;
+  /** Which of these import keys belong to transactions the user deleted. */
+  findDeletedImportKeys(userId: string, importKeys: string[]): Promise<string[]>;
+  /** Lets these keys be imported again. */
+  forgetDeletedImportKeys(userId: string, importKeys: string[]): Promise<void>;
   /**
    * Inserts a generated transaction unless one already exists for the same recurring item
    * and occurrence date. Returns whether it was inserted.

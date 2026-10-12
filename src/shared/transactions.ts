@@ -103,7 +103,8 @@ export const DUPLICATE_WINDOW_DAYS = 3;
 export const importRowSchema = transactionInputSchema.extend({
   /**
    * The importer's own name for this row, such as the bank's transaction id. A row whose
-   * key the account already holds is skipped, which makes an import safe to repeat.
+   * key the account already holds, or held until the user deleted that transaction, is
+   * skipped, which makes an import safe to repeat.
    */
   importKey: z.string().trim().min(1, "Enter a key or leave it out").max(100, "Keep the key under 100 characters").optional(),
 });
@@ -115,6 +116,8 @@ export const transactionImportSchema = z
     dryRun: z.boolean().optional(),
     /** Allow rows dated before the earliest pay period by adding the periods they need. */
     addEarlierPeriods: z.boolean().optional(),
+    /** Import rows even if the transaction once imported under the same key was deleted. */
+    restoreDeleted: z.boolean().optional(),
     transactions: z
       .array(importRowSchema)
       .min(1, "Nothing to import")
@@ -156,8 +159,11 @@ export type TransactionImportResponse = {
   dryRun: boolean;
   /** Rows saved, or that would be on a real run. */
   created: number;
-  /** Rows left out because their key is already in the account. */
-  skipped: Array<{ index: number; importKey: string }>;
+  /**
+   * Rows left out because of their key: `held` when a transaction with that key is in the
+   * account, `deleted` when there was one and the user deleted it.
+   */
+  skipped: Array<{ index: number; importKey: string; reason: "held" | "deleted" }>;
   /** Pay periods created to hold the rows. Each brings its recurring items' transactions with it. */
   periodsAdded: { earlier: number; later: number };
   /** The periods that received rows, oldest first. */

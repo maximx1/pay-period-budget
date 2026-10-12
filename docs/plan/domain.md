@@ -237,8 +237,11 @@ effect on starting amounts as creating them one at a time.
   is saved and the error names each row (`transactions.17.occursAt`).
 - **`importKey`** is the importer's own name for a row, unique per user. A row whose key
   is already held is skipped, so the same file can be imported again. Rows without a key
-  are always added. Deleting an imported transaction frees its key, so importing the same
-  row later brings it back.
+  are always added.
+- **A deleted import stays deleted.** Deleting a transaction that has an `importKey`
+  records the key in `deleted_import_keys`, and later imports skip that row too (reported
+  as `skipped` with `reason: "deleted"`, next to `"held"`). `restoreDeleted: true` on an
+  import forgets the deletion for the keys in that request and imports them again.
 - **Rows before the earliest period** are refused unless `addEarlierPeriods` is set, which
   adds the periods needed, within the usual five-year limit. Rows after the latest period
   generate forwards to the horizon, as a single transaction does.
@@ -333,6 +336,8 @@ recurring_items    id, user_id → users, name, description, kind, default_amoun
 api_tokens         id, user_id → users, name, token_hash, hint, scope, created_at,
                    last_used_at, expires_at (null = never)
                    unique (token_hash)
+deleted_import_keys  user_id → users, import_key, deleted_at
+                   primary key (user_id, import_key)
 ```
 
 All child rows cascade when a user is deleted.
@@ -381,7 +386,7 @@ POST   /api/transactions
 PATCH  /api/transactions/:id
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
-POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods? } → what was (or would be) saved; all or nothing
+POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
 GET    /api/recurring
 POST   /api/recurring
 POST   /api/recurring/preview          what creating this item would add, without saving

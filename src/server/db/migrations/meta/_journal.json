@@ -43,6 +43,13 @@
       "when": 1791773286002,
       "tag": "0005_transaction_import_key",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791808698282,
+      "tag": "0006_deleted_import_keys",
+      "breakpoints": true
     }
   ]
 }

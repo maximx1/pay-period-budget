@@ -517,3 +517,21 @@ Node's own modules. `dist/` is gitignored, so it is built where it is used.
   arrow at the earliest period stays enabled further back; trying it would have added
   periods to the development account's data. `nav.canAddPrevious` is covered by the API
   test that walks back all 129 periods.
+
+### Deleted imports stay deleted (2026-10-12, asked for by the owner after 11.7)
+
+The 11.4 notes say a deleted import comes back with the next file that lists it. That is
+no longer so.
+
+- New table `deleted_import_keys (user_id, import_key, deleted_at)`, primary key on the
+  first two. `TransactionService.remove` writes to it when the transaction it deletes has
+  an `importKey`. It is the only place an imported transaction is deleted: ending a
+  recurring item removes generated transactions, which never have a key.
+- The import skips those keys. `skipped` entries now carry `reason: "held" | "deleted"`.
+- `restoreDeleted: true` on an import forgets the deletion for the keys in that request
+  and imports them. A dry run with it forgets nothing, because it is rolled back (tested).
+- The MCP tool has the same `restoreDeleted` argument and reports the two kinds of skipped
+  row on separate lines. Its `delete_transaction` description now says the row stays
+  deleted. **The MCP file has to be rebuilt** (`npm run build:mcp`) to pick this up.
+- There is no screen for the remembered keys. If one should ever be needed, it is a list
+  under Settings; nothing asked for it.

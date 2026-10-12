@@ -136,13 +136,20 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
     }
 
     // Rows the account already holds are left out; that is what makes a second run harmless.
+    // So are rows the user deleted, unless this import was asked to bring them back.
     const keys = rows.flatMap(({ row }) => (row.importKey === undefined ? [] : [row.importKey]));
     const held = new Set(keys.length > 0 ? await repos.transactions.findImportKeys(userId, keys) : []);
+    const deleted = new Set(keys.length > 0 ? await repos.transactions.findDeletedImportKeys(userId, keys) : []);
+    if (input.restoreDeleted && deleted.size > 0) {
+      await repos.transactions.forgetDeletedImportKeys(userId, [...deleted]);
+      deleted.clear();
+    }
     const skipped: TransactionImportResponse["skipped"] = [];
     const fresh: typeof rows = [];
     for (const entry of rows) {
       const key = entry.row.importKey;
-      if (key !== undefined && held.has(key)) skipped.push({ index: entry.index, importKey: key });
+      if (key !== undefined && held.has(key)) skipped.push({ index: entry.index, importKey: key, reason: "held" });
+      else if (key !== undefined && deleted.has(key)) skipped.push({ index: entry.index, importKey: key, reason: "deleted" });
       else fresh.push(entry);
     }
 

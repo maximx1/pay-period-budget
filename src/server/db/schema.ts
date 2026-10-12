@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
@@ -188,4 +188,20 @@ export const transactions = sqliteTable(
     // and SQLite treats nulls as distinct, so they are unaffected.
     uniqueIndex("transactions_recurring_occurrence_unique").on(t.recurringId, t.occurrenceDate),
   ],
+);
+
+/**
+ * Import keys of transactions the user deleted. An import skips them, so a row removed
+ * from the budget does not come back with the next bank export that still lists it.
+ */
+export const deletedImportKeys = sqliteTable(
+  "deleted_import_keys",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    importKey: text("import_key").notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.importKey] })],
 );

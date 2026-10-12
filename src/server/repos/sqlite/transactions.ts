@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import type { Db } from "../../db/client.ts";
-import { transactions } from "../../db/schema.ts";
+import { deletedImportKeys, transactions } from "../../db/schema.ts";
 import type { TransactionRepo } from "../types.ts";
 import { rethrowConstraint } from "./errors.ts";
 
@@ -72,6 +72,31 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         for (const row of rows) if (row.importKey !== null) found.push(row.importKey);
       }
       return found;
+    },
+    async rememberDeletedImportKey(userId, importKey, now) {
+      await db.insert(deletedImportKeys).values({ userId, importKey, deletedAt: now }).onConflictDoNothing();
+    },
+    async findDeletedImportKeys(userId, importKeys) {
+      const found: string[] = [];
+      for (let i = 0; i < importKeys.length; i += BATCH) {
+        const rows = await db
+          .select({ importKey: deletedImportKeys.importKey })
+          .from(deletedImportKeys)
+          .where(
+            and(eq(deletedImportKeys.userId, userId), inArray(deletedImportKeys.importKey, importKeys.slice(i, i + BATCH))),
+          );
+        found.push(...rows.map((row) => row.importKey));
+      }
+      return found;
+    },
+    async forgetDeletedImportKeys(userId, importKeys) {
+      for (let i = 0; i < importKeys.length; i += BATCH) {
+        await db
+          .delete(deletedImportKeys)
+          .where(
+            and(eq(deletedImportKeys.userId, userId), inArray(deletedImportKeys.importKey, importKeys.slice(i, i + BATCH))),
+          );
+      }
     },
     async createIfAbsent(transaction) {
       const inserted = await db

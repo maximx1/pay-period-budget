@@ -258,8 +258,10 @@ What to ask the assistant to do, in this order:
 
 Rows dated before the earliest pay period are refused unless the import is run with
 `addEarlierPeriods: true`, which adds the periods to hold them (up to five years back). The
-import is all or nothing: one bad row and nothing is saved. Deleting an imported
-transaction frees its key, so a later import that contains the row will add it again.
+import is all or nothing: one bad row and nothing is saved.
+
+If you delete a transaction that was imported, it stays deleted: later imports skip that
+row and say so. To get it back, run the import with `restoreDeleted: true`.
 
 ## Android app
 
