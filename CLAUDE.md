@@ -26,6 +26,7 @@ touching periods, transactions or recurring items.
 | `npm run db:backup -- <file>` | Write a consistent copy of the database |
 | `npm run build:android` | Build the client into `dist/android`, then copy it into `android/`. `.env.android` may give it a server address to start with |
 | `npm run open:android` | Open `android/` in Android Studio |
+| `npm run build:mcp` | Build the MCP server into one file, `dist/mcp/ppb-mcp.mjs` |
 
 Migrations are applied automatically when the server (or a test) opens the database.
 The dev database is `data/app.db` (gitignored); delete the `data/` folder to start clean.
@@ -48,6 +49,8 @@ src/client/   React app
   features/<name>/   screens, hooks and components for one feature
   components/ui/     shared presentational primitives
   lib/api.ts    the only place that calls fetch
+mcp/          MCP server an AI assistant runs locally; talks to the API with an API token.
+              tools.ts = the tools (plain functions), api.ts = its only route to the API
 android/      Capacitor's Android project. Generated once, then edited by hand; committed
 ```
 

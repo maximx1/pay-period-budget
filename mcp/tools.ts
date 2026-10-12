@@ -1,0 +1,525 @@
+// The tools the MCP server offers. Each is a thin call to one API endpoint, except the
+// import, which reads a file from this machine and sends it in pieces. Nothing here knows
+// about the MCP protocol: mcpServer.ts registers these, and the tests call them directly.
+import { isAbsolute } from "node:path";
+import { z } from "zod";
+import type { AuthResponse } from "../src/shared/auth.ts";
+import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shared/budget.ts";
+import { dateOf, isLocalDate, nowIn, todayIn } from "../src/shared/dates.ts";
+import type { RecurringListResponse } from "../src/shared/recurring.ts";
+import {
+  DUPLICATE_WINDOW_DAYS,
+  type ImportRow,
+  importRowSchema,
+  MAX_IMPORT_ROWS,
+  MAX_TRANSACTION_RANGE_DAYS,
+  type PossibleDuplicate,
+  type TransactionImportResponse,
+  transactionInputSchema,
+  type TransactionListResponse,
+  transactionPatchSchema,
+  type TransactionResponse,
+} from "../src/shared/transactions.ts";
+import { type Api, ApiRequestError } from "./api.ts";
+import { money, periodReport, plural, recurringLine, transactionLine, transactionList } from "./format.ts";
+
+/** Something the caller got wrong, or that could not be done; the message is the tool's answer. */
+export class ToolFailure extends Error {}
+
+export type ToolDeps = {
+  api: Api;
+  /** Reads a text file on this machine. */
+  readFile: (path: string) => Promise<string>;
+  now: () => Date;
+};
+
+export type Tool = {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: z.ZodRawShape;
+  /** It changes nothing on the server. */
+  readOnly: boolean;
+  /** It removes something that cannot be brought back. */
+  destructive: boolean;
+  /** Checks the arguments, does the work and returns the text to show. */
+  run(args: unknown): Promise<string>;
+};
+
+function define<Shape extends z.ZodRawShape>(
+  tool: Omit<Tool, "run" | "inputSchema" | "destructive"> & {
+    inputSchema: Shape;
+    destructive?: boolean;
+    run: (args: z.output<z.ZodObject<Shape>>) => Promise<string>;
+  },
+): Tool {
+  const schema = z.object(tool.inputSchema);
+  return { ...tool, destructive: tool.destructive ?? false, run: async (args) => tool.run(schema.parse(args ?? {})) };
+}
+
+/** The most rows one file may hold; a year of a busy account is a few thousand. */
+export const MAX_FILE_ROWS = 20_000;
+const MAX_LISTED = 100;
+
+const AMOUNT_RULE = "A positive whole number of cents ($54.12 is 5412); `kind` says which way the money went.";
+const DATE_TIME_RULE =
+  'Local date and time as "YYYY-MM-DDTHH:mm" in the budget\'s own time zone. Use T00:00 when only the date is known.';
+
+const transactionFields = transactionInputSchema.shape;
+const patchFields = transactionPatchSchema.shape;
+
+const periodLine = (period: { startDate: string; endDate: string; id: string }) =>
+  `${period.startDate} to ${period.endDate} (id ${period.id})`;
+
+export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
+  async function importTransactions(args: { file: string; dryRun: boolean; addEarlierPeriods: boolean }) {
+    const rows = await readImportFile(args.file, readFile);
+    const chunks: ImportRow[][] = [];
+    for (let i = 0; i < rows.length; i += MAX_IMPORT_ROWS) chunks.push(rows.slice(i, i + MAX_IMPORT_ROWS));
+    const keyless = rows.filter((row) => row.importKey === undefined).length;
+
+    if (!args.dryRun && chunks.length > 1 && keyless > 0) {
+      throw new ToolFailure(
+        `${plural(keyless, "row has", "rows have")} no importKey. A file this size is sent in ${chunks.length} requests, ` +
+          "and if one fails the import has to be run again, which would add those rows a second time. " +
+          "Give every row an importKey. Nothing was imported.",
+      );
+    }
+
+    const send = (chunk: ImportRow[], dryRun: boolean) =>
+      api.post<TransactionImportResponse>("/api/transactions/import", {
+        dryRun,
+        addEarlierPeriods: args.addEarlierPeriods,
+        transactions: chunk,
+      });
+
+    // Every piece is tried as a dry run first, so a problem anywhere in the file is found
+    // before anything is saved.
+    const previews: TransactionImportResponse[] = [];
+    const problems: string[] = [];
+    for (const [index, chunk] of chunks.entries()) {
+      try {
+        previews.push(await send(chunk, true));
+      } catch (error) {
+        if (!(error instanceof ApiRequestError) || !error.fields) throw error;
+        problems.push(...rowProblems(error.fields, index * MAX_IMPORT_ROWS, rows));
+      }
+    }
+    if (problems.length > 0) {
+      const hint = problems.some((problem) => problem.includes("before your"))
+        ? "\n\nRows dated before the earliest pay period need addEarlierPeriods: true, which adds the periods to hold them."
+        : "";
+      throw new ToolFailure(
+        `The server would refuse ${plural(problems.length, "row")} of ${rows.length}. Nothing was imported.\n` +
+          listed(problems) +
+          hint,
+      );
+    }
+    if (args.dryRun) return importReport(rows, previews, { saved: false, keyless });
+
+    const results: TransactionImportResponse[] = [];
+    for (const [index, chunk] of chunks.entries()) {
+      try {
+        results.push(await send(chunk, false));
+      } catch (error) {
+        const first = index * MAX_IMPORT_ROWS;
+        const saved = results.reduce((sum, result) => sum + result.created, 0);
+        throw new ToolFailure(
+          `The import stopped at rows ${first} to ${first + chunk.length - 1}: ${error instanceof Error ? error.message : String(error)}\n` +
+            (index === 0
+              ? "Nothing was imported."
+              : `Rows 0 to ${first - 1} are saved (${plural(saved, "transaction")}). Run the same file again to finish: ` +
+                "rows already saved are skipped by their import keys."),
+        );
+      }
+    }
+    return importReport(rows, results, { saved: true, keyless });
+  }
+
+  return [
+    define({
+      name: "get_budget",
+      title: "Budget overview",
+      description:
+        "How the budget is set up: the pay schedule, the date the first pay period began, the opening balance, " +
+        "the budget's time zone and today's date in that zone. Call this first. All dates in every other tool are " +
+        "wall-clock dates in that time zone.",
+      inputSchema: {},
+      readOnly: true,
+      async run() {
+        const [{ user }, { budget }] = await Promise.all([
+          api.get<AuthResponse>("/api/auth/me"),
+          api.get<BudgetResponse>("/api/budget"),
+        ]);
+        if (!budget) return `Account: ${user.username}\nNo budget has been set up yet. That is done in the app.`;
+        return [
+          `Account: ${user.username}`,
+          `Pay schedule: ${budget.type}, first pay period began ${budget.anchorDate}`,
+          `Opening balance on that day: ${money(budget.openingCents)}`,
+          `Time zone: ${budget.timezone}`,
+          `Now in that zone: ${nowIn(budget.timezone, now()).replace("T", " ")}`,
+        ].join("\n");
+      },
+    }),
+
+    define({
+      name: "list_periods",
+      title: "List pay periods",
+      description:
+        "Every pay period that exists, oldest first, with its dates and id. Periods are created as they are needed, " +
+        "so the list ends where the data ends. Use get_period for a period's amounts and transactions.",
+      inputSchema: {},
+      readOnly: true,
+      async run() {
+        const [{ periods }, { budget }] = await Promise.all([
+          api.get<PeriodListResponse>("/api/periods"),
+          api.get<BudgetResponse>("/api/budget"),
+        ]);
+        const today = budget ? todayIn(budget.timezone, now()) : null;
+        const lines = periods.map((period) => {
+          const current = today !== null && period.startDate <= today && today <= period.endDate;
+          return `- ${periodLine(period)}${current ? " (the current period)" : ""}`;
+        });
+        return [`${plural(periods.length, "pay period")}:`, ...lines].join("\n");
+      },
+    }),
+
+    define({
+      name: "get_period",
+      title: "One pay period",
+      description:
+        "One pay period: its starting amount, totals and every transaction in it. Give `id`, or a `date` to get the " +
+        'period containing it, or neither for the current period. "Leftover so far" is the starting amount plus paid ' +
+        "transactions and should match the bank balance; \"projected leftover\" also counts upcoming ones and is what the " +
+        "next period starts with.",
+      inputSchema: {
+        id: z.string().min(1).optional().describe("A period id from list_periods."),
+        date: z.string().refine(isLocalDate, "Use YYYY-MM-DD").optional().describe("YYYY-MM-DD. The period containing this date."),
+      },
+      readOnly: true,
+      async run({ id, date }) {
+        if (id && date) throw new ToolFailure("Give an id or a date, not both.");
+        if (id) return periodReport(await api.get<PeriodView>(`/api/periods/${encodeURIComponent(id)}`));
+        if (!date) return periodReport(await api.get<PeriodView>("/api/periods/current"));
+
+        const { periods } = await api.get<PeriodListResponse>("/api/periods");
+        const found = periods.find((period) => period.startDate <= date && date <= period.endDate);
+        if (!found) {
+          const span = periods.length ? `${periods[0]!.startDate} to ${periods.at(-1)!.endDate}` : "nothing yet";
+          throw new ToolFailure(
+            `No pay period covers ${date}. Existing periods run from ${span}. A period is created when a transaction is dated in it.`,
+          );
+        }
+        return periodReport(await api.get<PeriodView>(`/api/periods/${found.id}`));
+      },
+    }),
+
+    define({
+      name: "list_transactions",
+      title: "Transactions by date",
+      description:
+        `Transactions dated from \`from\` through \`to\`, both included, at most ${MAX_TRANSACTION_RANGE_DAYS} days per call. ` +
+        "Each line ends with the transaction's id and says whether it was generated from a recurring item or imported. " +
+        "Use this to compare a bank export with what the budget already holds.",
+      inputSchema: {
+        from: z.string().describe("YYYY-MM-DD, the first day."),
+        to: z.string().describe("YYYY-MM-DD, the last day."),
+      },
+      readOnly: true,
+      async run({ from, to }) {
+        const query = new URLSearchParams({ from, to });
+        const { transactions } = await api.get<TransactionListResponse>(`/api/transactions?${query}`);
+        const net = transactions.reduce((sum, transaction) => sum + transaction.amountCents, 0);
+        return [
+          `${plural(transactions.length, "transaction")} from ${from} to ${to}, net ${money(net)}:`,
+          transactionList(transactions),
+        ].join("\n");
+      },
+    }),
+
+    define({
+      name: "create_transaction",
+      title: "Add a transaction",
+      description:
+        "Adds one transaction. For more than a handful, write them to a file and use import_transactions instead. " +
+        "Adding one changes the starting amount of every later pay period.",
+      inputSchema: {
+        name: transactionFields.name.describe("What it was, as it should read in the budget."),
+        amountCents: transactionFields.amountCents.describe(AMOUNT_RULE),
+        kind: transactionFields.kind.describe('"expense" for money out, "income" for money in.'),
+        occursAt: transactionFields.occursAt.describe(DATE_TIME_RULE),
+        note: transactionFields.note.describe("Optional. Up to 500 characters."),
+        paid: transactionFields.paid.describe(
+          "True if the money has already moved (anything from a bank statement). Left out, it is an upcoming transaction.",
+        ),
+      },
+      readOnly: false,
+      async run(input) {
+        const { transaction, period } = await api.post<TransactionResponse>("/api/transactions", input);
+        return `Added: ${transactionLine(transaction)}\nIn the period ${periodLine(period)}`;
+      },
+    }),
+
+    define({
+      name: "update_transaction",
+      title: "Change a transaction",
+      description:
+        "Changes one transaction; give only the fields that change. This is how a bank row is matched to a transaction " +
+        'the budget already holds: set its real date and amount and `status: "paid"` rather than adding a second one. ' +
+        "Changing the date moves it to the period that covers the new date.",
+      inputSchema: {
+        id: z.string().min(1).describe("The transaction's id, from list_transactions or get_period."),
+        name: patchFields.name,
+        amountCents: patchFields.amountCents.describe(AMOUNT_RULE),
+        kind: patchFields.kind.describe('"expense" or "income". Only needed to turn one into the other.'),
+        occursAt: patchFields.occursAt.describe(DATE_TIME_RULE),
+        note: patchFields.note.describe("An empty string or null removes the note."),
+        status: patchFields.status.describe('"paid" once the money has moved, "upcoming" if it has not.'),
+      },
+      readOnly: false,
+      async run({ id, ...patch }) {
+        if (Object.values(patch).every((value) => value === undefined)) {
+          throw new ToolFailure("Give at least one field to change.");
+        }
+        const { transaction, period } = await api.patch<TransactionResponse>(
+          `/api/transactions/${encodeURIComponent(id)}`,
+          patch,
+        );
+        return `Changed: ${transactionLine(transaction)}\nIn the period ${periodLine(period)}`;
+      },
+    }),
+
+    define({
+      name: "delete_transaction",
+      title: "Delete a transaction",
+      description:
+        "Deletes one transaction for good. There is no undo. If it was imported, the same row will be imported again " +
+        "the next time a file contains it.",
+      inputSchema: { id: z.string().min(1).describe("The transaction's id.") },
+      readOnly: false,
+      destructive: true,
+      async run({ id }) {
+        await api.delete(`/api/transactions/${encodeURIComponent(id)}`);
+        return `Deleted transaction ${id}.`;
+      },
+    }),
+
+    define({
+      name: "list_recurring",
+      title: "Recurring bills and income",
+      description:
+        "The recurring items: bills and income the budget adds by itself as upcoming transactions, one per occurrence, " +
+        "whenever a pay period is created. A bank row for one of these usually matches a transaction that already " +
+        "exists; update that one instead of adding another.",
+      inputSchema: {
+        includeArchived: z.boolean().default(false).describe("Also list items whose end date has passed."),
+      },
+      readOnly: true,
+      async run({ includeArchived }) {
+        const { items } = await api.get<RecurringListResponse>("/api/recurring");
+        const shown = includeArchived ? items : items.filter((item) => !item.archived);
+        if (shown.length === 0) return "No recurring items.";
+        return [`${plural(shown.length, "recurring item")}:`, ...shown.map((item) => `- ${recurringLine(item)}`)].join("\n");
+      },
+    }),
+
+    define({
+      name: "import_transactions",
+      title: "Import transactions from a file",
+      description:
+        "Imports many transactions from a JSON file on this machine. Convert a bank export to that file with a script; " +
+        "never retype amounts by hand.\n\n" +
+        'The file is a JSON array of rows: {"name": string, "amountCents": positive integer, "kind": "expense" | "income", ' +
+        '"occursAt": "YYYY-MM-DDTHH:mm", "paid": true, "note"?: string, "importKey"?: string}. ' +
+        "Set paid: true for anything that has already cleared. importKey is your own stable name for the row (the bank's " +
+        "transaction id, or date + amount + description + a counter among identical rows): a row whose key was imported " +
+        "before is skipped, so the same file, or an overlapping export, can be imported again safely.\n\n" +
+        "dryRun defaults to true: it reports what would happen and saves nothing. Read the report, deal with the " +
+        "possible duplicates it lists (take the row out of the file and update the existing transaction instead), show " +
+        "the owner the effect on today's figures, and only then call again with dryRun: false. The import is all or " +
+        "nothing: one bad row and nothing is saved.",
+      inputSchema: {
+        file: z.string().min(1).describe("Absolute path of the JSON file."),
+        dryRun: z.boolean().default(true).describe("True (the default) reports without saving. False saves."),
+        addEarlierPeriods: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Allow rows dated before the earliest pay period by adding the periods they need. " +
+              "Those periods are history: they do not change today's figures.",
+          ),
+      },
+      readOnly: false,
+      run: importTransactions,
+    }),
+  ];
+}
+
+/** Reads and checks the file; every row is validated here so problems are reported by row before anything is sent. */
+async function readImportFile(file: string, readFile: ToolDeps["readFile"]): Promise<ImportRow[]> {
+  if (!isAbsolute(file)) throw new ToolFailure(`Give the file's absolute path. "${file}" is relative.`);
+
+  let text: string;
+  try {
+    text = await readFile(file);
+  } catch (error) {
+    throw new ToolFailure(`Couldn't read ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new ToolFailure(`${file} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const list = Array.isArray(parsed) ? parsed : (parsed as { transactions?: unknown } | null)?.transactions;
+  if (!Array.isArray(list)) {
+    throw new ToolFailure("The file must hold a JSON array of rows (or an object with a `transactions` array).");
+  }
+  if (list.length === 0) throw new ToolFailure("The file has no rows.");
+  if (list.length > MAX_FILE_ROWS) {
+    throw new ToolFailure(`The file has ${list.length} rows; the most one file may hold is ${MAX_FILE_ROWS}. Split it.`);
+  }
+
+  const rows: ImportRow[] = [];
+  const problems: string[] = [];
+  const firstUse = new Map<string, number>();
+  for (const [index, candidate] of list.entries()) {
+    const result = importRowSchema.safeParse(candidate);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        problems.push(`row ${index}: ${issue.path.join(".") || "row"}: ${issue.message}`);
+      }
+      continue;
+    }
+    const key = result.data.importKey;
+    if (key !== undefined) {
+      const earlier = firstUse.get(key);
+      if (earlier !== undefined) problems.push(`row ${index}: importKey: row ${earlier} has the same key "${key}"`);
+      else firstUse.set(key, index);
+    }
+    rows.push(result.data);
+  }
+  if (problems.length > 0) {
+    throw new ToolFailure(
+      `${plural(problems.length, "problem")} in ${file} (rows are counted from 0). Nothing was sent.\n${listed(problems)}`,
+    );
+  }
+  return rows;
+}
+
+const listed = (lines: string[]) =>
+  lines.length <= MAX_LISTED
+    ? lines.map((line) => `- ${line}`).join("\n")
+    : [...lines.slice(0, MAX_LISTED).map((line) => `- ${line}`), `- and ${lines.length - MAX_LISTED} more`].join("\n");
+
+/** Turns the server's "transactions.17.occursAt" into "row 517: occursAt: …" for the row's place in the file. */
+function rowProblems(fields: Record<string, string>, offset: number, rows: ImportRow[]): string[] {
+  return Object.entries(fields).map(([path, message]) => {
+    const match = /^transactions\.(\d+)\.(.+)$/.exec(path);
+    if (!match) return `${path}: ${message}`;
+    const index = offset + Number(match[1]);
+    const row = rows[index];
+    return `row ${index}${row ? ` (${dateOf(row.occursAt)} ${row.name})` : ""}: ${match[2]}: ${message}`;
+  });
+}
+
+function importReport(
+  rows: ImportRow[],
+  results: TransactionImportResponse[],
+  { saved, keyless }: { saved: boolean; keyless: number },
+): string {
+  const created = results.reduce((sum, result) => sum + result.created, 0);
+  const skipped = results.reduce((sum, result) => sum + result.skipped.length, 0);
+  // A dry run undoes each piece, so every piece adds the same periods again: the most any
+  // one needed is what a real run would add. A real run adds them once, piece by piece.
+  const added = (end: "earlier" | "later") =>
+    saved
+      ? results.reduce((sum, result) => sum + result.periodsAdded[end], 0)
+      : Math.max(...results.map((result) => result.periodsAdded[end]));
+
+  // Periods a dry run would create have a different id each time; their dates identify them.
+  const periods = new Map<string, { startDate: string; endDate: string; count: number; netCents: number }>();
+  for (const period of results.flatMap((result) => result.periods)) {
+    const tally = periods.get(period.startDate) ?? { startDate: period.startDate, endDate: period.endDate, count: 0, netCents: 0 };
+    tally.count += period.count;
+    tally.netCents += period.netCents;
+    periods.set(period.startDate, tally);
+  }
+
+  // Rows of this file already saved by an earlier piece are not duplicates of each other.
+  const ownKeys = new Set(rows.flatMap((row) => (row.importKey === undefined ? [] : [row.importKey])));
+  const duplicates = results.flatMap((result, index) =>
+    result.possibleDuplicates
+      .filter(({ reason, existing }) => !(reason === "imported" && existing.importKey !== null && ownKeys.has(existing.importKey)))
+      .map((duplicate) => ({ ...duplicate, index: duplicate.index + index * MAX_IMPORT_ROWS })),
+  );
+
+  const lines: string[] = [
+    saved
+      ? `Imported ${plural(created, "transaction")} of the ${rows.length} in the file.`
+      : `DRY RUN: nothing was saved. ${plural(created, "transaction")} of the ${rows.length} in the file would be imported.`,
+  ];
+  if (skipped > 0) {
+    lines.push(`${plural(skipped, "row was", "rows were")} skipped because ${skipped === 1 ? "its" : "their"} import key is already in the budget.`);
+  }
+  if (keyless > 0 && !saved) {
+    lines.push(`${plural(keyless, "row has", "rows have")} no importKey: importing this file twice would add ${keyless === 1 ? "it" : "them"} twice.`);
+  }
+  if (added("earlier") > 0 || added("later") > 0) {
+    lines.push(
+      `Pay periods ${saved ? "added" : "that would be added"}: ${added("earlier")} before the earliest, ${added("later")} after the latest. ` +
+        "Each new period brings the recurring items due in it as upcoming transactions.",
+    );
+  }
+
+  if (periods.size > 0) {
+    lines.push("", "By pay period:");
+    for (const period of [...periods.values()].sort((a, b) => (a.startDate < b.startDate ? -1 : 1))) {
+      lines.push(`- ${period.startDate} to ${period.endDate}: ${plural(period.count, "transaction")}, net ${money(period.netCents)}`);
+    }
+  }
+
+  const currents = results.flatMap((result) => (result.current ? [result.current] : []));
+  if (currents.length > 0) {
+    // Each dry-run piece starts from the same figures, so their separate effects add up.
+    const before = currents[0]!;
+    const change = (figure: "leftover" | "projected") =>
+      currents.reduce((sum, current) => sum + current[`${figure}AfterCents`] - current[`${figure}BeforeCents`], 0);
+    lines.push(
+      "",
+      "Today's pay period:",
+      `- Leftover so far: ${money(before.leftoverBeforeCents)} → ${money(before.leftoverBeforeCents + change("leftover"))}`,
+      `- Projected leftover: ${money(before.projectedBeforeCents)} → ${money(before.projectedBeforeCents + change("projected"))}`,
+    );
+  }
+
+  if (duplicates.length > 0) {
+    lines.push(
+      "",
+      `${plural(duplicates.length, "row")} may repeat a transaction the budget already holds (same amount, within ${DUPLICATE_WINDOW_DAYS} days). ` +
+        (saved
+          ? "They were imported anyway. For each that is the same payment, delete one of the two."
+          : "They would be imported anyway. For each that is the same payment, take the row out of the file and " +
+            "update the existing transaction (update_transaction: real date, real amount, status paid). Ask the owner about any that are unclear."),
+      listed(duplicates.map((duplicate) => duplicateLine(duplicate, rows[duplicate.index]))),
+    );
+  }
+
+  if (!saved) lines.push("", "To import, call import_transactions again with dryRun: false.");
+  return lines.join("\n");
+}
+
+const REASONS: Record<PossibleDuplicate["reason"], string> = {
+  recurring: "generated from a recurring item",
+  manual: "entered by hand",
+  imported: "imported earlier under a different key",
+};
+
+function duplicateLine({ index, existing, reason, daysApart }: PossibleDuplicate, row: ImportRow | undefined): string {
+  const incoming = row ? `${dateOf(row.occursAt)} "${row.name}"` : "";
+  const apart = daysApart === 0 ? "same day" : `${plural(daysApart, "day")} apart`;
+  return (
+    `row ${index} ${incoming} ↔ existing ${dateOf(existing.occursAt)} "${existing.name}" ${money(existing.amountCents)}, ` +
+    `${existing.status}, ${REASONS[reason]}, ${apart}, id ${existing.id}`
+  );
+}
