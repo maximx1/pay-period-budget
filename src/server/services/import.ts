@@ -10,7 +10,7 @@ import {
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
-import type { PeriodService } from "./periods.ts";
+import { type PeriodService, TOO_FAR_BACK } from "./periods.ts";
 import { toTransaction } from "./transactionMapper.ts";
 
 export type ImportService = ReturnType<typeof createImportService>;
@@ -117,7 +117,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
       const date = dateOf(row.occursAt);
       if (date < first.startDate) {
         fields[`transactions.${index}.occursAt`] = input.addEarlierPeriods
-          ? "That's more than a year back"
+          ? TOO_FAR_BACK
           : first.seq < 0
             ? "That's before your earliest pay period"
             : "That's before your budget started";

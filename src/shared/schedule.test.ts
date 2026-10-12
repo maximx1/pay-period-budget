@@ -106,15 +106,25 @@ describe("seqForDate", () => {
 
 describe("earliestSeq", () => {
   it.each([
-    // today 2026-01-15, so the earliest period is the one containing 2025-01-15
-    [weekly, -51],
-    [biweekly, -26],
-    [monthly, -12],
+    // today 2026-01-15, so the earliest period is the one containing 2021-01-15, five years before
+    [weekly, -259],
+    [biweekly, -130],
+    [monthly, -60],
   ])("%o allows adding back to period %i", (schedule, expected) => {
     const seq = earliestSeq(schedule, "2026-01-15");
     expect(seq).toBe(expected);
     const { start, end } = nominalPeriod(schedule, seq);
-    expect(start <= "2025-01-15" && "2025-01-15" <= end).toBe(true);
+    expect(start <= "2021-01-15" && "2021-01-15" <= end).toBe(true);
+  });
+
+  it("clamps a leap day to the 28th five years before", () => {
+    // 2028-02-29 less five years is 2023-02-28, which period -62 of this schedule holds.
+    const seq = earliestSeq({ type: "monthly", anchorDate: "2028-04-15" }, "2028-02-29");
+    expect(nominalPeriod({ type: "monthly", anchorDate: "2028-04-15" }, seq)).toEqual({
+      start: "2023-02-15",
+      end: "2023-03-14",
+    });
+    expect(seq).toBe(-62);
   });
 });
 

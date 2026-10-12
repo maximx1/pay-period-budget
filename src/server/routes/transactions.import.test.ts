@@ -357,13 +357,14 @@ describe("rows that cannot be imported", () => {
     expect(error.message).toBe("1 of the 3 transactions is dated outside your pay periods. Nothing was imported.");
   });
 
-  it("refuses rows more than a year back or ahead, even when earlier periods are asked for", async () => {
+  it("refuses rows more than five years back or a year ahead, even when earlier periods are asked for", async () => {
     const error = await refused({
       addEarlierPeriods: true,
-      transactions: [row("2025-12-10"), row("2024-12-31"), row("2027-03-01"), row("2026-12-01")],
+      transactions: [row("2025-12-10"), row("2021-01-04"), row("2027-03-01"), row("2026-12-01"), row("2021-01-05")],
     });
+    // Five years before today falls in the period 2021-01-05..01-18: its first day is in reach, the day before is not.
     expect(error.fields).toEqual({
-      "transactions.1.occursAt": "That's more than a year back",
+      "transactions.1.occursAt": "That's more than 5 years back",
       "transactions.2.occursAt": "That's more than a year ahead",
     });
   });
@@ -427,6 +428,61 @@ describe("a full-sized import", () => {
       transactions: [row("2026-01-20", { note: "x".repeat(1100 * 1024) })],
     });
     expect(tooBig.status).toBe(413);
+  });
+});
+
+describe("years of history", () => {
+  /** Before the budget, every period must end on what the next one starts with. */
+  async function expectHistoryConsistent() {
+    const id = await userId("ann");
+    const periods = await t.store.periods.listAll(id);
+    for (let i = 0; i < periods.length - 1 && periods[i]!.seq < 0; i++) {
+      const sums = await t.store.transactions.sumInRange(id, periods[i]!.startDate, periods[i]!.endDate);
+      expect(periods[i]!.startingCents + sums.paidCents + sums.upcomingCents, `end of period ${periods[i]!.seq}`).toBe(
+        periods[i + 1]!.startingCents,
+      );
+    }
+    return periods;
+  }
+
+  it("holds almost five years before the budget without moving today's figures", async () => {
+    // A bill that has been due since before the history starts: it lands in every added period's month.
+    await addRent(ann, "2021-01-25");
+    // One row every four days from 2021-02-01 up to the day before the budget began.
+    const rows: Row[] = [];
+    for (let day = new Date(Date.UTC(2021, 1, 1)); day < new Date(Date.UTC(2025, 11, 16)); day.setUTCDate(day.getUTCDate() + 4)) {
+      const date = day.toISOString().slice(0, 10);
+      rows.push(row(date, { amountCents: 1000 + rows.length, importKey: `bank-${date}` }));
+    }
+    expect(rows.length).toBeGreaterThan(400);
+    expect(rows.length).toBeLessThanOrEqual(MAX_IMPORT_ROWS);
+
+    const result = await importRows(ann, rows, { addEarlierPeriods: true });
+    // 2021-02-01 is the last day of period -128.
+    expect(result).toMatchObject({ created: rows.length, periodsAdded: { earlier: 128, later: 0 } });
+    expect(result.current).toMatchObject({
+      leftoverBeforeCents: result.current!.leftoverAfterCents,
+      projectedBeforeCents: result.current!.projectedAfterCents,
+    });
+
+    const periods = await expectHistoryConsistent();
+    expect(periods[0]).toMatchObject({ seq: -128, startDate: "2021-01-19", endDate: "2021-02-01" });
+    expect(periods.find((period) => period.seq === 0)!.startingCents).toBe(OPENING);
+    // The rent was generated all the way back, as upcoming, and reported against nothing.
+    const history = await t.store.transactions.listInRange(await userId("ann"), "2021-01-01", "2025-12-15");
+    const rents = history.filter((tx) => tx.name === "Rent");
+    expect(rents).toHaveLength(59);
+    expect(rents.every((tx) => tx.status === "upcoming")).toBe(true);
+
+    // One more transaction at each end of the history still leaves it consistent.
+    expect((await ann.post("/api/transactions", row("2021-01-20"))).status).toBe(201);
+    expect((await ann.post("/api/transactions", row("2025-12-15"))).status).toBe(201);
+    const after = await expectHistoryConsistent();
+    expect(after.find((period) => period.seq === 0)!.startingCents).toBe(OPENING);
+    expect(after[0]!.startingCents).toBe(periods[0]!.startingCents + 2500 + 2500);
+
+    const list = await ann.get("/api/periods");
+    expect((await list.json()).periods).toHaveLength(128 + 5);
   });
 });
 

@@ -10,7 +10,7 @@ import {
   type PeriodView,
 } from "../../shared/budget.ts";
 import { addDays, diffDays, type LocalDate, todayIn } from "../../shared/dates.ts";
-import { earliestSeq, horizonSeq, nominalPeriod } from "../../shared/schedule.ts";
+import { earliestSeq, horizonSeq, MAX_HISTORY_YEARS, nominalPeriod } from "../../shared/schedule.ts";
 import { AppError } from "../lib/errors.ts";
 import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain, shiftHistory } from "./carry.ts";
 import { planDateChange } from "./periodDates.ts";
@@ -29,6 +29,7 @@ type LoadedBudget = { schedule: ScheduleRecord; timezone: string };
 
 const dateError = (message: string) => new AppError(400, "validation", message, { date: message });
 const anchorError = (message: string) => new AppError(400, "validation", message, { anchorDate: message });
+export const TOO_FAR_BACK = `That's more than ${MAX_HISTORY_YEARS} years back`;
 const noBudget = () => new AppError(409, "conflict", "Set up your budget first");
 const historyIsDerived = () =>
   new AppError(409, "conflict", "Amounts before your budget started are worked out from its first period");
@@ -101,8 +102,8 @@ export function createPeriodService(deps: {
   }
 
   /**
-   * Adds the period before the earliest one, or returns null if that would be more than a
-   * year back. Call inside a transaction.
+   * Adds the period before the earliest one, or returns null if that would be further back
+   * than history may go (MAX_HISTORY_YEARS). Call inside a transaction.
    */
   async function addEarlierIn(
     repos: Repos,
@@ -515,7 +516,7 @@ export function createPeriodService(deps: {
       return store.transaction(async (repos) => {
         const { schedule, timezone } = await loadBudget(repos, userId);
         const period = await addEarlierIn(repos, userId, schedule, todayIn(timezone, now()));
-        if (!period) throw new AppError(400, "validation", "That's more than a year back");
+        if (!period) throw new AppError(400, "validation", TOO_FAR_BACK);
         return period.id;
       });
     },

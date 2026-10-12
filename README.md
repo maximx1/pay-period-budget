@@ -257,7 +257,7 @@ What to ask the assistant to do, in this order:
    balance. If it does not, something is missing or doubled.
 
 Rows dated before the earliest pay period are refused unless the import is run with
-`addEarlierPeriods: true`, which adds the periods to hold them (up to a year back). The
+`addEarlierPeriods: true`, which adds the periods to hold them (up to five years back). The
 import is all or nothing: one bad row and nothing is saved. Deleting an imported
 transaction frees its key, so a later import that contains the row will add it again.
 

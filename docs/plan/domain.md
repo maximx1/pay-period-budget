@@ -98,8 +98,9 @@ the truth the user entered at setup. Anything before it is history, and history 
 
 `addEarlier(userId)` creates the period before the earliest one:
 
-- `seq` = earliest − 1. Rejected ("That's more than a year back") below `earliestSeq`: the
-  nominal period containing today − 1 year. This mirrors the horizon.
+- `seq` = earliest − 1. Rejected ("That's more than 5 years back") below `earliestSeq`: the
+  nominal period containing today − `MAX_HISTORY_YEARS` (5). History reaches further back
+  than the horizon reaches forward, because a bank's records do.
 - `endDate` = the earliest period's `startDate` − 1 day (so a moved boundary is respected);
   `startDate` = the nominal start for this `seq`; nominal dates stored as usual.
 - recurring occurrences due in it are materialised, like any new period;
@@ -239,7 +240,7 @@ effect on starting amounts as creating them one at a time.
   are always added. Deleting an imported transaction frees its key, so importing the same
   row later brings it back.
 - **Rows before the earliest period** are refused unless `addEarlierPeriods` is set, which
-  adds the periods needed, within the usual one-year limit. Rows after the latest period
+  adds the periods needed, within the usual five-year limit. Rows after the latest period
   generate forwards to the horizon, as a single transaction does.
 - **`dryRun`** does the whole import and undoes it. The report is what a real run would
   return.

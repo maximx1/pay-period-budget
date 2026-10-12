@@ -8,8 +8,9 @@ be loaded in one go, checked before it is written and safe to run twice.
 tried against anything real. **Suggested model:** Opus for 11.1 and 11.4 (credentials, and
 a bulk write through the carry-forward rules); Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. 11.1 to 11.6 done the same day;
-11.7 (history further back than a year) not started.
+**Status:** planned 2026-10-11 at the owner's request and built the same day: 11.1 to
+11.7 are done. Still to do, by the owner: deploy it, register the MCP server with a real
+assistant, and run the first import (see the 11.6 notes).
 
 ## Approach
 
@@ -270,7 +271,7 @@ round-trips, a bad token fails at start-up, an import file with a bad row sends 
 
 ### 11.7 History further back than a year (later; independent)
 
-- [ ] Done
+- [x] Done
 
 **Files:** `src/shared/schedule.ts` (`earliestSeq`), `src/server/services/periods.ts`,
 `domain.md` ("Periods before the budget began"), `README.md` (decision 12), tests.
@@ -492,3 +493,27 @@ Node's own modules. `dist/` is gitignored, so it is built where it is used.
   server, are still to do, by the owner.
 - `CLAUDE.md` (commands, layout) and `domain.md` (API list, importing, `import_key`) were
   updated as their tasks were done.
+
+### 11.7 (2026-10-11)
+
+- `MAX_HISTORY_YEARS = 5` in `src/shared/schedule.ts`; `earliestSeq` uses it. The message
+  is `TOO_FAR_BACK` in `services/periods.ts` ("That's more than 5 years back"), shared by
+  the previous-period arrow and the import.
+- Nothing else changed: the rules for periods before the budget never depended on how
+  many there are. The forward horizon is still one year.
+- **Scale, measured in a test** (`years of history` in `transactions.import.test.ts`): one
+  import of 436 rows reaching back to February 2021 adds 128 biweekly periods, and the
+  whole test, including two more single transactions and the checks, takes under a
+  second. Afterwards every period before the budget ends on what the next one starts
+  with, period 0 still starts with the opening balance, and today's two figures are
+  unchanged. A weekly budget would have about 260 periods; nothing lists them all on
+  screen (the go-to-date dialog looks one up by date).
+- **A recurring item with an old first due date fills the whole history.** In that test a
+  rent first due in January 2021 produced 59 upcoming transactions in the added periods.
+  That is the existing rule (a new period gets the occurrences due in it), not something
+  the import adds, and those rows show up as possible duplicates of the bank's rows. For
+  the owner's data it should not arise: the recurring items were first due in 2026.
+- **Not looked at in the browser.** The only visible change is that the previous-period
+  arrow at the earliest period stays enabled further back; trying it would have added
+  periods to the development account's data. `nav.canAddPrevious` is covered by the API
+  test that walks back all 129 periods.

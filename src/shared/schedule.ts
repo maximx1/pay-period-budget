@@ -45,7 +45,10 @@ export function horizonSeq(schedule: Schedule, today: LocalDate): number {
   return seqForDate(schedule, addYearsClamped(today, 1));
 }
 
-/** The earliest period that may be added: the one containing the day a year before `today`. */
+/** How far before today pay periods may be added, to hold history from before the budget began. */
+export const MAX_HISTORY_YEARS = 5;
+
+/** The earliest period that may be added: the one containing the day MAX_HISTORY_YEARS before `today`. */
 export function earliestSeq(schedule: Schedule, today: LocalDate): number {
-  return seqForDate(schedule, addYearsClamped(today, -1));
+  return seqForDate(schedule, addYearsClamped(today, -MAX_HISTORY_YEARS));
 }

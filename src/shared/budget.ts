@@ -77,7 +77,7 @@ export type PeriodView = {
   transactions: Transaction[];
   nav: {
     prevId: string | null;
-    /** With no previous period: whether one may be added before this one (up to a year back). */
+    /** With no previous period: whether one may be added before this one (as far back as MAX_HISTORY_YEARS). */
     canAddPrevious: boolean;
     /** Set when the next period already exists. */
     nextId: string | null;

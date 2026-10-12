@@ -103,17 +103,20 @@ describe("adding a period before the first one", () => {
     expect(earlier.period).toMatchObject({ startDate: "2025-12-02", endDate: "2025-12-17", datesEdited: true });
   });
 
-  it("stops a year back", async () => {
-    // A year before 2026-01-15 falls in period -24 (2025-01-14..01-27).
-    for (let added = 1; added <= 24; added++) await addEarlier();
+  it("stops five years back", async () => {
+    // Five years before 2026-01-15 falls in period -129 (2021-01-05..01-18).
+    for (let added = 1; added <= 129; added++) await addEarlier();
     const earliest = (await all())[0]!;
-    expect(earliest).toMatchObject({ seq: -24, startDate: "2025-01-14" });
+    expect(earliest).toMatchObject({ seq: -129, startDate: "2021-01-05", endDate: "2021-01-18" });
     expect((await view(ann, earliest.id)).nav.canAddPrevious).toBe(false);
 
     const response = await ann.post("/api/periods/earlier");
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("That's more than a year back");
-    expect(await all()).toHaveLength(27);
+    expect((await response.json()).error.message).toBe("That's more than 5 years back");
+    expect(await all()).toHaveLength(132);
+
+    // Today's numbers are as they were, however much history sits before them.
+    expect(await budgetStartings()).toEqual(BASE);
   });
 
   it("appears in the list of periods, oldest first", async () => {

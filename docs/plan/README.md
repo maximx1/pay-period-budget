@@ -39,7 +39,7 @@ different app.
 | [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 to 8.3 done (8.3 on an emulator against the dev API); 8.4 written, fingerprint path not yet run | Sonnet for 8.2 and 8.3, Opus for 8.4 |
 | [9](phase-09-reset-starting.md) | Resetting a modified starting amount | Planned; scope to confirm with the owner | Opus |
 | [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
-| [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | 11.1 to 11.6 done 2026-10-11, not yet used with a real assistant or the deployed server; 11.7 not started | Opus for 11.1 and 11.4, Sonnet for the rest |
+| [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -201,7 +201,8 @@ unless marked otherwise.
     a transaction can point at. See `backlog.md`.
 12. **Periods can be added before the first one, and today's numbers stay fixed** (decided
     2026-10-11). The previous-period arrow at the earliest period adds the one before it,
-    up to a year back. Those periods are history worked backwards from the first period's
+    up to five years back (one year until 2026-10-11, raised in task 11.7 so that several
+    years of bank history can be imported). Those periods are history worked backwards from the first period's
     starting amount: adding old transactions changes what the *earlier* period started
     with, never a balance from the first period onward. See "Periods before the budget
     began" in `domain.md`.
