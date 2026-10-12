@@ -167,7 +167,10 @@ export type TransactionRecord = {
 };
 
 export type TransactionRecordPatch = Partial<
-  Pick<TransactionRecord, "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note">
+  Pick<
+    TransactionRecord,
+    "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note" | "recurringId" | "occurrenceDate"
+  >
 >;
 
 export interface TransactionRepo {

@@ -9,8 +9,8 @@ received from) each one.
 **Suggested model:** Opus for 13.1 to 13.3 (they change what a recurring item is and how
 paying one moves the totals); Sonnet for the rest.
 
-**Status:** planned 2026-10-12 from the owner's description. Not started. Two questions
-below need an answer first.
+**Status:** planned 2026-10-12 from the owner's description. The owner took both
+suggestions below the same day; 13.1 started.
 
 ## What the owner asked for
 
@@ -36,7 +36,7 @@ below need an answer first.
 - The import's dry run already reports a bank row that looks like a generated occurrence
   (same amount, within three days).
 
-## Questions for the owner
+## Questions for the owner (both answered 2026-10-12: as suggested)
 
 **1. Is the credit card a recurring item without a schedule, or the first "account"?**
 
@@ -72,7 +72,7 @@ delete it by hand.
 
 ### 13.1 Linking a transaction to a recurring item (API)
 
-- [ ] Done
+- [x] Done
 
 - `recurringId` (optional, nullable) on `POST /api/transactions`, `PATCH
   /api/transactions/:id` and on each import row. It must be one of the caller's items;
@@ -94,7 +94,7 @@ zero.
 
 ### 13.2 Recurring items with no schedule
 
-- [ ] Done (only if question 1 is answered as suggested)
+- [ ] Done
 
 - `recurrenceUnit: "none"`. It produces no occurrences, in generation and in back-fill.
   `firstDueDate` is not asked for; `nextDueDate` is null; the schedule reads "No schedule".
@@ -165,4 +165,36 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ## Implementation notes
 
-None yet.
+### 13.1 (2026-10-12)
+
+Built as specified. The rules are in `domain.md` under "Linking to a recurring item".
+
+- `src/server/services/recurringLinks.ts` holds it: `createLinkPlanner(repos, userId)`
+  checks one transaction's links at a time (`plan`) and, once the paying transactions are
+  saved, shrinks or deletes the entries paid toward (`apply`). Creating one transaction
+  and importing five hundred use the same planner, which is what lets several rows of one
+  import share an entry.
+- `recurringId` and `countsToward` are fields of `transactionInputSchema`, so import rows
+  have them too; `recurringId` alone is on `transactionPatchSchema`. `countsToward` is not
+  offered on update: paying toward something is said when the payment is entered.
+- `Transaction` gained `occurrenceDate`. `TransactionResponse` has `countedToward` when
+  the request named one; `TransactionImportResponse` has a `countedToward` list.
+- A payment toward an entry that an earlier row of the same import already paid off is
+  accepted: nothing is left to shrink, and it is simply a linked payment.
+- **This also fixes a weakness in the import steps written in phase 11.** Those said: for
+  a bank row that matches a generated entry, take the row out of the file and update the
+  entry. The updated entry has no import key, so every later export that still lists the
+  row reported it as a possible duplicate again. With `countsToward` the bank's row is
+  imported under its key and replaces the entry, so the next export skips it. A test
+  walks through exactly that. **The README's import steps and the MCP tool's dry-run
+  wording still describe the old way; changing them is part of 13.5.**
+- The MCP server validates import files with the shared row schema, so a file may already
+  carry `recurringId` and `countsToward`, but only once the MCP file is rebuilt: an older
+  build drops fields it does not know. Its transaction lines now say "tied to recurring
+  item <id>" or "generated from recurring item <id>".
+- Server only; nothing new on screen. The home screen already marks a row that has a
+  `recurringId`, so a linked one-off now shows that mark.
+- Checked by breaking six rules once each (the shrink not carried forward, any item id
+  accepted, any transaction payable toward, an overpayment going negative, and a row that
+  pays an entry still reported as its duplicate, which first slipped through and got its
+  own test): each fails a test in `routes/transactions.links.test.ts`.

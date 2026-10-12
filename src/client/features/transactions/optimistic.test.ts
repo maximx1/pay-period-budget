@@ -14,6 +14,7 @@ const tx = (id: string, amountCents: number, status: Transaction["status"]): Tra
   note: null,
   sortOrder: 0,
   recurringId: null,
+  occurrenceDate: null,
   importKey: null,
 });
 

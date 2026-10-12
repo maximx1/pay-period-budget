@@ -19,6 +19,8 @@ const kindSchema = z.enum(TRANSACTION_KINDS);
 const occursAtSchema = z.string().refine(isLocalDateTime, "Enter a valid date and time");
 const noteSchema = z.string().trim().max(500, "Keep the note under 500 characters");
 
+const idSchema = z.string().min(1).max(100);
+
 export const transactionInputSchema = z.object({
   name: nameSchema,
   /** Always positive; `kind` says which way the money moves. */
@@ -28,6 +30,14 @@ export const transactionInputSchema = z.object({
   note: noteSchema.optional(),
   /** Create it already marked as paid. */
   paid: z.boolean().optional(),
+  /** The recurring item this belongs to, if any. */
+  recurringId: idSchema.nullable().optional(),
+  /**
+   * An upcoming transaction a recurring item added, which this one pays part or all of.
+   * That entry shrinks by this amount and is removed once nothing is left of it. It also
+   * ties this transaction to the same item.
+   */
+  countsToward: idSchema.optional(),
 });
 export type TransactionInput = z.output<typeof transactionInputSchema>;
 
@@ -40,6 +50,8 @@ export const transactionPatchSchema = z
     /** Empty or null clears the note. */
     note: noteSchema.nullable().optional(),
     status: z.enum(TRANSACTION_STATUSES).optional(),
+    /** Ties it to a recurring item; null unties it. */
+    recurringId: idSchema.nullable().optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type TransactionPatch = z.output<typeof transactionPatchSchema>;
@@ -65,8 +77,13 @@ export type Transaction = {
   paidAt: string | null;
   note: string | null;
   sortOrder: number;
-  /** The recurring item it was generated from, or null for a one-off (or if that item was deleted). */
+  /** The recurring item it belongs to: the one that generated it, or one it was tied to. Null for neither. */
   recurringId: string | null;
+  /**
+   * The scheduled date it was generated for. Set only on a transaction a recurring item
+   * added by itself, so it tells those apart from ones tied to the item afterwards.
+   */
+  occurrenceDate: LocalDate | null;
   /** The key it was imported under, or null if it was entered or generated in the app. */
   importKey: string | null;
 };
@@ -89,10 +106,22 @@ export type TransactionRange = z.output<typeof transactionRangeSchema>;
 
 export type TransactionListResponse = { transactions: Transaction[] };
 
+/** What became of an upcoming entry that a payment counted toward. */
+export type CountedToward = {
+  id: string;
+  name: string;
+  /** What is still due, signed like the entry itself. 0 when it was paid off. */
+  remainingCents: number;
+  /** Paid off, and so deleted. It does not come back if the payment is later changed or deleted. */
+  removed: boolean;
+};
+
 /** Returned by create and update: the saved transaction and the period it now falls in. */
 export type TransactionResponse = {
   transaction: Transaction;
   period: { id: string; startDate: LocalDate; endDate: LocalDate };
+  /** Present when the transaction was created with `countsToward`. */
+  countedToward?: CountedToward;
 };
 
 /** The most rows one import request may carry. */
@@ -170,6 +199,8 @@ export type TransactionImportResponse = {
   periods: Array<{ id: string; startDate: LocalDate; endDate: LocalDate; count: number; netCents: number }>;
   /** A report only: these rows are imported like any other unless the caller takes them out. */
   possibleDuplicates: PossibleDuplicate[];
+  /** Upcoming entries that rows of this request paid toward, and what is left of each. */
+  countedToward: CountedToward[];
   /** Today's period before and after, or null if no period covers today. */
   current: {
     periodId: string;

@@ -13,6 +13,7 @@ export function toTransaction(record: TransactionRecord): Transaction {
     note: record.note,
     sortOrder: record.sortOrder,
     recurringId: record.recurringId,
+    occurrenceDate: record.occurrenceDate,
     importKey: record.importKey,
   };
 }

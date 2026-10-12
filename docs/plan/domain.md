@@ -228,6 +228,32 @@ and `occurrenceDate`, and for imported ones `importKey`.
   manual reordering; until then it is 0).
 - Deleting is a hard delete.
 
+### Linking to a recurring item
+
+A transaction's `recurringId` says which recurring item it belongs to. The app sets it on
+the transactions it generates; anyone may also set it on a transaction they enter or
+import, to say "this was a payment to that". A linked transaction is otherwise ordinary:
+the link moves no money and changes no starting amount.
+
+- `occurrenceDate` is set only on generated transactions. It is how a generated entry is
+  told from one linked afterwards.
+- `recurringId` on create, on update (null unties) and on each import row must name one
+  of the user's own items. An unknown id and someone else's are refused in the same words.
+- Untying a generated transaction keeps its `occurrenceDate`. Moving it to another item
+  clears it: it is no longer the occurrence its first item scheduled.
+
+**Paying toward an upcoming entry.** `countsToward` on create, and on an import row, names
+an upcoming transaction a recurring item generated. The new transaction is tied to the
+same item, and that entry shrinks by the new transaction's amount; when nothing is left it
+is deleted. Paying more than is left finishes it, and the rest is an ordinary payment.
+
+- Paying a part therefore leaves the projected leftover as it was: the amount moves from
+  upcoming to paid. Each change is carried forward the usual way, in each one's own period.
+- Only an entry that is `upcoming`, generated, of the same item, and in the same direction
+  (money out toward money out) can be paid toward.
+- Several rows of one import may pay toward the same entry; they are taken in order.
+- It is one-way. Changing or deleting the payment later does not bring the entry back.
+
 ### Importing
 
 `POST /api/transactions/import` saves up to 500 transactions in one step, with the same
@@ -248,8 +274,10 @@ effect on starting amounts as creating them one at a time.
 - **`dryRun`** does the whole import and undoes it. The report is what a real run would
   return.
 - **Possible duplicates** are reported, never acted on: for each incoming row, the closest
-  transaction already held with the same signed amount and a date within three days. The
-  caller decides whether to drop the row and update the existing transaction instead.
+  transaction already held with the same signed amount and a date within three days. When
+  the existing one is an upcoming entry a recurring item generated, the caller's answer is
+  `countsToward` on the row: the real payment replaces the expected entry and keeps its
+  import key. A row with `countsToward` is not reported.
 
 ## Recurring items
 
@@ -389,8 +417,8 @@ PATCH  /api/periods/:id/starting       { startingCents, carryForward }
 POST   /api/periods/:id/starting/revert
 POST   /api/periods/:id/recalculate
 GET    /api/transactions?from=&to=     dated within the range, both ends included, at most 366 days → { transactions }; creates nothing
-POST   /api/transactions
-PATCH  /api/transactions/:id
+POST   /api/transactions               may carry recurringId and countsToward (see "Linking to a recurring item")
+PATCH  /api/transactions/:id           may carry recurringId; null unties
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing

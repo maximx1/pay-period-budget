@@ -11,6 +11,7 @@ import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import { type PeriodService, TOO_FAR_BACK } from "./periods.ts";
+import { createLinkPlanner } from "./recurringLinks.ts";
 import { toTransaction } from "./transactionMapper.ts";
 
 export type ImportService = ReturnType<typeof createImportService>;
@@ -162,7 +163,33 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
             addDays(dates[0]!, -DUPLICATE_WINDOW_DAYS),
             addDays(dates.at(-1)!, DUPLICATE_WINDOW_DAYS),
           );
-    const possibleDuplicates = findPossibleDuplicates(fresh, nearby);
+    // A row that says which entry it pays has been dealt with; the rest are compared.
+    const possibleDuplicates = findPossibleDuplicates(
+      fresh.filter(({ row }) => row.countsToward === undefined),
+      nearby,
+    );
+
+    // Links are checked row by row, in order, so several rows can pay toward one entry.
+    const links = createLinkPlanner(repos, userId);
+    const linkedTo = new Map<number, string | null>();
+    const linkProblems: Record<string, string> = {};
+    for (const { index, row } of fresh) {
+      const link = await links.plan({ recurringId: row.recurringId, countsToward: row.countsToward, amountCents: signed(row) });
+      if ("problems" in link) {
+        for (const [field, message] of Object.entries(link.problems)) {
+          linkProblems[`transactions.${index}.${field}`] = message;
+        }
+      } else linkedTo.set(index, link.recurringId);
+    }
+    if (Object.keys(linkProblems).length > 0) {
+      const count = new Set(Object.keys(linkProblems).map((path) => path.split(".")[1])).size;
+      throw new AppError(
+        400,
+        "validation",
+        `${count} of the ${rows.length} transactions ${count === 1 ? "has" : "have"} a link that can't be made. Nothing was imported.`,
+        linkProblems,
+      );
+    }
 
     // A row joins the end of whatever already shares its date and time, in the order given.
     const nextPlace = new Map<LocalDateTime, number>();
@@ -172,7 +199,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
 
     const createdAt = now();
     const perPeriod = new Map<string, { period: PeriodRecord; count: number; netCents: number }>();
-    const records: TransactionRecord[] = fresh.map(({ row }) => {
+    const records: TransactionRecord[] = fresh.map(({ index, row }) => {
       const period = periodOf(dateOf(row.occursAt))!;
       const amountCents = signed(row);
       const tally = perPeriod.get(period.id) ?? { period, count: 0, netCents: 0 };
@@ -192,7 +219,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
         paidAt: row.paid ? createdAt : null,
         sortOrder,
         note: row.note || null,
-        recurringId: null,
+        recurringId: linkedTo.get(index) ?? null,
         occurrenceDate: null,
         importKey: row.importKey ?? null,
         createdAt,
@@ -207,6 +234,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
     for (const { period, netCents } of touched) {
       await applyLeftoverDelta(repos, userId, period.seq, netCents, createdAt);
     }
+    const countedToward = await links.apply(createdAt);
 
     const after = await currentFigures(repos, userId);
     return {
@@ -222,6 +250,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
         netCents,
       })),
       possibleDuplicates,
+      countedToward,
       current:
         before && after
           ? {

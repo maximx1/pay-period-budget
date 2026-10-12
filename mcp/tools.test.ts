@@ -148,7 +148,7 @@ describe("reading the budget", () => {
       /^- 2026-01-20 00:00 \| -\$25\.00 \(-2500 cents\) \| paid \| Groceries \| note: weekly shop \| imported as "bank-1" \| id [\w-]+$/,
     );
     expect(lines[2]).toMatch(
-      /^- 2026-01-25 00:00 \| -\$900\.00 \(-90000 cents\) \| upcoming \| Rent \| generated from a recurring item \| id [\w-]+$/,
+      /^- 2026-01-25 00:00 \| -\$900\.00 \(-90000 cents\) \| upcoming \| Rent \| generated from recurring item [\w-]+ \| id [\w-]+$/,
     );
     await expect(call("list_transactions", { from: "2026-01-01", to: "2028-01-01" })).rejects.toThrow(ApiRequestError);
 

@@ -12,6 +12,7 @@ import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import type { PeriodService } from "./periods.ts";
+import { createLinkPlanner } from "./recurringLinks.ts";
 import { toTransaction } from "./transactionMapper.ts";
 
 export type TransactionService = ReturnType<typeof createTransactionService>;
@@ -45,6 +46,9 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
     return max === null ? 0 : max + 1;
   }
 
+  const linkError = (problems: Record<string, string>) =>
+    new AppError(400, "validation", Object.values(problems)[0] ?? "Some fields need attention", problems);
+
   const respond = (record: TransactionRecord, period: PeriodRecord): TransactionResponse => ({
     transaction: toTransaction(record),
     period: { id: period.id, startDate: period.startDate, endDate: period.endDate },
@@ -58,26 +62,32 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
 
     create(userId: string, input: TransactionInput): Promise<TransactionResponse> {
       return store.transaction(async (repos) => {
+        const amountCents = signed(input.amountCents, input.kind);
+        const links = createLinkPlanner(repos, userId);
+        const link = await links.plan({ recurringId: input.recurringId, countsToward: input.countsToward, amountCents });
+        if ("problems" in link) throw linkError(link.problems);
+
         const period = await periodFor(repos, userId, input.occursAt);
         const createdAt = now();
         const record = await repos.transactions.create({
           id: randomUUID(),
           userId,
           name: input.name,
-          amountCents: signed(input.amountCents, input.kind),
+          amountCents,
           occursAt: input.occursAt,
           status: input.paid ? "paid" : "upcoming",
           paidAt: input.paid ? createdAt : null,
           sortOrder: await lastPlaceAt(repos, userId, input.occursAt),
           note: input.note || null,
-          recurringId: null,
+          recurringId: link.recurringId,
           occurrenceDate: null,
           importKey: null,
           createdAt,
           updatedAt: createdAt,
         });
         await applyLeftoverDelta(repos, userId, period.seq, record.amountCents, createdAt);
-        return respond(record, period);
+        const [countedToward] = await links.apply(createdAt);
+        return { ...respond(record, period), ...(countedToward && { countedToward }) };
       });
     },
 
@@ -100,6 +110,14 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           note: patch.note === undefined ? before.note : patch.note || null,
           updatedAt,
         };
+        if (patch.recurringId !== undefined && patch.recurringId !== before.recurringId) {
+          const link = await createLinkPlanner(repos, userId).plan({ recurringId: patch.recurringId, amountCents: 0 });
+          if ("problems" in link) throw linkError(link.problems);
+          after.recurringId = link.recurringId;
+          // Moved to another item it is no longer the occurrence its first item scheduled.
+          // Untied, it keeps the date: that is still what it was.
+          if (link.recurringId !== null) after.occurrenceDate = null;
+        }
         // Moving to a different date and time means joining the end of whatever is already there.
         if (after.occursAt !== before.occursAt) after.sortOrder = await lastPlaceAt(repos, userId, after.occursAt);
 
@@ -107,11 +125,11 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
         const newPeriod =
           oldPeriod && after.occursAt === before.occursAt ? oldPeriod : await periodFor(repos, userId, after.occursAt);
 
-        const { name, amountCents, occursAt, paidAt, note, sortOrder } = after;
+        const { name, amountCents, occursAt, paidAt, note, sortOrder, recurringId, occurrenceDate } = after;
         await repos.transactions.update(
           userId,
           id,
-          { name, amountCents, occursAt, status, paidAt, note, sortOrder },
+          { name, amountCents, occursAt, status, paidAt, note, sortOrder, recurringId, occurrenceDate },
           updatedAt,
         );
 

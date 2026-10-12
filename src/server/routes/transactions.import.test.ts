@@ -170,6 +170,7 @@ describe("importing transactions", () => {
         { id: periods[2]!.id, startDate: "2026-01-13", endDate: "2026-01-26", count: 2, netCents: 300 },
       ],
       possibleDuplicates: [],
+      countedToward: [],
       current: {
         periodId: periods[2]!.id,
         leftoverBeforeCents: OPENING,

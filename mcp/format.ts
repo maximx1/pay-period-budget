@@ -13,7 +13,8 @@ export { plural };
 /** One transaction on one line, ending with the id that update and delete need. */
 export function transactionLine(transaction: Transaction): string {
   const origin = [
-    transaction.recurringId && "generated from a recurring item",
+    transaction.recurringId &&
+      `${transaction.occurrenceDate ? "generated from" : "tied to"} recurring item ${transaction.recurringId}`,
     transaction.importKey && `imported as "${transaction.importKey}"`,
   ].filter(Boolean);
   return [
