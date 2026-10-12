@@ -30,6 +30,7 @@ Kick-off prompt for the next session:
 | 10 Projections tab | **Planned only** |
 | 11 API tokens, bulk import, MCP server | Done 2026-10-11: tokens on the server and in Settings, transactions by date range, bulk import, the MCP server, instructions in `README.md`, history up to five years back. **Not yet deployed.** The MCP server has not been registered with a real assistant or run against the deployed server; decisions are at the top of the phase file |
 | 12 Idle timeout and face unlock | Built 2026-10-12. Web half checked in a browser; **the Android half has never run**. The phase file ends with what to try on a phone |
+| 13 Transactions tied to a recurring item | **Planned only** (2026-10-12). Two questions for the owner at the top of the phase file |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 

@@ -1,0 +1,168 @@
+# Phase 13: Transactions that belong to a recurring item
+
+**Goal:** any transaction can be tied to a recurring item, not only the ones the app
+generated from it. An import recognises which rows belong to which item, an assistant can
+create and change recurring items, and the Recurring page shows everything paid to (or
+received from) each one.
+
+**Depends on:** phase 5 (recurring items), phase 11 (import, MCP).
+**Suggested model:** Opus for 13.1 to 13.3 (they change what a recurring item is and how
+paying one moves the totals); Sonnet for the rest.
+
+**Status:** planned 2026-10-12 from the owner's description. Not started. Two questions
+below need an answer first.
+
+## What the owner asked for
+
+1. The import should recognise a transaction that belongs to a recurring item, and the API
+   and MCP server should let an assistant look that up and make the link.
+2. The assistant should be able to create and change recurring items.
+3. Something permanent, such as a credit card "that might or might not need money paid
+   into it": it has no fixed schedule, but payments to it should still be grouped.
+4. A one-off transaction can be linked to a recurring item when it is entered.
+5. Several transactions can go to the same item (a bill paid in three small parts).
+6. On the Recurring page, clicking a card shows that item's transactions: about ten, then
+   "more" for the whole list, loading 30 at a time as it scrolls. Not on the home page.
+
+## What is already there
+
+- `transactions.recurring_id` exists. Today only generated transactions have it, together
+  with `occurrence_date`. Nothing stops other transactions carrying the id: the unique
+  index is on `(recurring_id, occurrence_date)` and a linked one-off has no occurrence date.
+- `Transaction.recurringId` is already in every API response, and the home screen already
+  marks a row that has one.
+- `/api/recurring` has list, create, preview, update, end and delete. The MCP server only
+  has `list_recurring`.
+- The import's dry run already reports a bank row that looks like a generated occurrence
+  (same amount, within three days).
+
+## Questions for the owner
+
+**1. Is the credit card a recurring item without a schedule, or the first "account"?**
+
+Decision 11 reserves *accounts* for the places money lives or goes (savings, a person you
+pay). A credit card you pay now and then sits between the two ideas.
+
+Suggested: **a recurring item with no schedule.** Add "No schedule" beside every week,
+month, year and pay period. Such an item generates nothing; it exists so that payments can
+be tied to it and seen together. It keeps one concept, one page and one detail view, and
+leaves *accounts* free for the day balances and transfers are wanted. Its usual amount
+would be optional, since a card payment varies.
+
+The alternative is to start the Accounts feature now. That is a larger piece of work and
+would split "things I pay" across two pages.
+
+**2. When a scheduled bill is paid in parts, what happens to the one upcoming entry the
+app created for it?**
+
+Say rent is $900 and the app has added "Rent, $900, upcoming". You pay $300 three times.
+
+Suggested: **each part can be marked as paying toward that entry, which shrinks it.**
+After the first part: "Rent, $600, upcoming" and "Rent, $300, paid". After the third the
+upcoming entry is gone. Paying a part never changes the projected leftover (the money
+moves from upcoming to paid), which is what a part payment means. It is explicit: the
+person or assistant says which upcoming entry a payment counts toward; nothing is guessed.
+A payment linked to the item *without* that leaves the upcoming entry alone, which is
+right for an extra payment.
+
+The alternative is to leave the upcoming entry untouched always and have you edit or
+delete it by hand.
+
+## Tasks
+
+### 13.1 Linking a transaction to a recurring item (API)
+
+- [ ] Done
+
+- `recurringId` (optional, nullable) on `POST /api/transactions`, `PATCH
+  /api/transactions/:id` and on each import row. It must be one of the caller's items;
+  anything else is a field error, never a 404 that reveals another user's id.
+- A patch with `recurringId: null` unlinks. A generated transaction can be unlinked or
+  moved to another item like any other; its `occurrenceDate` stays, so the occurrence is
+  not generated a second time.
+- If question 2 is answered as suggested: `countsToward` (the id of an upcoming generated
+  transaction of the same item) on create and on import rows. In the same database
+  transaction the upcoming entry's amount is reduced by the payment, and the entry is
+  deleted when nothing is left. An overpayment removes it and stops there. Deleting or
+  editing the payment afterwards does not bring the upcoming entry back; say so in the
+  response and the tool description.
+
+**Tests:** link on create, on patch, on import; unlink; another user's item is refused the
+same way as one that does not exist; starting amounts are unchanged by linking alone;
+counting toward an entry leaves the projected leftover unchanged and removes the entry at
+zero.
+
+### 13.2 Recurring items with no schedule
+
+- [ ] Done (only if question 1 is answered as suggested)
+
+- `recurrenceUnit: "none"`. It produces no occurrences, in generation and in back-fill.
+  `firstDueDate` is not asked for; `nextDueDate` is null; the schedule reads "No schedule".
+- `defaultAmountCents` may be 0 for these, meaning "no usual amount". Stored as 0 so the
+  column needs no change. Every other unit still requires an amount.
+- "End this" archives it as now.
+
+**Tests:** creating one adds no transactions, in existing periods or new ones; switching an
+item between "none" and a schedule changes only what is generated from then on.
+
+### 13.3 An item's transactions
+
+- [ ] Done
+
+- `GET /api/recurring/:id/transactions?limit=&before=` → newest first, `limit` up to 100
+  (default 30), `before` a cursor from the previous page → `{ transactions, nextCursor,
+  totals: { count, paidCents, upcomingCents } }`. The cursor is the last row's date-time
+  and id, so rows sharing a moment are neither skipped nor repeated.
+- Another user's item is a 404.
+
+### 13.4 The import recognises recurring items
+
+- [ ] Done
+
+- The dry run gains `recurringSuggestions: [{ index, recurringId, reason }]`, at most one
+  per row:
+  - `same_description`: an earlier transaction linked to that item has the same note or
+    name. This is how the import learns: once "CAPITAL ONE MOBILE PMT" has been tied to
+    the card, the next one is suggested.
+  - `occurrence`: the row is already reported as a possible duplicate of one of the item's
+    generated entries.
+  - `name`: the item's name appears in the row's name or note.
+- Suggestions are never applied by the server. The assistant puts `recurringId` (and
+  `countsToward`) on the rows it agrees with and runs the import again.
+
+### 13.5 MCP tools
+
+- [ ] Done
+
+- `create_recurring` (previews what it would add to existing periods unless told to save,
+  as the import does), `update_recurring`, `end_recurring`, `delete_recurring`,
+  `list_recurring_transactions`.
+- `recurringId` on `create_transaction` and `update_transaction`; `recurringId` and
+  `countsToward` in the import file's rows; suggestions in the dry-run report.
+- The README's import steps gain "link rows to recurring items".
+
+### 13.6 Choosing the item when entering a transaction
+
+- [ ] Done
+
+- "Recurring item" in the add and edit dialog: None, then the items by name. Picking one
+  while adding fills in the name, and the amount if the item has a usual one and the field
+  is empty.
+- If question 2 is answered as suggested and the item has an upcoming entry in the
+  transaction's period: a checkbox, "Counts toward the $900.00 due Oct 25".
+
+### 13.7 The detail view on the Recurring page
+
+- [ ] Done
+
+- Clicking a card opens the item: its schedule and amount, totals, and its ten most recent
+  transactions, each showing date, amount and paid or upcoming, and linking to its period.
+  The pencil still edits.
+- "All transactions" opens `/recurring/:id`: the whole list, newest first, 30 at a time,
+  loading the next page as the end comes into view, with a "Load more" button as the
+  fallback when that cannot be detected.
+- From 360px up, light and dark; empty and error states with the shared primitives.
+
+## Implementation notes
+
+None yet.
