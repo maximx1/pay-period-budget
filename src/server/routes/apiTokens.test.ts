@@ -133,7 +133,7 @@ describe("using an API token", () => {
     const agent = t.client();
 
     expect((await agent.get("/api/periods/current", bearer(secret))).status).toBe(200);
-    expect((await agent.get("/api/recurring", bearer(secret))).status).toBe(200);
+    expect((await agent.get("/api/bills-income", bearer(secret))).status).toBe(200);
     expect((await agent.get("/api/budget", bearer(secret))).status).toBe(200);
     const listed = await agent.get("/api/transactions?from=2026-01-01&to=2026-01-31", bearer(secret));
     expect((await listed.json()).transactions).toEqual([expect.objectContaining({ id: transaction.id })]);

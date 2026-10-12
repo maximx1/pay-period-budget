@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { RecurringItem, RecurringTransactionsResponse } from "../../shared/recurring.ts";
+import type { BillOrIncome, BillOrIncomeTransactionsResponse } from "../../shared/billsIncome.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
 
 // The test clock starts at 2026-01-15T12:00Z. Biweekly from 2025-12-16, generated through
@@ -25,8 +25,8 @@ const sideJobs = (overrides: Row = {}): Row => ({
   ...overrides,
 });
 
-async function addItem(body: Row): Promise<RecurringItem> {
-  const response = await ann.post("/api/recurring", body);
+async function addItem(body: Row): Promise<BillOrIncome> {
+  const response = await ann.post("/api/bills-income", body);
   expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
   return (await response.json()).item;
 }
@@ -68,7 +68,7 @@ describe("an item with no schedule", () => {
       scheduleText: "No schedule",
     });
 
-    const listed = (await (await ann.get("/api/recurring")).json()).items as RecurringItem[];
+    const listed = (await (await ann.get("/api/bills-income")).json()).items as BillOrIncome[];
     expect(listed.map((each) => each.id)).toEqual([item.id]);
   });
 
@@ -78,7 +78,7 @@ describe("an item with no schedule", () => {
 
   it("adds nothing: not to the periods that exist, and not to new ones", async () => {
     const before = await startings();
-    const preview = await (await ann.post("/api/recurring/preview", sideJobs({ defaultAmountCents: 20_000 }))).json();
+    const preview = await (await ann.post("/api/bills-income/preview", sideJobs({ defaultAmountCents: 20_000 }))).json();
     expect(preview).toEqual({ transactions: 0, periods: 0, pastPeriods: 0, earliestDate: null });
 
     await addItem(sideJobs({ defaultAmountCents: 20_000 }));
@@ -101,7 +101,7 @@ describe("an item with no schedule", () => {
         kind: "income",
         occursAt: `${date}T00:00`,
         paid: true,
-        recurringId: item.id,
+        billIncomeId: item.id,
       });
       expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
     };
@@ -110,8 +110,8 @@ describe("an item with no schedule", () => {
     await earn("2026-11-02", "Roofing for Mike again", 25_000);
 
     const result = (await (
-      await ann.get(`/api/recurring/${item.id}/transactions`)
-    ).json()) as RecurringTransactionsResponse;
+      await ann.get(`/api/bills-income/${item.id}/transactions`)
+    ).json()) as BillOrIncomeTransactionsResponse;
     expect(result.transactions.map((tx) => [tx.occursAt.slice(0, 10), tx.name, tx.amountCents])).toEqual([
       ["2026-11-02", "Roofing for Mike again", 25_000],
       ["2026-01-14", "Moved a couch", 4000],
@@ -122,12 +122,12 @@ describe("an item with no schedule", () => {
 
   it("can be ended, which archives it", async () => {
     const item = await addItem(sideJobs());
-    const ended = await ann.post(`/api/recurring/${item.id}/end`, { removeUpcoming: true });
+    const ended = await ann.post(`/api/bills-income/${item.id}/end`, { removeUpcoming: true });
     expect(ended.status).toBe(200);
     expect((await ended.json()).item).toMatchObject({ endDate: "2026-01-15", archived: false });
 
     t.clock.advance(24 * 60 * 60 * 1000);
-    const [listed] = (await (await ann.get("/api/recurring")).json()).items as RecurringItem[];
+    const [listed] = (await (await ann.get("/api/bills-income")).json()).items as BillOrIncome[];
     expect(listed).toMatchObject({ archived: true, scheduleText: "No schedule" });
   });
 });
@@ -143,16 +143,16 @@ describe("anything that does repeat", () => {
   });
 
   it("still needs an amount and a first due date", async () => {
-    expect(await refusedFields(await ann.post("/api/recurring", monthly({ defaultAmountCents: 0 })))).toEqual({
+    expect(await refusedFields(await ann.post("/api/bills-income", monthly({ defaultAmountCents: 0 })))).toEqual({
       defaultAmountCents: "Enter an amount greater than zero",
     });
-    expect(await refusedFields(await ann.post("/api/recurring", monthly({ firstDueDate: undefined })))).toEqual({
+    expect(await refusedFields(await ann.post("/api/bills-income", monthly({ firstDueDate: undefined })))).toEqual({
       firstDueDate: "Enter the first due date",
     });
-    expect(await refusedFields(await ann.post("/api/recurring/preview", monthly({ defaultAmountCents: 0 })))).toEqual({
+    expect(await refusedFields(await ann.post("/api/bills-income/preview", monthly({ defaultAmountCents: 0 })))).toEqual({
       defaultAmountCents: "Enter an amount greater than zero",
     });
-    expect(await refusedFields(await ann.post("/api/recurring", monthly({ defaultAmountCents: -5 })))).toEqual({
+    expect(await refusedFields(await ann.post("/api/bills-income", monthly({ defaultAmountCents: -5 })))).toEqual({
       defaultAmountCents: "Enter an amount greater than zero",
     });
     expect(await transactionCount()).toBe(0);
@@ -160,17 +160,17 @@ describe("anything that does repeat", () => {
 
   it("cannot be given a schedule while it has no amount, nor lose its amount while it has one", async () => {
     const loose = await addItem(sideJobs());
-    const scheduled = await ann.patch(`/api/recurring/${loose.id}`, { recurrenceUnit: "month", firstDueDate: "2026-03-01" });
+    const scheduled = await ann.patch(`/api/bills-income/${loose.id}`, { recurrenceUnit: "month", firstDueDate: "2026-03-01" });
     expect(await refusedFields(scheduled)).toEqual({ defaultAmountCents: "Enter an amount greater than zero" });
 
     const rent = await addItem(monthly());
-    const emptied = await ann.patch(`/api/recurring/${rent.id}`, { defaultAmountCents: 0 });
+    const emptied = await ann.patch(`/api/bills-income/${rent.id}`, { defaultAmountCents: 0 });
     expect(await refusedFields(emptied)).toEqual({ defaultAmountCents: "Enter an amount greater than zero" });
   });
 
   it("can gain a schedule, or drop it, and only what is generated from then on changes", async () => {
     const loose = await addItem(sideJobs({ kind: "expense", name: "Card" }));
-    const given = await ann.patch(`/api/recurring/${loose.id}`, {
+    const given = await ann.patch(`/api/bills-income/${loose.id}`, {
       recurrenceUnit: "month",
       firstDueDate: "2026-01-05",
       defaultAmountCents: 20_000,
@@ -182,7 +182,7 @@ describe("anything that does repeat", () => {
     expect((await ann.post("/api/periods/locate", { date: "2026-03-10" })).status).toBe(200);
     expect(await transactionCount()).toBe(1);
 
-    const dropped = await ann.patch(`/api/recurring/${loose.id}`, { recurrenceUnit: "none", defaultAmountCents: 0 });
+    const dropped = await ann.patch(`/api/bills-income/${loose.id}`, { recurrenceUnit: "none", defaultAmountCents: 0 });
     expect(dropped.status).toBe(200);
     expect((await dropped.json()).item).toMatchObject({ scheduleText: "No schedule", nextDueDate: null });
     expect((await ann.post("/api/periods/locate", { date: "2026-05-10" })).status).toBe(200);

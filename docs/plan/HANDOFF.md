@@ -30,7 +30,7 @@ Kick-off prompt for the next session:
 | 10 Projections tab | **Planned only** |
 | 11 API tokens, bulk import, MCP server | Done 2026-10-11: tokens on the server and in Settings, transactions by date range, bulk import, the MCP server, instructions in `README.md`, history up to five years back. **Not yet deployed.** The MCP server has not been registered with a real assistant or run against the deployed server; decisions are at the top of the phase file |
 | 12 Idle timeout and face unlock | Built 2026-10-12. Web half checked in a browser; **the Android half has never run**. The phase file ends with what to try on a phone |
-| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) 13.4 (the import suggests the item a row belongs to), 13.5 (MCP tools), 13.6 (choosing the item in the transaction dialog) and 13.7 (the detail view) done 2026-10-12: the phase is complete, **not yet deployed**. On screen these are now called "Bills & income" (agreed with the owner); the code keeps "recurring" until a separate rename |
+| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) 13.4 (the import suggests the item a row belongs to), 13.5 (MCP tools), 13.6 (choosing the item in the transaction dialog) and 13.7 (the detail view) done 2026-10-12: the phase is complete, **not yet deployed**. These are "Bills & Income" on screen and, since the rename on 2026-10-12, in the code too |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 
@@ -183,11 +183,11 @@ Be straight with the owner about these until they have been exercised.
 - `npm run db:seed` creates the stub account in `src/server/scripts/seed.ts`. Sign in with
   it for browser checks.
 - A budget and data can be created quickly from the browser console with `fetch` against
-  `/api/budget`, `/api/transactions` and `/api/recurring` while signed in.
-- **Clean up afterwards**: remove the test budget, transactions and recurring items from
+  `/api/budget`, `/api/transactions` and `/api/bills-income` while signed in.
+- **Clean up afterwards**: remove the test budget, transactions and bills and income from
   the stub account so the owner lands on the setup screen. Deleting the stub's rows from
   `budget_schedules` and `user_settings` (with foreign keys on) cascades to its periods;
-  delete its `transactions` and `recurring_items` explicitly.
+  delete its `transactions` and `bills_income` explicitly.
 - Every UI change gets looked at around 375px and 1280px, in light and dark.
 - `/dev/ui` (dev server only) shows every shared UI primitive.
 - When a rule matters, break it on purpose once and confirm a test fails.
@@ -202,7 +202,9 @@ Be straight with the owner about these until they have been exercised.
 - **Decisions:** make a recommendation, apply the sensible default, and list what was
   decided so it can be overruled. Ask only when a choice is expensive to reverse.
 - **Reports:** say plainly what was verified and how, and what was not.
-- **Names:** recurring bills and income are *recurring items*. *Accounts* is reserved for a
+- **Names:** bills and income are called that everywhere: "Bills & Income" on screen,
+  `bills_income` / `BillOrIncome` / `/api/bills-income` in the code (decision 13 in
+  `README.md`). Plan files written before 2026-10-12 say *recurring items*. *Accounts* is reserved for a
   future feature (savings accounts, payees). See decision 11 in `README.md`.
 - **Scope:** folders beside this project are unrelated. Leave them alone.
 
@@ -211,7 +213,7 @@ Be straight with the owner about these until they have been exercised.
 | For | Read |
 | --- | --- |
 | Commands, layout, conventions, pitfalls | `CLAUDE.md` |
-| What must always be true about periods, carry-over, recurring items; the API list | `docs/plan/domain.md` |
+| What must always be true about periods, carry-over, bills and income; the API list | `docs/plan/domain.md` |
 | Status table, what each phase delivered, decisions 1 to 11 | `docs/plan/README.md` |
 | Task specs and, at the bottom of each, what actually got built | `docs/plan/phase-0N-*.md` |
 | Running, configuring, deploying | `README.md`, `docs/deploy.md` |

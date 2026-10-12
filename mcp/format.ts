@@ -2,7 +2,7 @@
 // dollars and as the integer cents the API uses, so nothing has to be converted by eye.
 import type { PeriodView } from "../src/shared/budget.ts";
 import { formatCents } from "../src/shared/money.ts";
-import type { RecurringItem } from "../src/shared/recurring.ts";
+import type { BillOrIncome } from "../src/shared/billsIncome.ts";
 import type { Transaction } from "../src/shared/transactions.ts";
 
 export const money = (cents: number) => `${formatCents(cents)} (${cents} cents)`;
@@ -13,8 +13,8 @@ export { plural };
 /** One transaction on one line, ending with the id that update and delete need. */
 export function transactionLine(transaction: Transaction): string {
   const origin = [
-    transaction.recurringId &&
-      `${transaction.occurrenceDate ? "generated from" : "tied to"} recurring item ${transaction.recurringId}`,
+    transaction.billIncomeId &&
+      `${transaction.occurrenceDate ? "generated from" : "tied to"} bill or income ${transaction.billIncomeId}`,
     transaction.importKey && `imported as "${transaction.importKey}"`,
   ].filter(Boolean);
   return [
@@ -57,7 +57,7 @@ export function periodReport({ period, totals, transactions }: PeriodView): stri
   ].join("\n");
 }
 
-export function recurringLine(item: RecurringItem): string {
+export function billOrIncomeLine(item: BillOrIncome): string {
   const signedCents = item.kind === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
   return [
     item.name,

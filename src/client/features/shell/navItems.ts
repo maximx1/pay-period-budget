@@ -4,8 +4,7 @@ export type NavItem = { to: string; label: string; icon: LucideIcon };
 
 export const navItems: readonly NavItem[] = [
   { to: "/", label: "Home", icon: House },
-  // Called "recurring items" in the code; on screen they are bills and income, scheduled or not.
-  { to: "/recurring", label: "Bills & income", icon: ReceiptText },
+  { to: "/bills-income", label: "Bills & Income", icon: ReceiptText },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -4,7 +4,7 @@ import type { Db } from "../../db/client.ts";
 import type { DataStore, Repos } from "../types.ts";
 import { createApiTokenRepo } from "./apiTokens.ts";
 import { createPeriodRepo } from "./periods.ts";
-import { createRecurringRepo } from "./recurring.ts";
+import { createBillsIncomeRepo } from "./billsIncome.ts";
 import { createScheduleRepo } from "./schedules.ts";
 import { createSessionRepo } from "./sessions.ts";
 import { createSettingsRepo } from "./settings.ts";
@@ -20,7 +20,7 @@ function createRepos(db: Db): Repos {
     schedules: createScheduleRepo(db),
     periods: createPeriodRepo(db),
     transactions: createTransactionRepo(db),
-    recurring: createRecurringRepo(db),
+    billsIncome: createBillsIncomeRepo(db),
   };
 }
 

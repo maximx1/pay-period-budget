@@ -1,25 +1,25 @@
 import { useNavigate } from "react-router";
 import { todayIn } from "../../../shared/dates.ts";
-import type { RecurringItem } from "../../../shared/recurring.ts";
+import type { BillOrIncome } from "../../../shared/billsIncome.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
 import { usePeriodList } from "../periods/api.ts";
-import { RECENT_TRANSACTIONS, useRecentRecurringTransactions } from "./api.ts";
+import { RECENT_TRANSACTIONS, useRecentBillOrIncomeTransactions } from "./api.ts";
 import { ItemTotals, ItemTransactionList, shownAmount } from "./ItemTransactions.tsx";
 
-type RecurringDetailDialogProps = {
+type BillOrIncomeDetailDialogProps = {
   open: boolean;
   onClose: () => void;
   /** Kept after closing so the dialog doesn't empty while it fades out. */
-  item?: RecurringItem;
+  item?: BillOrIncome;
   /** The budget's time zone, for "today". */
   timezone: string;
   onEdit: () => void;
 };
 
 /** One bill or income at a glance: its schedule, what has gone to it, and its latest transactions. */
-export function RecurringDetailDialog({ open, onClose, item, timezone, onEdit }: RecurringDetailDialogProps) {
+export function BillOrIncomeDetailDialog({ open, onClose, item, timezone, onEdit }: BillOrIncomeDetailDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title={item?.name ?? ""}>
       {item && <Detail item={item} timezone={timezone} onClose={onClose} onEdit={onEdit} />}
@@ -27,9 +27,9 @@ export function RecurringDetailDialog({ open, onClose, item, timezone, onEdit }:
   );
 }
 
-function Detail({ item, timezone, onClose, onEdit }: Required<Omit<RecurringDetailDialogProps, "open">>) {
+function Detail({ item, timezone, onClose, onEdit }: Required<Omit<BillOrIncomeDetailDialogProps, "open">>) {
   const navigate = useNavigate();
-  const recent = useRecentRecurringTransactions(item.id);
+  const recent = useRecentBillOrIncomeTransactions(item.id);
   const periods = usePeriodList(true);
   const today = todayIn(timezone, new Date());
   const signedUsual = item.kind === "income" ? item.defaultAmountCents : -item.defaultAmountCents;
@@ -90,7 +90,7 @@ function Detail({ item, timezone, onClose, onEdit }: Required<Omit<RecurringDeta
             data-autofocus
             onClick={() => {
               onClose();
-              navigate(`/recurring/${item.id}`);
+              navigate(`/bills-income/${item.id}`);
             }}
           >
             All {recent.data?.totals.count} transactions

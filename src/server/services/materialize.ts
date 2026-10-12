@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { atStartOfDay } from "../../shared/dates.ts";
 import { occurrencesBetween, type Recurrence } from "../../shared/recurrence.ts";
-import type { PeriodRecord, RecurringRecord, Repos } from "../repos/types.ts";
+import type { PeriodRecord, BillOrIncomeRecord, Repos } from "../repos/types.ts";
 
-export const ruleOf = (item: RecurringRecord): Recurrence => ({
+export const ruleOf = (item: BillOrIncomeRecord): Recurrence => ({
   unit: item.recurrenceUnit,
   interval: item.recurrenceInterval,
   firstDueDate: item.firstDueDate,
@@ -11,14 +11,14 @@ export const ruleOf = (item: RecurringRecord): Recurrence => ({
 });
 
 /**
- * Turns a recurring item's occurrences within one period into upcoming transactions.
+ * Turns a bill or income's occurrences within one period into upcoming transactions.
  * Safe to repeat: an occurrence that already has a transaction is skipped. Returns how
  * many were added and their signed total, which is how much the period's projected
  * leftover changed. With `dryRun` nothing is written and every occurrence is counted.
  */
 export async function materializeInPeriod(
   repos: Repos,
-  item: RecurringRecord,
+  item: BillOrIncomeRecord,
   period: PeriodRecord,
   now: Date,
   options: { dryRun?: boolean } = {},
@@ -42,7 +42,7 @@ export async function materializeInPeriod(
         paidAt: null,
         sortOrder: lastPlace === null ? 0 : lastPlace + 1,
         note: null,
-        recurringId: item.id,
+        billIncomeId: item.id,
         occurrenceDate: date,
         importKey: null,
         createdAt: now,
@@ -53,9 +53,9 @@ export async function materializeInPeriod(
   return { count: added.length, sumCents: added.length * amountCents, dates: added };
 }
 
-/** Every recurring item of the period's owner, for a period that has just been generated. */
+/** Every bill or income of the period's owner, for a period that has just been generated. */
 export async function materializeAllInPeriod(repos: Repos, period: PeriodRecord, now: Date): Promise<void> {
-  for (const item of await repos.recurring.list(period.userId)) {
+  for (const item of await repos.billsIncome.list(period.userId)) {
     await materializeInPeriod(repos, item, period, now);
   }
 }

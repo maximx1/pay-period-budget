@@ -32,7 +32,7 @@ afterEach(() => {
 
 describe("serving the client", () => {
   it("serves the app shell for the root and for any client-side route, never cached", async () => {
-    for (const path of ["/", "/recurring", "/periods/some-id", "/settings"]) {
+    for (const path of ["/", "/bills-income", "/periods/some-id", "/settings"]) {
       const response = await app.request(path);
       expect(response.status, path).toBe(200);
       expect(await response.text()).toContain("app shell");

@@ -1,6 +1,6 @@
 # Domain rules
 
-The single source of truth for how periods, transactions and recurring items behave. Phase files
+The single source of truth for how periods, transactions, and bills and income behave. Phase files
 say what to build; this file says what must always be true.
 
 ## Vocabulary
@@ -10,10 +10,15 @@ say what to build; this file says what must always be true.
 - **Period**: one span of the budget, from payday through the day before the next payday.
   The home screen shows one period at a time.
 - **Transaction**: one payment or one deposit, dated, either *upcoming* or *paid*.
-- **Recurring item**: a recurring bill or recurring income. It is a template that produces
-  transactions; it holds no balance. Income is not special: it is a recurring item whose
-  amount is positive. (The word **account** is reserved for a future feature: the places
-  money lives or goes, such as a savings account or a person you pay. See `backlog.md`.)
+- **Bill or income**: something you pay or are paid, tracked by name: the rent, a credit
+  card, a paycheck, money from side jobs. Most have a schedule, and are then a template
+  that produces transactions; one with no schedule only gathers the transactions tied to
+  it. Either way it holds no balance. Income is not special: it is one whose amount is
+  positive. On screen the page is "Bills & Income"; in the code the table is
+  `bills_income` and one of them is a `BillOrIncome`. (They were called *recurring items*
+  until 2026-10-12, which older plan files still say. The word **account** is reserved
+  for a future feature: the places money lives or goes, such as a savings account or a
+  person you pay. See `backlog.md`.)
 - **Starting amount**: what a period begins with. Normally the previous period's projected
   leftover.
 - **Projected leftover**: starting amount + every transaction in the period, paid or not.
@@ -84,7 +89,7 @@ at the head by `addEarlier` (next section). `ensureThrough`:
     and "revert"
   - `startingCents` = previous period's projected leftover; `startingMode` = `auto`;
     `carryStale` = previous period's `carryStale`
-  - then materialise recurring occurrences for the new period (see Recurring items)
+  - then materialise scheduled occurrences for the new period (see Bills and income)
 
 Generation is always validated and performed on the server. The client only asks for a
 period by id, for "current", for "the period containing date X", or for "the one before
@@ -103,7 +108,7 @@ the truth the user entered at setup. Anything before it is history, and history 
   than the horizon reaches forward, because a bank's records do.
 - `endDate` = the earliest period's `startDate` − 1 day (so a moved boundary is respected);
   `startDate` = the nominal start for this `seq`; nominal dates stored as usual.
-- recurring occurrences due in it are materialised, like any new period;
+- scheduled occurrences due in it are materialised, like any new period;
 - `startingCents` = the next period's `startingCents` − the net of the transactions in it.
 
 The invariant for every period with `seq` < 0:
@@ -216,7 +221,7 @@ See decision 1 in `README.md`; the rules below assume the default.
 ## Transactions
 
 Fields: `id`, `userId`, `name`, `amountCents` (signed), `occursAt`, `status`
-(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, for generated ones `recurringId`
+(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, for generated ones `billIncomeId`
 and `occurrenceDate`, and for imported ones `importKey`.
 
 - The API accepts a positive amount plus `kind` (`expense` | `income`) and stores the
@@ -228,22 +233,22 @@ and `occurrenceDate`, and for imported ones `importKey`.
   manual reordering; until then it is 0).
 - Deleting is a hard delete.
 
-### Linking to a recurring item
+### Linking to a bill or income
 
-A transaction's `recurringId` says which recurring item it belongs to. The app sets it on
+A transaction's `billIncomeId` says which bill or income it belongs to. The app sets it on
 the transactions it generates; anyone may also set it on a transaction they enter or
 import, to say "this was a payment to that". A linked transaction is otherwise ordinary:
 the link moves no money and changes no starting amount.
 
 - `occurrenceDate` is set only on generated transactions. It is how a generated entry is
   told from one linked afterwards.
-- `recurringId` on create, on update (null unties) and on each import row must name one
+- `billIncomeId` on create, on update (null unties) and on each import row must name one
   of the user's own items. An unknown id and someone else's are refused in the same words.
 - Untying a generated transaction keeps its `occurrenceDate`. Moving it to another item
   clears it: it is no longer the occurrence its first item scheduled.
 
 **Paying toward an upcoming entry.** `countsToward` on create, and on an import row, names
-an upcoming transaction a recurring item generated. The new transaction is tied to the
+an upcoming transaction a bill or income generated. The new transaction is tied to the
 same item, and that entry shrinks by the new transaction's amount; when nothing is left it
 is deleted. Paying more than is left finishes it, and the rest is an ordinary payment.
 
@@ -275,11 +280,11 @@ effect on starting amounts as creating them one at a time.
   return.
 - **Possible duplicates** are reported, never acted on: for each incoming row, the closest
   transaction already held with the same signed amount and a date within three days. When
-  the existing one is an upcoming entry a recurring item generated, the caller's answer is
+  the existing one is an upcoming entry a bill or income generated, the caller's answer is
   `countsToward` on the row: the real payment replaces the expected entry and keeps its
   import key. A row with `countsToward` is not reported.
-- **Recurring suggestions** are reported the same way, for rows that name neither a
-  `recurringId` nor a `countsToward`: at most one item per row, with the reason.
+- **Bill-or-income suggestions** are reported the same way, for rows that name neither a
+  `billIncomeId` nor a `countsToward`: at most one item per row, with the reason.
   `occurrence`: the row is a possible duplicate of an upcoming entry an item generated
   (the suggestion carries that entry's id for `countsToward`). `same_description`: a
   transaction already tied to an item has the same note or name, compared without regard
@@ -287,7 +292,7 @@ effect on starting amounts as creating them one at a time.
   decides. `name`: the item's name appears in the row's name or note as whole words; the
   longest such name wins. The server never applies a suggestion.
 
-## Recurring items
+## Bills and income
 
 Fields: `id`, `userId`, `name`, `description`, `kind` (`expense` | `income`),
 `defaultAmountCents` (positive; 0 only with no schedule), `recurrenceUnit` (`week` | `month` | `year` | `period` | `none`),
@@ -317,15 +322,15 @@ Occurrences are `firstDueDate` + k × interval units, for k = 0, 1, 2 …, never
 
 An occurrence becomes a transaction: `name` = the item's name, amount = default amount with
 the sign for its kind, `occursAt` = occurrence date at `00:00`, `status` = `upcoming`,
-`recurringId` and `occurrenceDate` set. A unique index on `(recurringId, occurrenceDate)`
-(one-off transactions have a null `recurringId`, which a unique index ignores)
+`billIncomeId` and `occurrenceDate` set. A unique index on `(billIncomeId, occurrenceDate)`
+(one-off transactions have a null `billIncomeId`, which a unique index ignores)
 makes this idempotent; insert with "do nothing on conflict".
 
 It happens at exactly two moments:
 
-1. **When a period is generated**: every occurrence of every recurring item that falls
+1. **When a period is generated**: every occurrence of every bill or income that falls
    inside the new period.
-2. **When a recurring item is created**: every occurrence that falls inside any period
+2. **When a bill or income is created**: every occurrence that falls inside any period
    that already exists, starting with the period that contains `firstDueDate`. Usually
    that is just the current period. Apply leftover deltas, in ascending `seq`.
 
@@ -339,19 +344,19 @@ It happens at exactly two moments:
 
 It is a one-time calculation. Afterwards the transaction is independent:
 
-- Editing a recurring item (amount, schedule, name, first due date) changes nothing that
+- Editing a bill or income (amount, schedule, name, first due date) changes nothing that
   already exists; it affects periods generated later.
 - Moving a period boundary neither creates nor removes occurrences.
-- Editing or deleting a generated transaction does not touch the recurring item.
+- Editing or deleting a generated transaction does not touch the bill or income.
 
 ### Archiving
 
-A recurring item is **archived** when `endDate` is before today. Archived items are hidden
-from the Recurring page unless "show archived" is on, and produce no further occurrences.
+A bill or income is **archived** when `endDate` is before today. Archived items are hidden
+from the Bills & Income page unless "show archived" is on, and produce no further occurrences.
 "End this" sets `endDate` to today and offers to delete the upcoming transactions it
 generated that are dated after today. Transactions tied to it by hand are left alone.
 
-Deleting a recurring item keeps its past transactions (their `recurringId` becomes null).
+Deleting a bill or income keeps its past transactions (their `billIncomeId` becomes null).
 
 ## Tables (target shape)
 
@@ -366,12 +371,12 @@ periods            id, user_id → users, schedule_id → budget_schedules, seq,
                    starting_cents, starting_mode, carry_stale, created_at, updated_at
                    unique (user_id, seq); unique (user_id, start_date)
 transactions       id, user_id → users, name, amount_cents, occurs_at, status, paid_at,
-                   sort_order, note, recurring_id → recurring_items (set null),
+                   sort_order, note, bill_income_id → bills_income (set null),
                    occurrence_date, import_key, created_at, updated_at
                    index (user_id, occurs_at)
-                   unique (recurring_id, occurrence_date)   -- nulls don't collide
+                   unique (bill_income_id, occurrence_date)   -- nulls don't collide
                    unique (user_id, import_key)             -- likewise
-recurring_items    id, user_id → users, name, description, kind, default_amount_cents,
+bills_income       id, user_id → users, name, description, kind, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    created_at, updated_at
 api_tokens         id, user_id → users, name, token_hash, hint, scope, created_at,
@@ -430,18 +435,18 @@ PATCH  /api/periods/:id/starting       { startingCents, carryForward }
 POST   /api/periods/:id/starting/revert
 POST   /api/periods/:id/recalculate
 GET    /api/transactions?from=&to=     dated within the range, both ends included, at most 366 days → { transactions }; creates nothing
-POST   /api/transactions               may carry recurringId and countsToward (see "Linking to a recurring item")
-PATCH  /api/transactions/:id           may carry recurringId; null unties
+POST   /api/transactions               may carry billIncomeId and countsToward (see "Linking to a bill or income")
+PATCH  /api/transactions/:id           may carry billIncomeId; null unties
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
-GET    /api/recurring
-POST   /api/recurring
-POST   /api/recurring/preview          what creating this item would add, without saving
-GET    /api/recurring/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
-PATCH  /api/recurring/:id
-DELETE /api/recurring/:id
-POST   /api/recurring/:id/end
+GET    /api/bills-income
+POST   /api/bills-income
+POST   /api/bills-income/preview          what creating this item would add, without saving
+GET    /api/bills-income/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
+PATCH  /api/bills-income/:id
+DELETE /api/bills-income/:id
+POST   /api/bills-income/:id/end
 ```
 
 `PeriodView`:

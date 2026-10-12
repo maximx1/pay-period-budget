@@ -57,6 +57,13 @@
       "when": 1791809093336,
       "tag": "0007_session_idle_timeout",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791829896400,
+      "tag": "0008_rename_bills_income",
+      "breakpoints": true
     }
   ]
 }

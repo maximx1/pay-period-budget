@@ -48,13 +48,13 @@ export const router = createBrowserRouter([
                   { path: "/periods/:periodId", element: <HomePage /> },
                   // Loaded on first visit, to keep them out of the bundle the home screen needs.
                   {
-                    path: "/recurring",
-                    lazy: async () => ({ Component: (await import("./features/recurring/RecurringPage.tsx")).RecurringPage }),
+                    path: "/bills-income",
+                    lazy: async () => ({ Component: (await import("./features/billsIncome/BillsIncomePage.tsx")).BillsIncomePage }),
                   },
                   {
-                    path: "/recurring/:recurringId",
+                    path: "/bills-income/:billIncomeId",
                     lazy: async () => ({
-                      Component: (await import("./features/recurring/RecurringTransactionsPage.tsx")).RecurringTransactionsPage,
+                      Component: (await import("./features/billsIncome/BillOrIncomeTransactionsPage.tsx")).BillOrIncomeTransactionsPage,
                     }),
                   },
                   {

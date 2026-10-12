@@ -102,18 +102,18 @@ export function createTransactionRepo(db: Db): TransactionRepo {
       const inserted = await db
         .insert(transactions)
         .values(transaction)
-        .onConflictDoNothing({ target: [transactions.recurringId, transactions.occurrenceDate] })
+        .onConflictDoNothing({ target: [transactions.billIncomeId, transactions.occurrenceDate] })
         .returning({ id: transactions.id });
       return inserted.length > 0;
     },
-    async listForRecurring(userId, recurringId, { limit, before }) {
+    async listForBillOrIncome(userId, billIncomeId, { limit, before }) {
       return db
         .select()
         .from(transactions)
         .where(
           and(
             eq(transactions.userId, userId),
-            eq(transactions.recurringId, recurringId),
+            eq(transactions.billIncomeId, billIncomeId),
             // The id breaks ties between transactions at the same moment, so a page boundary
             // that falls among them neither repeats nor skips one.
             before &&
@@ -129,37 +129,37 @@ export function createTransactionRepo(db: Db): TransactionRepo {
     async listLinkedDescriptions(userId) {
       const rows = await db
         .select({
-          recurringId: transactions.recurringId,
+          billIncomeId: transactions.billIncomeId,
           name: transactions.name,
           note: transactions.note,
           lastUsedAt: sql<string>`max(${transactions.occursAt})`,
         })
         .from(transactions)
-        .where(and(eq(transactions.userId, userId), isNotNull(transactions.recurringId)))
-        .groupBy(transactions.recurringId, transactions.name, transactions.note);
-      return rows.flatMap((row) => (row.recurringId === null ? [] : [{ ...row, recurringId: row.recurringId }]));
+        .where(and(eq(transactions.userId, userId), isNotNull(transactions.billIncomeId)))
+        .groupBy(transactions.billIncomeId, transactions.name, transactions.note);
+      return rows.flatMap((row) => (row.billIncomeId === null ? [] : [{ ...row, billIncomeId: row.billIncomeId }]));
     },
-    async sumForRecurring(userId, recurringId) {
+    async sumForBillOrIncome(userId, billIncomeId) {
       const sumWhere = (status: "paid" | "upcoming") =>
         sql<number>`coalesce(sum(case when ${transactions.status} = ${status} then ${transactions.amountCents} end), 0)`;
       const [row] = await db
         .select({ count: sql<number>`count(*)`, paidCents: sumWhere("paid"), upcomingCents: sumWhere("upcoming") })
         .from(transactions)
-        .where(and(eq(transactions.userId, userId), eq(transactions.recurringId, recurringId)));
+        .where(and(eq(transactions.userId, userId), eq(transactions.billIncomeId, billIncomeId)));
       return {
         count: Number(row?.count ?? 0),
         paidCents: Number(row?.paidCents ?? 0),
         upcomingCents: Number(row?.upcomingCents ?? 0),
       };
     },
-    async listUpcomingForRecurringAfter(userId, recurringId, date) {
+    async listUpcomingForBillOrIncomeAfter(userId, billIncomeId, date) {
       return db
         .select()
         .from(transactions)
         .where(
           and(
             eq(transactions.userId, userId),
-            eq(transactions.recurringId, recurringId),
+            eq(transactions.billIncomeId, billIncomeId),
             isNotNull(transactions.occurrenceDate),
             eq(transactions.status, "upcoming"),
             gte(transactions.occursAt, atStartOfDay(addDays(date, 1))),

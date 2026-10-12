@@ -9,27 +9,27 @@ import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { useBudget } from "../budget/api.ts";
 import { usePeriodList } from "../periods/api.ts";
-import { useAllRecurringTransactions, useRecurringItems } from "./api.ts";
+import { useAllBillOrIncomeTransactions, useBillsIncome } from "./api.ts";
 import { ItemTotals, ItemTransactionList, shownAmount } from "./ItemTransactions.tsx";
 
 const backLink = (
   <Link
-    to="/recurring"
+    to="/bills-income"
     className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
   >
     <ArrowLeft className="size-4" aria-hidden />
-    Bills & income
+    Bills & Income
   </Link>
 );
 
 /** Everything tied to one bill or income, newest first, loading more as the end comes into view. */
-export function RecurringTransactionsPage() {
-  const { recurringId = "" } = useParams();
-  const items = useRecurringItems();
+export function BillOrIncomeTransactionsPage() {
+  const { billIncomeId = "" } = useParams();
+  const items = useBillsIncome();
   const budget = useBudget();
   const periods = usePeriodList(true);
-  const list = useAllRecurringTransactions(recurringId);
-  const item = items.data?.find((candidate) => candidate.id === recurringId);
+  const list = useAllBillOrIncomeTransactions(billIncomeId);
+  const item = items.data?.find((candidate) => candidate.id === billIncomeId);
   const today = todayIn(budget.data?.timezone ?? "UTC", new Date());
 
   // Load the next page when the end of the list scrolls into view. The button below does
@@ -114,7 +114,7 @@ export function RecurringTransactionsPage() {
 
   return (
     <>
-      <PageHeader title={item?.name ?? "Bills & income"} subtitle={subtitle} actions={backLink} />
+      <PageHeader title={item?.name ?? "Bills & Income"} subtitle={subtitle} actions={backLink} />
       {content}
     </>
   );

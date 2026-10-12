@@ -156,8 +156,8 @@ export type TransactionRecord = {
   paidAt: Date | null;
   sortOrder: number;
   note: string | null;
-  /** The recurring item that generated it, or null. */
-  recurringId: string | null;
+  /** The bill or income that generated it, or null. */
+  billIncomeId: string | null;
   /** The scheduled date it was generated for, or null for a one-off. */
   occurrenceDate: LocalDate | null;
   /** The key it was imported under, or null if it was not imported. Unique per user. */
@@ -169,7 +169,7 @@ export type TransactionRecord = {
 export type TransactionRecordPatch = Partial<
   Pick<
     TransactionRecord,
-    "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note" | "recurringId" | "occurrenceDate"
+    "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note" | "billIncomeId" | "occurrenceDate"
   >
 >;
 
@@ -197,41 +197,41 @@ export interface TransactionRepo {
   /** Lets these keys be imported again. */
   forgetDeletedImportKeys(userId: string, importKeys: string[]): Promise<void>;
   /**
-   * Inserts a generated transaction unless one already exists for the same recurring item
+   * Inserts a generated transaction unless one already exists for the same bill or income
    * and occurrence date. Returns whether it was inserted.
    */
   createIfAbsent(transaction: TransactionRecord): Promise<boolean>;
   /**
-   * A recurring item's transactions, newest first, at most `limit`. With `before`, only
+   * A bill or income's transactions, newest first, at most `limit`. With `before`, only
    * those older than that position in the same order.
    */
-  listForRecurring(
+  listForBillOrIncome(
     userId: string,
-    recurringId: string,
+    billIncomeId: string,
     page: { limit: number; before?: { occursAt: LocalDateTime; id: string } },
   ): Promise<TransactionRecord[]>;
   /**
-   * Each distinct name and note among the transactions tied to recurring items, with the
+   * Each distinct name and note among the transactions tied to bills and income, with the
    * item and the latest date-time it was used. For recognising the same description again.
    */
   listLinkedDescriptions(
     userId: string,
-  ): Promise<Array<{ recurringId: string; name: string; note: string | null; lastUsedAt: LocalDateTime }>>;
-  /** How many transactions a recurring item has, and their signed totals by status. */
-  sumForRecurring(
+  ): Promise<Array<{ billIncomeId: string; name: string; note: string | null; lastUsedAt: LocalDateTime }>>;
+  /** How many transactions a bill or income has, and their signed totals by status. */
+  sumForBillOrIncome(
     userId: string,
-    recurringId: string,
+    billIncomeId: string,
   ): Promise<{ count: number; paidCents: number; upcomingCents: number }>;
   /**
-   * The upcoming transactions a recurring item generated, dated after `date`. Not ones
+   * The upcoming transactions a bill or income generated, dated after `date`. Not ones
    * tied to it by hand: those are the user's own entries.
    */
-  listUpcomingForRecurringAfter(userId: string, recurringId: string, date: LocalDate): Promise<TransactionRecord[]>;
+  listUpcomingForBillOrIncomeAfter(userId: string, billIncomeId: string, date: LocalDate): Promise<TransactionRecord[]>;
   update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;
   delete(userId: string, id: string): Promise<void>;
 }
 
-export type RecurringRecord = {
+export type BillOrIncomeRecord = {
   id: string;
   userId: string;
   name: string;
@@ -247,16 +247,16 @@ export type RecurringRecord = {
   updatedAt: Date;
 };
 
-export type RecurringRecordPatch = Partial<
-  Omit<RecurringRecord, "id" | "userId" | "createdAt" | "updatedAt">
+export type BillOrIncomeRecordPatch = Partial<
+  Omit<BillOrIncomeRecord, "id" | "userId" | "createdAt" | "updatedAt">
 >;
 
-export interface RecurringRepo {
-  findById(userId: string, id: string): Promise<RecurringRecord | null>;
+export interface BillsIncomeRepo {
+  findById(userId: string, id: string): Promise<BillOrIncomeRecord | null>;
   /** All of the user's items, by name. */
-  list(userId: string): Promise<RecurringRecord[]>;
-  create(item: RecurringRecord): Promise<RecurringRecord>;
-  update(userId: string, id: string, patch: RecurringRecordPatch, now: Date): Promise<void>;
+  list(userId: string): Promise<BillOrIncomeRecord[]>;
+  create(item: BillOrIncomeRecord): Promise<BillOrIncomeRecord>;
+  update(userId: string, id: string, patch: BillOrIncomeRecordPatch, now: Date): Promise<void>;
   /** Transactions it generated stay, with their link to it cleared. */
   delete(userId: string, id: string): Promise<void>;
 }
@@ -269,7 +269,7 @@ export interface Repos {
   schedules: ScheduleRepo;
   periods: PeriodRepo;
   transactions: TransactionRepo;
-  recurring: RecurringRepo;
+  billsIncome: BillsIncomeRepo;
 }
 
 export interface DataStore extends Repos {

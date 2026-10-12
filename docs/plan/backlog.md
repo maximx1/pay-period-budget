@@ -6,13 +6,13 @@ order they are likely to matter.
 ## Accounts
 
 The places money lives or goes: savings accounts, other checking accounts, people you send
-money to. (Not to be confused with recurring items, which the original brief called
+money to. (Not to be confused with bills and income, which the original brief called
 accounts.)
 
 - An Accounts page in the side panel: a list with name, type (savings, checking, person,
   other) and notes.
 - A transaction can optionally point at an account ("sent to Savings 1"), chosen in the
-  add/edit dialog; so can a recurring item, so the generated transactions inherit it.
+  add/edit dialog; so can a bill or income, so the generated transactions inherit it.
 - Later, possibly: per-account history, and balances for accounts you own.
 - Open questions when this is picked up: whether a transfer is one transaction or a linked
   pair, and whether accounts carry a balance at all.
@@ -62,9 +62,9 @@ inside the Android app. Complements rather than replaces the biometric unlock in
   The unique-per-user constraint on schedules is dropped at that point.
 - Month-based "period" for people who do budget monthly is already covered by `monthly`.
 
-## Recurring items and transactions
+## Bills and income, and transactions
 
-- When editing a recurring item, optionally apply the new amount or date to its upcoming
+- When editing a bill or income, optionally apply the new amount or date to its upcoming
   transactions in periods that already exist.
 - Skip or snooze a single occurrence.
 - Categories or tags, and filtering by them.

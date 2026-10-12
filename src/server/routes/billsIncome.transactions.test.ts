@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { RecurringTransactionsResponse } from "../../shared/recurring.ts";
+import type { BillOrIncomeTransactionsResponse } from "../../shared/billsIncome.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
 
 // The test clock starts at 2026-01-15T12:00Z. Biweekly from 2025-12-16, generated through
@@ -23,7 +23,7 @@ async function signUp(name: string): Promise<Client> {
 }
 
 async function addItem(client: Client, overrides: Row = {}): Promise<string> {
-  const response = await client.post("/api/recurring", {
+  const response = await client.post("/api/bills-income", {
     name: "Credit card",
     kind: "expense",
     defaultAmountCents: 20_000,
@@ -49,8 +49,8 @@ async function pay(client: Client, date: string, amountCents: number, overrides:
   return (await response.json()).transaction.id;
 }
 
-async function page(client: Client, id: string, query = ""): Promise<RecurringTransactionsResponse> {
-  const response = await client.get(`/api/recurring/${id}/transactions${query}`);
+async function page(client: Client, id: string, query = ""): Promise<BillOrIncomeTransactionsResponse> {
+  const response = await client.get(`/api/bills-income/${id}/transactions${query}`);
   expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
   return response.json();
 }
@@ -62,12 +62,12 @@ beforeEach(async () => {
 });
 afterEach(() => t.cleanup());
 
-describe("a recurring item's transactions", () => {
+describe("a bill or income's transactions", () => {
   it("lists the scheduled entries and the extra payments tied to it, newest first, with totals", async () => {
     // The owner's case: $200 on the 5th by itself, then $25, $35 and $100 on top.
-    await pay(ann, "2026-01-09", 2500, { recurringId: cardId });
-    await pay(ann, "2026-01-16", 3500, { recurringId: cardId });
-    await pay(ann, "2026-01-23", 10_000, { recurringId: cardId });
+    await pay(ann, "2026-01-09", 2500, { billIncomeId: cardId });
+    await pay(ann, "2026-01-16", 3500, { billIncomeId: cardId });
+    await pay(ann, "2026-01-23", 10_000, { billIncomeId: cardId });
     // Not the card's: another item's entry, and a payment tied to nothing.
     await addItem(ann, { name: "Rent", defaultAmountCents: 90_000, firstDueDate: "2026-01-25" });
     await pay(ann, "2026-01-20", 777);
@@ -80,7 +80,7 @@ describe("a recurring item's transactions", () => {
       ["2026-01-09T00:00", "Extra 25", -2500, "paid", null],
       ["2026-01-05T00:00", "Credit card", -20_000, "upcoming", "2026-01-05"],
     ]);
-    expect(result.transactions.every((tx) => tx.recurringId === cardId)).toBe(true);
+    expect(result.transactions.every((tx) => tx.billIncomeId === cardId)).toBe(true);
     expect(result.totals).toEqual({ count: 5, paidCents: -16_000, upcomingCents: -40_000 });
     expect(result.nextCursor).toBeNull();
   });
@@ -89,10 +89,10 @@ describe("a recurring item's transactions", () => {
     const id = await pay(ann, "2026-01-20", 5000);
     expect((await page(ann, cardId)).totals).toEqual({ count: 2, paidCents: 0, upcomingCents: -40_000 });
 
-    await ann.patch(`/api/transactions/${id}`, { recurringId: cardId });
+    await ann.patch(`/api/transactions/${id}`, { billIncomeId: cardId });
     expect((await page(ann, cardId)).totals).toEqual({ count: 3, paidCents: -5000, upcomingCents: -40_000 });
 
-    await ann.patch(`/api/transactions/${id}`, { recurringId: null });
+    await ann.patch(`/api/transactions/${id}`, { billIncomeId: null });
     expect((await page(ann, cardId)).totals.count).toBe(2);
   });
 
@@ -112,7 +112,7 @@ describe("a page at a time", () => {
     const pages: string[][] = [];
     let cursor: string | null = null;
     do {
-      const result: RecurringTransactionsResponse = await page(
+      const result: BillOrIncomeTransactionsResponse = await page(
         ann,
         cardId,
         `?limit=${limit}${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`,
@@ -127,9 +127,9 @@ describe("a page at a time", () => {
   beforeEach(async () => {
     // With the two scheduled entries that makes nine. Five of them share one moment, so a
     // page boundary is bound to fall among them.
-    for (const name of ["a", "b", "c", "d", "e"]) await pay(ann, "2026-01-20", 100, { name, recurringId: cardId });
-    await pay(ann, "2026-01-10", 100, { name: "older", recurringId: cardId });
-    await pay(ann, "2026-01-30", 100, { name: "newer", recurringId: cardId });
+    for (const name of ["a", "b", "c", "d", "e"]) await pay(ann, "2026-01-20", 100, { name, billIncomeId: cardId });
+    await pay(ann, "2026-01-10", 100, { name: "older", billIncomeId: cardId });
+    await pay(ann, "2026-01-30", 100, { name: "newer", billIncomeId: cardId });
   });
 
   it.each([1, 2, 3, 4, 8, 9, 10])("returns every transaction exactly once, %i at a time", async (limit) => {
@@ -151,7 +151,7 @@ describe("a page at a time", () => {
   });
 
   it("gives thirty by default and a hundred at most", async () => {
-    for (let i = 0; i < 95; i++) await pay(ann, "2026-01-21", 1, { name: `bulk ${i}`, recurringId: cardId });
+    for (let i = 0; i < 95; i++) await pay(ann, "2026-01-21", 1, { name: `bulk ${i}`, billIncomeId: cardId });
 
     const first = await page(ann, cardId);
     expect(first.transactions).toHaveLength(30);
@@ -171,7 +171,7 @@ describe("a page at a time", () => {
     ["a limit that isn't a number", "?limit=lots", "limit"],
     ["a cursor it never gave out", "?before=yesterday", "before"],
   ])("refuses a request for %s", async (_label, query, field) => {
-    const response = await ann.get(`/api/recurring/${cardId}/transactions${query}`);
+    const response = await ann.get(`/api/bills-income/${cardId}/transactions${query}`);
     expect(response.status).toBe(400);
     expect(Object.keys((await response.json()).error.fields)).toEqual([field]);
   });
@@ -179,15 +179,15 @@ describe("a page at a time", () => {
 
 describe("who may read them", () => {
   it("requires signing in", async () => {
-    expect((await t.client().get(`/api/recurring/${cardId}/transactions`)).status).toBe(401);
+    expect((await t.client().get(`/api/bills-income/${cardId}/transactions`)).status).toBe(401);
   });
 
   it("answers 404 for an item that does not exist and for someone else's alike", async () => {
-    await pay(ann, "2026-01-20", 100, { recurringId: cardId });
+    await pay(ann, "2026-01-20", 100, { billIncomeId: cardId });
     const bob = await signUp("bob");
 
-    const unknown = await bob.get("/api/recurring/no-such-id/transactions");
-    const someoneElses = await bob.get(`/api/recurring/${cardId}/transactions`);
+    const unknown = await bob.get("/api/bills-income/no-such-id/transactions");
+    const someoneElses = await bob.get(`/api/bills-income/${cardId}/transactions`);
     expect(unknown.status).toBe(404);
     expect(someoneElses.status).toBe(404);
     expect(await someoneElses.json()).toEqual(await unknown.json());
@@ -196,7 +196,7 @@ describe("who may read them", () => {
   it("never mixes in another user's transactions", async () => {
     const bob = await signUp("bob");
     const bobsCard = await addItem(bob);
-    await pay(bob, "2026-01-20", 4200, { recurringId: bobsCard });
+    await pay(bob, "2026-01-20", 4200, { billIncomeId: bobsCard });
 
     expect((await page(ann, cardId)).totals).toEqual({ count: 2, paidCents: 0, upcomingCents: -40_000 });
     expect((await page(bob, bobsCard)).totals).toEqual({ count: 3, paidCents: -4200, upcomingCents: -40_000 });
@@ -204,7 +204,7 @@ describe("who may read them", () => {
 
   it("can be read with a read-only API token", async () => {
     const { secret } = await (await ann.post("/api/auth/tokens", { name: "Reader", scope: "read" })).json();
-    const response = await t.client().get(`/api/recurring/${cardId}/transactions`, { authorization: `Bearer ${secret}` });
+    const response = await t.client().get(`/api/bills-income/${cardId}/transactions`, { authorization: `Bearer ${secret}` });
     expect(response.status).toBe(200);
     expect((await response.json()).totals.count).toBe(2);
   });

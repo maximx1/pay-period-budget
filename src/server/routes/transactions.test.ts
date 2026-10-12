@@ -433,9 +433,9 @@ describe("manual order among transactions at the same date and time", () => {
     expect(await names()).toEqual(["b renamed", "a", "mover"]);
   });
 
-  it("keeps recurring bills that land on the same day in a stable, adjustable order", async () => {
+  it("keeps scheduled bills that land on the same day in a stable, adjustable order", async () => {
     for (const name of ["Electric", "Internet", "Water"]) {
-      const response = await ann.post("/api/recurring", {
+      const response = await ann.post("/api/bills-income", {
         name,
         kind: "expense",
         defaultAmountCents: 1000,
@@ -497,7 +497,7 @@ describe("listing transactions by date", () => {
       paidAt: t.clock.now().toISOString(),
       note: null,
       sortOrder: 0,
-      recurringId: null,
+      billIncomeId: null,
       occurrenceDate: null,
       importKey: null,
     });
@@ -517,8 +517,8 @@ describe("listing transactions by date", () => {
     expect((await list(ann, "2026-01-13", "2026-01-26")).map((tx) => tx.name)).toEqual(["earlier", "b", "a"]);
   });
 
-  it("includes transactions generated from recurring items, with the item they came from", async () => {
-    const response = await ann.post("/api/recurring", {
+  it("includes transactions generated from bills and income, with the item they came from", async () => {
+    const response = await ann.post("/api/bills-income", {
       name: "Rent",
       kind: "expense",
       defaultAmountCents: 90_000,
@@ -530,7 +530,7 @@ describe("listing transactions by date", () => {
     const { item } = await response.json();
 
     const found = await list(ann, "2026-01-01", "2026-01-31");
-    expect(found).toEqual([expect.objectContaining({ name: "Rent", amountCents: -90_000, recurringId: item.id })]);
+    expect(found).toEqual([expect.objectContaining({ name: "Rent", amountCents: -90_000, billIncomeId: item.id })]);
   });
 
   it("creates nothing, even for dates no period covers yet", async () => {

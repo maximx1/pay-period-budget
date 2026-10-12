@@ -9,7 +9,7 @@ import type {
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
-import { recurringKeys } from "../recurring/api.ts";
+import { billsIncomeKeys } from "../billsIncome/api.ts";
 import { withOrder, withStatus } from "./optimistic.ts";
 
 // A transaction changes its own period's totals and the starting amount of every period
@@ -21,7 +21,7 @@ function useRefreshAfterChange() {
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: periodKeys.all }),
-      queryClient.invalidateQueries({ queryKey: recurringKeys.transactions }),
+      queryClient.invalidateQueries({ queryKey: billsIncomeKeys.transactions }),
     ]);
 }
 
@@ -77,7 +77,7 @@ export function useSetTransactionStatus() {
       // While more taps are still saving, their optimistic state is newer than the server's.
       if (queryClient.isMutating({ mutationKey: STATUS_MUTATION_KEY }) === 1) {
         // Paid or upcoming also moves the totals shown for the bill or income it is tied to.
-        void queryClient.invalidateQueries({ queryKey: recurringKeys.transactions });
+        void queryClient.invalidateQueries({ queryKey: billsIncomeKeys.transactions });
         return queryClient.invalidateQueries({ queryKey: periodKeys.all });
       }
     },

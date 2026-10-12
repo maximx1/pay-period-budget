@@ -3,23 +3,23 @@ import type { CountedToward } from "../../shared/transactions.ts";
 import type { Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 
-// Tying a transaction to a recurring item, and counting a payment toward the upcoming
-// entry the item generated. See "Linking to a recurring item" in docs/plan/domain.md.
+// Tying a transaction to a bill or income, and counting a payment toward the upcoming
+// entry the item generated. See "Linking to a bill or income" in docs/plan/domain.md.
 // Used for one transaction and for a whole import alike, inside the caller's transaction.
 
 export type LinkRequest = {
   /** The item to tie the transaction to; null or undefined for none. */
-  recurringId?: string | null;
+  billIncomeId?: string | null;
   /** An upcoming transaction the item generated, which this one pays part or all of. */
   countsToward?: string;
   /** The new transaction's signed amount. */
   amountCents: number;
 };
 
-export type LinkProblems = Partial<Record<"recurringId" | "countsToward", string>>;
+export type LinkProblems = Partial<Record<"billIncomeId" | "countsToward", string>>;
 
 // One wording whether the id is unknown or someone else's: it must not say which.
-const NO_SUCH_ITEM = "No such recurring item";
+const NO_SUCH_ITEM = "No such bill or income";
 const NO_SUCH_TRANSACTION = "No such transaction";
 
 /**
@@ -32,7 +32,7 @@ export function createLinkPlanner(repos: Repos, userId: string) {
   const targets = new Map<string, { record: TransactionRecord; remainingCents: number } | null>();
 
   async function knownItem(id: string): Promise<boolean> {
-    itemIds ??= new Set((await repos.recurring.list(userId)).map((item) => item.id));
+    itemIds ??= new Set((await repos.billsIncome.list(userId)).map((item) => item.id));
     return itemIds.has(id);
   }
 
@@ -46,20 +46,20 @@ export function createLinkPlanner(repos: Repos, userId: string) {
 
   return {
     /** The item the transaction ends up tied to, or what is wrong with the request. */
-    async plan(request: LinkRequest): Promise<{ recurringId: string | null } | { problems: LinkProblems }> {
+    async plan(request: LinkRequest): Promise<{ billIncomeId: string | null } | { problems: LinkProblems }> {
       const problems: LinkProblems = {};
-      const asked = request.recurringId ?? null;
-      if (asked !== null && !(await knownItem(asked))) problems.recurringId = NO_SUCH_ITEM;
+      const asked = request.billIncomeId ?? null;
+      if (asked !== null && !(await knownItem(asked))) problems.billIncomeId = NO_SUCH_ITEM;
       if (request.countsToward === undefined) {
-        return problems.recurringId ? { problems } : { recurringId: asked };
+        return problems.billIncomeId ? { problems } : { billIncomeId: asked };
       }
 
       const target = await targetOf(request.countsToward);
       if (!target) problems.countsToward = NO_SUCH_TRANSACTION;
-      else if (target.record.status !== "upcoming" || !target.record.recurringId || !target.record.occurrenceDate) {
-        problems.countsToward = "That isn't an upcoming transaction a recurring item added";
-      } else if (asked !== null && asked !== target.record.recurringId) {
-        problems.countsToward = "That transaction belongs to a different recurring item";
+      else if (target.record.status !== "upcoming" || !target.record.billIncomeId || !target.record.occurrenceDate) {
+        problems.countsToward = "That isn't an upcoming transaction a bill or income added";
+      } else if (asked !== null && asked !== target.record.billIncomeId) {
+        problems.countsToward = "That transaction belongs to a different bill or income";
       } else if (Math.sign(request.amountCents) !== Math.sign(target.record.amountCents)) {
         problems.countsToward = "Money out can't count toward money coming in, or the other way round";
       }
@@ -67,7 +67,7 @@ export function createLinkPlanner(repos: Repos, userId: string) {
 
       // More than is left simply finishes it; the rest is an ordinary extra payment.
       target.remainingCents = Math.max(0, target.remainingCents - Math.abs(request.amountCents));
-      return { recurringId: target.record.recurringId };
+      return { billIncomeId: target.record.billIncomeId };
     },
 
     /**

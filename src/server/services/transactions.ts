@@ -12,7 +12,7 @@ import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import type { PeriodService } from "./periods.ts";
-import { createLinkPlanner } from "./recurringLinks.ts";
+import { createLinkPlanner } from "./billIncomeLinks.ts";
 import { toTransaction } from "./transactionMapper.ts";
 
 export type TransactionService = ReturnType<typeof createTransactionService>;
@@ -64,7 +64,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
       return store.transaction(async (repos) => {
         const amountCents = signed(input.amountCents, input.kind);
         const links = createLinkPlanner(repos, userId);
-        const link = await links.plan({ recurringId: input.recurringId, countsToward: input.countsToward, amountCents });
+        const link = await links.plan({ billIncomeId: input.billIncomeId, countsToward: input.countsToward, amountCents });
         if ("problems" in link) throw linkError(link.problems);
 
         const period = await periodFor(repos, userId, input.occursAt);
@@ -79,7 +79,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           paidAt: input.paid ? createdAt : null,
           sortOrder: await lastPlaceAt(repos, userId, input.occursAt),
           note: input.note || null,
-          recurringId: link.recurringId,
+          billIncomeId: link.billIncomeId,
           occurrenceDate: null,
           importKey: null,
           createdAt,
@@ -110,13 +110,13 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           note: patch.note === undefined ? before.note : patch.note || null,
           updatedAt,
         };
-        if (patch.recurringId !== undefined && patch.recurringId !== before.recurringId) {
-          const link = await createLinkPlanner(repos, userId).plan({ recurringId: patch.recurringId, amountCents: 0 });
+        if (patch.billIncomeId !== undefined && patch.billIncomeId !== before.billIncomeId) {
+          const link = await createLinkPlanner(repos, userId).plan({ billIncomeId: patch.billIncomeId, amountCents: 0 });
           if ("problems" in link) throw linkError(link.problems);
-          after.recurringId = link.recurringId;
+          after.billIncomeId = link.billIncomeId;
           // Moved to another item it is no longer the occurrence its first item scheduled.
           // Untied, it keeps the date: that is still what it was.
-          if (link.recurringId !== null) after.occurrenceDate = null;
+          if (link.billIncomeId !== null) after.occurrenceDate = null;
         }
         // Moving to a different date and time means joining the end of whatever is already there.
         if (after.occursAt !== before.occursAt) after.sortOrder = await lastPlaceAt(repos, userId, after.occursAt);
@@ -125,11 +125,11 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
         const newPeriod =
           oldPeriod && after.occursAt === before.occursAt ? oldPeriod : await periodFor(repos, userId, after.occursAt);
 
-        const { name, amountCents, occursAt, paidAt, note, sortOrder, recurringId, occurrenceDate } = after;
+        const { name, amountCents, occursAt, paidAt, note, sortOrder, billIncomeId, occurrenceDate } = after;
         await repos.transactions.update(
           userId,
           id,
-          { name, amountCents, occursAt, status, paidAt, note, sortOrder, recurringId, occurrenceDate },
+          { name, amountCents, occursAt, status, paidAt, note, sortOrder, billIncomeId, occurrenceDate },
           updatedAt,
         );
 

@@ -47,7 +47,7 @@ async function importRows(client: Client, transactions: Row[], options: Row = {}
 }
 
 async function addRent(client: Client, firstDueDate: string) {
-  const response = await client.post("/api/recurring", {
+  const response = await client.post("/api/bills-income", {
     name: "Rent",
     kind: "expense",
     defaultAmountCents: 90_000,
@@ -171,7 +171,7 @@ describe("importing transactions", () => {
       ],
       possibleDuplicates: [],
       countedToward: [],
-      recurringSuggestions: [],
+      billOrIncomeSuggestions: [],
       current: {
         periodId: periods[2]!.id,
         leftoverBeforeCents: OPENING,
@@ -192,7 +192,7 @@ describe("importing transactions", () => {
         paidAt: t.clock.now().toISOString(),
         note: "with Sam",
         importKey: "bank-1",
-        recurringId: null,
+        billIncomeId: null,
       }),
       expect.objectContaining({ name: "Refund", amountCents: 1500, status: "upcoming", paidAt: null, importKey: null }),
       expect.objectContaining({ name: "Lunch", amountCents: -1200, status: "paid", note: null }),
@@ -248,7 +248,7 @@ describe("a dry run", () => {
     const dry = await importRows(ann, rows, { dryRun: true, addEarlierPeriods: true });
     expect(dry).toMatchObject({ dryRun: true, created: 3, periodsAdded: { earlier: 1, later: 2 } });
     expect(dry.possibleDuplicates).toEqual([
-      expect.objectContaining({ index: 0, reason: "recurring", daysApart: 1 }),
+      expect.objectContaining({ index: 0, reason: "generated", daysApart: 1 }),
     ]);
     expect(await snapshot("ann")).toEqual(before);
 
@@ -262,13 +262,13 @@ describe("a dry run", () => {
         ...duplicate,
         existing: { ...duplicate.existing, id: null },
       })),
-      recurringSuggestions: result.recurringSuggestions.map((suggestion) => ({
+      billOrIncomeSuggestions: result.billOrIncomeSuggestions.map((suggestion) => ({
         ...suggestion,
         countsToward: suggestion.countsToward ? "an id" : undefined,
       })),
     });
-    expect(dry.recurringSuggestions).toEqual([
-      expect.objectContaining({ index: 0, recurringName: "Rent", reason: "occurrence", countsToward: expect.any(String) }),
+    expect(dry.billOrIncomeSuggestions).toEqual([
+      expect.objectContaining({ index: 0, billIncomeName: "Rent", reason: "occurrence", countsToward: expect.any(String) }),
     ]);
     expect(comparable(real)).toEqual(comparable(dry));
     expect(real.dryRun).toBe(false);
@@ -579,8 +579,8 @@ describe("possible duplicates", () => {
     ]);
 
     expect(found).toEqual([
-      { index: 0, existing: rent, reason: "recurring", daysApart: 3 },
-      { index: 5, existing: rent, reason: "recurring", daysApart: 3 },
+      { index: 0, existing: rent, reason: "generated", daysApart: 3 },
+      { index: 5, existing: rent, reason: "generated", daysApart: 3 },
     ]);
   });
 
@@ -596,8 +596,8 @@ describe("possible duplicates", () => {
     expect(found.map(({ index, reason, daysApart, existing }) => [index, reason, daysApart, existing.name])).toEqual([
       [0, "manual", 0, "typed in"],
       // A day from each: the generated bill is the likelier match.
-      [1, "recurring", 1, "Rent"],
-      [2, "recurring", 0, "Rent"],
+      [1, "generated", 1, "Rent"],
+      [2, "generated", 0, "Rent"],
     ]);
   });
 
@@ -620,7 +620,7 @@ describe("possible duplicates", () => {
       addEarlierPeriods: true,
     });
     expect(found).toEqual([
-      expect.objectContaining({ index: 0, reason: "recurring", daysApart: 1, existing: expect.objectContaining({ name: "Rent" }) }),
+      expect.objectContaining({ index: 0, reason: "generated", daysApart: 1, existing: expect.objectContaining({ name: "Rent" }) }),
     ]);
   });
 

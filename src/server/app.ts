@@ -11,14 +11,14 @@ import { requireAuth, SESSION_EXPIRES_HEADER } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
-import { recurringRoutes } from "./routes/recurring.ts";
+import { billsIncomeRoutes } from "./routes/billsIncome.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { IMPORT_PATH, transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
 import { createImportService } from "./services/import.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
-import { createRecurringService } from "./services/recurring.ts";
+import { createBillsIncomeService } from "./services/billsIncome.ts";
 import { createTransactionService } from "./services/transactions.ts";
 
 export type AppDeps = {
@@ -40,12 +40,12 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   const periods = createPeriodService({
     store,
     now,
-    // Each new period gets its recurring bills and income before the next is derived from it.
+    // Each new period gets its bills and income before the next is derived from it.
     onPeriodCreated: (repos, period) => materializeAllInPeriod(repos, period, clock()),
   });
   const transactions = createTransactionService({ store, periods, now });
   const imports = createImportService({ store, periods, now });
-  const recurring = createRecurringService({ store, periods, now });
+  const billsIncome = createBillsIncomeService({ store, periods, now });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -80,7 +80,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, authed }));
   api.route("/transactions", transactionRoutes({ transactions, imports, authed }));
-  api.route("/recurring", recurringRoutes({ recurring, authed }));
+  api.route("/bills-income", billsIncomeRoutes({ billsIncome, authed }));
   api.route("/settings", settingsRoutes({ periods, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");

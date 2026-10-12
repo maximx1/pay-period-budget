@@ -41,7 +41,7 @@ different app.
 | [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
 | [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
 | [12](phase-12-idle-timeout.md) | Idle timeout: the web app signs out and the Android app locks after ten minutes; face unlock | Built 2026-10-12. The Android half has not run on a phone | Opus |
-| [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | Done 2026-10-12. Not yet deployed. On screen these are now "Bills & income"; renaming the code is a separate task | Opus for 13.1 to 13.3, Sonnet for the rest |
+| [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | Done 2026-10-12, including the rename to bills and income in the code (decision 13). Not yet deployed | Opus for 13.1 to 13.3, Sonnet for the rest |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -197,8 +197,8 @@ unless marked otherwise.
 10. **One home time zone per budget.** Dates and times are wall-clock values in the zone
     chosen at setup, wherever the device is; "today" is computed in that zone. Timestamps
     such as created-at are stored in UTC.
-11. **"Accounts" is reserved.** What the original brief called accounts (recurring bills
-    and income) are *recurring items* in the app and the code. *Accounts* will be a later
+11. **"Accounts" is reserved.** What the original brief called accounts (bills and income)
+    were *recurring items* in the app and the code until decision 13 renamed them. *Accounts* will be a later
     feature: savings accounts, other checking accounts and people you send money to, which
     a transaction can point at. See `backlog.md`.
 12. **Periods can be added before the first one, and today's numbers stay fixed** (decided
@@ -208,3 +208,12 @@ unless marked otherwise.
     starting amount: adding old transactions changes what the *earlier* period started
     with, never a balance from the first period onward. See "Periods before the budget
     began" in `domain.md`.
+13. **They are bills and income, on screen and in the code** (decided 2026-10-12). Once
+    one of them could have no schedule, "recurring" was wrong. The page is "Bills &
+    Income". The code uses the same words wherever an "&" cannot go: the table
+    `bills_income`, the column `transactions.bill_income_id`, the API `/api/bills-income`,
+    the type `BillOrIncome`, the field `billIncomeId`, the folder `features/billsIncome`,
+    and MCP tools such as `list_bills_income` and `create_bill_or_income`.
+    `recurrenceUnit` and `recurrenceInterval` keep their names: they describe the
+    schedule. Phase files written before this, and the "What phase N delivered" notes
+    above, use the names of their time.

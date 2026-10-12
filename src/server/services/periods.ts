@@ -39,7 +39,7 @@ export function createPeriodService(deps: {
   now?: () => Date;
   /**
    * Runs inside the generating transaction for each period as it is created, before the
-   * next one is derived from it. The app uses this to add recurring items' transactions.
+   * next one is derived from it. The app uses this to add what its bills and income schedule.
    */
   onPeriodCreated?: (repos: Repos, period: PeriodRecord) => Promise<void>;
 }) {
@@ -140,7 +140,7 @@ export function createPeriodService(deps: {
     await repos.periods.create(period);
     await onPeriodCreated(repos, period);
 
-    // Recurring items due in it have just been added; back the starting amount off by them.
+    // Bills and income due in it have just been added; back the starting amount off by them.
     const { paidCents, upcomingCents } = await repos.transactions.sumInRange(userId, period.startDate, period.endDate);
     const netCents = paidCents + upcomingCents;
     if (netCents === 0) return period;

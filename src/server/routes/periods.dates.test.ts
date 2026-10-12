@@ -310,20 +310,20 @@ describe("reverting dates", () => {
 });
 
 describe("what a date change leaves alone", () => {
-  it("neither duplicates nor drops recurring transactions", async () => {
-    const created = await ann.post("/api/recurring", {
+  it("neither duplicates nor drops generated transactions", async () => {
+    const created = await ann.post("/api/bills-income", {
       name: "Groceries",
       kind: "expense",
       defaultAmountCents: 1000,
       recurrenceUnit: "week",
       firstDueDate: "2025-12-22", // Mondays
     });
-    const recurringId = (await created.json()).item.id as string;
+    const billIncomeId = (await created.json()).item.id as string;
     const occurrences = async () => {
       const dates: string[] = [];
       for (const period of await periods()) {
         const view = await viewOf(period);
-        dates.push(...view.transactions.filter((tx) => tx.recurringId === recurringId).map((tx) => dateOf(tx.occursAt)));
+        dates.push(...view.transactions.filter((tx) => tx.billIncomeId === billIncomeId).map((tx) => dateOf(tx.occursAt)));
       }
       return dates;
     };

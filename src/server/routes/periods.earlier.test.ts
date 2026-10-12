@@ -260,12 +260,12 @@ describe("the first period's starting amount and the history before it", () => {
   });
 });
 
-describe("recurring items and earlier periods", () => {
+describe("bills and income and earlier periods", () => {
   const rent = { name: "Rent", kind: "expense", defaultAmountCents: 5000, recurrenceUnit: "month", firstDueDate: "2025-12-05" };
 
   it("fills in what was due in a period when it is added", async () => {
     // Due 12-05 (before the budget, so nothing yet) and 01-05 (P1).
-    expect((await ann.post("/api/recurring", rent)).status).toBe(201);
+    expect((await ann.post("/api/bills-income", rent)).status).toBe(201);
     expect(await budgetStartings()).toEqual([100_000, 99_000, 92_000]);
 
     const earlier = await addEarlier();
@@ -278,7 +278,7 @@ describe("recurring items and earlier periods", () => {
 
   it("back-fills an earlier period that already exists without touching the budget", async () => {
     await addEarlier();
-    expect((await ann.post("/api/recurring", rent)).status).toBe(201);
+    expect((await ann.post("/api/bills-income", rent)).status).toBe(201);
 
     expect(await starting(-1)).toBe(105_000);
     expect(await budgetStartings()).toEqual([100_000, 99_000, 92_000]);

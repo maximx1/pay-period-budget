@@ -53,7 +53,7 @@ export function TransactionRow({ transaction, onToggle, onEdit, reorder }: Trans
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate font-medium text-fg">{name}</span>
-            {transaction.recurringId &&
+            {transaction.billIncomeId &&
               // Added by a bill's or income's schedule, or tied to one by hand.
               (transaction.occurrenceDate ? (
                 <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="Scheduled bill or income" />

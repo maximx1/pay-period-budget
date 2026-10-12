@@ -202,9 +202,9 @@ token the server refused.
 | `list_periods` | Every pay period with its dates |
 | `get_period` | One period (by id, by date, or the current one): starting amount, totals, transactions |
 | `list_transactions` | Transactions between two dates, at most 366 days |
-| `list_recurring` | The bills and income the budget knows about |
-| `list_recurring_transactions` | Everything tied to one of them, newest first, with totals |
-| `create_recurring`, `update_recurring`, `end_recurring`, `delete_recurring` | Add (previewed first), change, stop or remove one |
+| `list_bills_income` | The bills and income the budget knows about |
+| `list_bill_or_income_transactions` | Everything tied to one of them, newest first, with totals |
+| `create_bill_or_income`, `update_bill_or_income`, `end_bill_or_income`, `delete_bill_or_income` | Add (previewed first), change, stop or remove one |
 | `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time; a transaction can be tied to a bill or income, or count toward an upcoming one |
 | `import_transactions` | Many transactions from a JSON file, previewed first |
 
@@ -241,7 +241,7 @@ three. Put the bank's own description in `note`: the import learns from it.
 
 Two more optional fields tie a row to one of your bills or incomes:
 
-- `"recurringId"`: the row belongs to that item, on top of whatever the item schedules. An
+- `"billIncomeId"`: the row belongs to that item, on top of whatever the item schedules. An
   extra $25 to the credit card, or money from a side job.
 - `"countsToward"`: the row *is* the payment the app was expecting. It names the upcoming
   entry the item added; that entry is replaced by the real payment (or shrinks, if the row
@@ -249,7 +249,7 @@ Two more optional fields tie a row to one of your bills or incomes:
 
 What to ask the assistant to do, in this order:
 
-1. Call `get_budget`, `list_periods` and `list_recurring` to learn the time zone, the dates
+1. Call `get_budget`, `list_periods` and `list_bills_income` to learn the time zone, the dates
    the budget covers and which bills it already adds by itself.
 2. Read the export's header and a few rows, then write a script that converts it to the
    file above, and keep the script for next time. Leave out pending rows; only posted ones
@@ -261,7 +261,7 @@ What to ask the assistant to do, in this order:
    - **rows that look like they belong to a bill or income**, with the reason and the
      exact field to add to the row. A row that matches a bill the app is expecting gets
      `countsToward`; one whose description was tied to an item before, or that mentions an
-     item's name, gets `recurringId`. The first time a description appears there is
+     item's name, gets `billIncomeId`. The first time a description appears there is
      nothing to go on; once you have said what it is, later imports recognise it.
    - **possible duplicates**: a transaction already in the budget with the same amount
      within three days, that is not an expected bill (something typed in by hand, say).

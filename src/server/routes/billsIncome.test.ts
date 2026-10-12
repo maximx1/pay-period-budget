@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PeriodView } from "../../shared/budget.ts";
 import { dateOf } from "../../shared/dates.ts";
-import type { RecurringItem, RecurringPreview } from "../../shared/recurring.ts";
+import type { BillOrIncome, BillOrIncomePreview } from "../../shared/billsIncome.ts";
 import type { Transaction } from "../../shared/transactions.ts";
 import type { PeriodRecord } from "../repos/types.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
@@ -41,33 +41,33 @@ const internet = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-async function createItem(client: Client, body: Record<string, unknown>): Promise<RecurringItem> {
-  const response = await client.post("/api/recurring", body);
+async function createItem(client: Client, body: Record<string, unknown>): Promise<BillOrIncome> {
+  const response = await client.post("/api/bills-income", body);
   expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
   return (await response.json()).item;
 }
 
-const listItems = async (client: Client) => ((await (await client.get("/api/recurring")).json()).items as RecurringItem[]);
+const listItems = async (client: Client) => ((await (await client.get("/api/bills-income")).json()).items as BillOrIncome[]);
 const periods = () => t.store.periods.listFromSeq(annId, 0);
 const startings = async () => (await periods()).map((p) => p.startingCents);
 const viewOf = async (period: PeriodRecord) => (await (await ann.get(`/api/periods/${period.id}`)).json()) as PeriodView;
 
 /** Generated transactions per period, as [date, signed amount] pairs. */
-async function generatedByPeriod(recurringId?: string): Promise<Array<Array<[string, number]>>> {
+async function generatedByPeriod(billIncomeId?: string): Promise<Array<Array<[string, number]>>> {
   const result: Array<Array<[string, number]>> = [];
   for (const period of await periods()) {
     const rows = (await viewOf(period)).transactions.filter((tx) =>
-      recurringId ? tx.recurringId === recurringId : tx.recurringId !== null,
+      billIncomeId ? tx.billIncomeId === billIncomeId : tx.billIncomeId !== null,
     );
     result.push(rows.map((tx) => [dateOf(tx.occursAt), tx.amountCents]));
   }
   return result;
 }
 
-async function allGenerated(recurringId: string): Promise<Transaction[]> {
+async function allGenerated(billIncomeId: string): Promise<Transaction[]> {
   const rows: Transaction[] = [];
   for (const period of await periods()) {
-    rows.push(...(await viewOf(period)).transactions.filter((tx) => tx.recurringId === recurringId));
+    rows.push(...(await viewOf(period)).transactions.filter((tx) => tx.billIncomeId === billIncomeId));
   }
   return rows;
 }
@@ -84,7 +84,7 @@ async function expectChainConsistent() {
   }
 }
 
-describe("recurring items: create, read, update, delete", () => {
+describe("bills and income: create, read, update, delete", () => {
   it("round-trips an item with its computed fields", async () => {
     const created = await createItem(ann, internet({ description: "Account 123\nhttps://example.com/pay", recurrenceInterval: 1 }));
 
@@ -119,7 +119,7 @@ describe("recurring items: create, read, update, delete", () => {
 
   it("updates only the fields sent", async () => {
     const created = await createItem(ann, internet({ description: "keep me" }));
-    const response = await ann.patch(`/api/recurring/${created.id}`, { name: "Fibre", recurrenceUnit: "week", recurrenceInterval: 2 });
+    const response = await ann.patch(`/api/bills-income/${created.id}`, { name: "Fibre", recurrenceUnit: "week", recurrenceInterval: 2 });
 
     expect(response.status).toBe(200);
     expect((await response.json()).item).toMatchObject({
@@ -134,9 +134,9 @@ describe("recurring items: create, read, update, delete", () => {
 
   it("deletes an item", async () => {
     const created = await createItem(ann, internet());
-    expect((await ann.delete(`/api/recurring/${created.id}`)).status).toBe(204);
+    expect((await ann.delete(`/api/bills-income/${created.id}`)).status).toBe(204);
     expect(await listItems(ann)).toEqual([]);
-    expect((await ann.delete(`/api/recurring/${created.id}`)).status).toBe(404);
+    expect((await ann.delete(`/api/bills-income/${created.id}`)).status).toBe(404);
   });
 
   it.each([
@@ -153,7 +153,7 @@ describe("recurring items: create, read, update, delete", () => {
     ["an impossible first due date", { firstDueDate: "2026-02-30" }, "firstDueDate"],
     ["an end date before the first due date", { endDate: "2026-01-24" }, "endDate"],
   ])("rejects %s", async (_label, overrides, field) => {
-    for (const path of ["/api/recurring", "/api/recurring/preview"]) {
+    for (const path of ["/api/bills-income", "/api/bills-income/preview"]) {
       const response = await ann.post(path, internet(overrides));
       expect(response.status).toBe(400);
       expect((await response.json()).error.fields).toHaveProperty(field);
@@ -164,13 +164,13 @@ describe("recurring items: create, read, update, delete", () => {
   it("checks a patched end date against the stored first due date", async () => {
     const created = await createItem(ann, internet());
 
-    const tooEarly = await ann.patch(`/api/recurring/${created.id}`, { endDate: "2026-01-01" });
+    const tooEarly = await ann.patch(`/api/bills-income/${created.id}`, { endDate: "2026-01-01" });
     expect(tooEarly.status).toBe(400);
     expect((await tooEarly.json()).error.fields).toHaveProperty("endDate");
 
-    expect((await ann.patch(`/api/recurring/${created.id}`, { endDate: "2026-06-25" })).status).toBe(200);
-    expect((await ann.patch(`/api/recurring/${created.id}`, { endDate: null })).status).toBe(200);
-    expect((await ann.patch(`/api/recurring/${created.id}`, {})).status).toBe(400);
+    expect((await ann.patch(`/api/bills-income/${created.id}`, { endDate: "2026-06-25" })).status).toBe(200);
+    expect((await ann.patch(`/api/bills-income/${created.id}`, { endDate: null })).status).toBe(200);
+    expect((await ann.patch(`/api/bills-income/${created.id}`, {})).status).toBe(400);
   });
 
   it("marks an item archived once its end date has passed", async () => {
@@ -292,7 +292,7 @@ describe("generating transactions", () => {
     const body = internet({ recurrenceUnit: "week", defaultAmountCents: 1000, firstDueDate: "2026-01-05" });
     const before = await startings();
 
-    const preview = (await (await ann.post("/api/recurring/preview", body)).json()) as RecurringPreview;
+    const preview = (await (await ann.post("/api/bills-income/preview", body)).json()) as BillOrIncomePreview;
     expect(preview).toEqual({ transactions: 8, periods: 4, pastPeriods: 1, earliestDate: "2026-01-05" });
     expect(await listItems(ann)).toEqual([]);
     expect(await generatedByPeriod()).toEqual([[], [], [], [], []]);
@@ -305,10 +305,10 @@ describe("generating transactions", () => {
   });
 
   it("previews an item that lands only in the current period, or nowhere yet", async () => {
-    const current = (await (await ann.post("/api/recurring/preview", internet())).json()) as RecurringPreview;
+    const current = (await (await ann.post("/api/bills-income/preview", internet())).json()) as BillOrIncomePreview;
     expect(current).toEqual({ transactions: 1, periods: 1, pastPeriods: 0, earliestDate: "2026-01-25" });
 
-    const later = (await (await ann.post("/api/recurring/preview", internet({ firstDueDate: "2026-06-25" }))).json()) as RecurringPreview;
+    const later = (await (await ann.post("/api/bills-income/preview", internet({ firstDueDate: "2026-06-25" }))).json()) as BillOrIncomePreview;
     expect(later).toEqual({ transactions: 0, periods: 0, pastPeriods: 0, earliestDate: null });
   });
 });
@@ -319,7 +319,7 @@ describe("generated transactions stand on their own", () => {
     const before = await generatedByPeriod(item.id);
     const startingBefore = await startings();
 
-    await ann.patch(`/api/recurring/${item.id}`, { defaultAmountCents: 7500, name: "Fibre", firstDueDate: "2026-01-10", recurrenceUnit: "week" });
+    await ann.patch(`/api/bills-income/${item.id}`, { defaultAmountCents: 7500, name: "Fibre", firstDueDate: "2026-01-10", recurrenceUnit: "week" });
 
     expect(await generatedByPeriod(item.id)).toEqual(before);
     expect((await allGenerated(item.id))[0]!.name).toBe("Internet");
@@ -328,7 +328,7 @@ describe("generated transactions stand on their own", () => {
 
   it("use the item's new amount and name in periods generated afterwards", async () => {
     const item = await createItem(ann, internet());
-    await ann.patch(`/api/recurring/${item.id}`, { defaultAmountCents: 7500, name: "Fibre" });
+    await ann.patch(`/api/bills-income/${item.id}`, { defaultAmountCents: 7500, name: "Fibre" });
     await ann.post("/api/periods/locate", { date: "2026-03-01" });
 
     const rows = await allGenerated(item.id);
@@ -365,11 +365,11 @@ describe("generated transactions stand on their own", () => {
     const item = await createItem(ann, internet());
     const startingBefore = await startings();
 
-    expect((await ann.delete(`/api/recurring/${item.id}`)).status).toBe(204);
+    expect((await ann.delete(`/api/bills-income/${item.id}`)).status).toBe(204);
 
     const [, , p2] = await periods();
     const orphan = (await viewOf(p2!)).transactions[0];
-    expect(orphan).toMatchObject({ name: "Internet", amountCents: -6000, recurringId: null });
+    expect(orphan).toMatchObject({ name: "Internet", amountCents: -6000, billIncomeId: null });
     expect(await startings()).toEqual(startingBefore);
 
     // And nothing more is generated for it.
@@ -389,7 +389,7 @@ describe("generated transactions stand on their own", () => {
       paidAt: null,
       sortOrder: 0,
       note: null,
-      recurringId: item.id,
+      billIncomeId: item.id,
       occurrenceDate: "2026-01-25",
       importKey: null,
       createdAt: t.clock.now(),
@@ -412,7 +412,7 @@ describe("ending an item", () => {
     const paidFuture = rows.find((tx) => tx.occursAt.startsWith("2026-02-02"))!;
     await ann.patch(`/api/transactions/${paidFuture.id}`, { status: "paid" });
 
-    const response = await ann.post(`/api/recurring/${item.id}/end`, { removeUpcoming: true });
+    const response = await ann.post(`/api/bills-income/${item.id}/end`, { removeUpcoming: true });
     expect(response.status).toBe(200);
     expect((await response.json()).item).toMatchObject({ endDate: "2026-01-15", archived: false });
 
@@ -428,7 +428,7 @@ describe("ending an item", () => {
     const item = await createItem(ann, weekly);
     const startingBefore = await startings();
 
-    await ann.post(`/api/recurring/${item.id}/end`, { removeUpcoming: false });
+    await ann.post(`/api/bills-income/${item.id}/end`, { removeUpcoming: false });
 
     expect((await allGenerated(item.id)).length).toBe(8);
     expect(await startings()).toEqual(startingBefore);
@@ -439,8 +439,8 @@ describe("ending an item", () => {
   it("keeps an earlier end date and requires the option", async () => {
     const item = await createItem(ann, internet({ firstDueDate: "2025-12-20", endDate: "2026-01-02" }));
 
-    expect((await ann.post(`/api/recurring/${item.id}/end`, {})).status).toBe(400);
-    const response = await ann.post(`/api/recurring/${item.id}/end`, { removeUpcoming: true });
+    expect((await ann.post(`/api/bills-income/${item.id}/end`, {})).status).toBe(400);
+    const response = await ann.post(`/api/bills-income/${item.id}/end`, { removeUpcoming: true });
     expect((await response.json()).item).toMatchObject({ endDate: "2026-01-02", archived: true });
   });
 });
@@ -448,12 +448,12 @@ describe("ending an item", () => {
 describe("access control", () => {
   it("requires a session", async () => {
     const anonymous = t.client();
-    expect((await anonymous.get("/api/recurring")).status).toBe(401);
-    expect((await anonymous.post("/api/recurring", internet())).status).toBe(401);
-    expect((await anonymous.post("/api/recurring/preview", internet())).status).toBe(401);
-    expect((await anonymous.patch("/api/recurring/x", { name: "y" })).status).toBe(401);
-    expect((await anonymous.delete("/api/recurring/x")).status).toBe(401);
-    expect((await anonymous.post("/api/recurring/x/end", { removeUpcoming: true })).status).toBe(401);
+    expect((await anonymous.get("/api/bills-income")).status).toBe(401);
+    expect((await anonymous.post("/api/bills-income", internet())).status).toBe(401);
+    expect((await anonymous.post("/api/bills-income/preview", internet())).status).toBe(401);
+    expect((await anonymous.patch("/api/bills-income/x", { name: "y" })).status).toBe(401);
+    expect((await anonymous.delete("/api/bills-income/x")).status).toBe(401);
+    expect((await anonymous.post("/api/bills-income/x/end", { removeUpcoming: true })).status).toBe(401);
   });
 
   it("keeps one user's items and their transactions out of another's reach", async () => {
@@ -462,9 +462,9 @@ describe("access control", () => {
     const bobId = (await t.store.users.findByUsername("bob"))!.id;
 
     expect(await listItems(bob)).toEqual([]);
-    expect((await bob.patch(`/api/recurring/${item.id}`, { name: "mine now" })).status).toBe(404);
-    expect((await bob.delete(`/api/recurring/${item.id}`)).status).toBe(404);
-    expect((await bob.post(`/api/recurring/${item.id}/end`, { removeUpcoming: true })).status).toBe(404);
+    expect((await bob.patch(`/api/bills-income/${item.id}`, { name: "mine now" })).status).toBe(404);
+    expect((await bob.delete(`/api/bills-income/${item.id}`)).status).toBe(404);
+    expect((await bob.post(`/api/bills-income/${item.id}/end`, { removeUpcoming: true })).status).toBe(404);
 
     // Bob's periods got nothing from Ann's item, then or when generated later.
     await bob.post("/api/periods/locate", { date: "2026-04-01" });

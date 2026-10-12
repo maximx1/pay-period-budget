@@ -2,7 +2,7 @@ import { Pencil } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { formatDay } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
-import type { RecurringItem } from "../../../shared/recurring.ts";
+import type { BillOrIncome } from "../../../shared/billsIncome.ts";
 import { Card } from "../../components/ui/Card.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { cn } from "../../lib/cn.ts";
@@ -42,14 +42,14 @@ function Description({ text }: { text: string }) {
   );
 }
 
-type RecurringCardProps = {
-  item: RecurringItem;
+type BillOrIncomeCardProps = {
+  item: BillOrIncome;
   /** The card itself: show what has gone to this bill or income. */
   onOpen: () => void;
   onEdit: () => void;
 };
 
-export function RecurringCard({ item, onOpen, onEdit }: RecurringCardProps) {
+export function BillOrIncomeCard({ item, onOpen, onEdit }: BillOrIncomeCardProps) {
   const income = item.kind === "income";
 
   return (

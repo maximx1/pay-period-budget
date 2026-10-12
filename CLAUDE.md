@@ -11,7 +11,7 @@ Running, configuring and deploying it: `README.md` and `docs/deploy.md`.
 
 The roadmap, domain rules and task breakdown live in `docs/plan/`. Read
 `docs/plan/README.md` before starting any feature work, and `docs/plan/domain.md` before
-touching periods, transactions or recurring items.
+touching periods, transactions or bills and income.
 
 ## Commands
 
@@ -20,7 +20,7 @@ touching periods, transactions or recurring items.
 | `npm run dev` | API on :8787 (`tsx watch`) + Vite on :5173, which proxies `/api` |
 | `npm run check` | Typecheck + all tests. Must pass before a task is done |
 | `npm run test:watch` | Vitest in watch mode |
-| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before |
+| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before, and for a renamed table and column it wrote SQL that would have cleared every link (see `0008` and `src/server/db/migrations.test.ts`). Write renames by hand |
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
 | `npm run db:backup -- <file>` | Write a consistent copy of the database |
@@ -132,8 +132,12 @@ android/      Capacitor's Android project. Generated once, then edited by hand; 
 - The Android build needs a JDK 21. Gradle 8.14 (what Capacitor 8 ships) fails on Java 25
   with "Unsupported class file major version 69".
 
-- Recurring bills and income are **recurring items** (`recurring_items`, `/api/recurring`,
-  `features/recurring`). Never name them "accounts": that word is reserved for a future
+- Bills and income, scheduled or not, are called exactly that, on screen ("Bills & Income")
+  and in the code: the table is `bills_income`, the API `/api/bills-income`, the folder
+  `features/billsIncome`, one of them a `BillOrIncome`, and a transaction points at one
+  with `billIncomeId`. (Until 2026-10-12 they were "recurring items"; `recurrenceUnit` and
+  `recurrenceInterval` keep their names because they describe the schedule.) Never name
+  them "accounts": that word is reserved for a future
   feature (savings accounts, payees) described in `docs/plan/backlog.md`.
 - Folders next to this one are unrelated projects. Do not read from or modify them.
 - Commit only when asked.

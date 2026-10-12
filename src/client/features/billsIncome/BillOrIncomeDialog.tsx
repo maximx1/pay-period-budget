@@ -10,10 +10,10 @@ import { describeRecurrence, RECURRENCE_UNITS } from "../../../shared/recurrence
 import {
   END_BEFORE_START_MESSAGE,
   MAX_RECURRENCE_INTERVAL,
-  type RecurringInput,
-  type RecurringItem,
-  type RecurringPreview,
-} from "../../../shared/recurring.ts";
+  type BillOrIncomeInput,
+  type BillOrIncome,
+  type BillOrIncomePreview,
+} from "../../../shared/billsIncome.ts";
 import { MAX_TRANSACTION_CENTS, TRANSACTION_KINDS } from "../../../shared/transactions.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -27,11 +27,11 @@ import { cn } from "../../lib/cn.ts";
 import { useDebouncedValue } from "../../lib/useDebouncedValue.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import {
-  useCreateRecurring,
-  useDeleteRecurring,
-  useEndRecurring,
-  useRecurringPreview,
-  useUpdateRecurring,
+  useCreateBillOrIncome,
+  useDeleteBillOrIncome,
+  useEndBillOrIncome,
+  useBillOrIncomePreview,
+  useUpdateBillOrIncome,
 } from "./api.ts";
 
 const parseAmount = (text: string) => {
@@ -68,7 +68,7 @@ const formSchema = z
   );
 type FormValues = z.infer<typeof formSchema>;
 
-const toInput = (values: FormValues): RecurringInput => {
+const toInput = (values: FormValues): BillOrIncomeInput => {
   const noSchedule = values.recurrenceUnit === "none";
   return {
     name: values.name.trim(),
@@ -104,7 +104,7 @@ const repeatOptions = (everyLabel: boolean) =>
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /** Says what saving a new item will do to the periods that already exist. */
-function PreviewNote({ preview }: { preview: RecurringPreview }) {
+function PreviewNote({ preview }: { preview: BillOrIncomePreview }) {
   if (preview.transactions === 0) {
     return <p className="text-sm text-muted">Nothing to add yet. It will show up when its first period comes around.</p>;
   }
@@ -127,32 +127,32 @@ function PreviewNote({ preview }: { preview: RecurringPreview }) {
   );
 }
 
-type RecurringDialogProps = {
+type BillOrIncomeDialogProps = {
   open: boolean;
   onClose: () => void;
   /** The budget's time zone, for "today". */
   timezone: string;
   /** Present when editing; absent when adding. */
-  item?: RecurringItem;
+  item?: BillOrIncome;
 };
 
-export function RecurringDialog({ open, onClose, item, timezone }: RecurringDialogProps) {
+export function BillOrIncomeDialog({ open, onClose, item, timezone }: BillOrIncomeDialogProps) {
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={item ? (item.kind === "income" ? "Edit income" : "Edit bill") : "Add a bill or income"}
     >
-      <RecurringForm onClose={onClose} item={item} timezone={timezone} />
+      <BillOrIncomeForm onClose={onClose} item={item} timezone={timezone} />
     </Dialog>
   );
 }
 
-function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "open">) {
-  const create = useCreateRecurring();
-  const update = useUpdateRecurring();
-  const remove = useDeleteRecurring();
-  const end = useEndRecurring();
+function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogProps, "open">) {
+  const create = useCreateBillOrIncome();
+  const update = useUpdateBillOrIncome();
+  const remove = useDeleteBillOrIncome();
+  const end = useEndBillOrIncome();
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"end" | "delete" | null>(null);
   const [removeUpcoming, setRemoveUpcoming] = useState(true);
@@ -211,7 +211,7 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
 
   // Only a new item adds transactions, so only then is there anything to preview.
   const previewInput = useDebouncedValue(!item && parsed.success ? JSON.stringify(toInput(parsed.data)) : null, 300);
-  const preview = useRecurringPreview(previewInput ? (JSON.parse(previewInput) as RecurringInput) : null);
+  const preview = useBillOrIncomePreview(previewInput ? (JSON.parse(previewInput) as BillOrIncomeInput) : null);
 
   const onSubmit = handleSubmit(async (submitted) => {
     setFormError(null);

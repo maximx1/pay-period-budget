@@ -40,7 +40,7 @@ const fields = {
 
 export const END_BEFORE_START_MESSAGE = "Must be on or after the first due date";
 
-export const recurringInputSchema = z
+export const billOrIncomeInputSchema = z
   .object({
     ...fields,
     description: fields.description.default(""),
@@ -61,10 +61,10 @@ export const recurringInputSchema = z
     path: ["endDate"],
     message: END_BEFORE_START_MESSAGE,
   });
-export type RecurringInput = z.output<typeof recurringInputSchema>;
+export type BillOrIncomeInput = z.output<typeof billOrIncomeInputSchema>;
 
 /** Any subset of the fields. The end date is checked against the first due date after merging. */
-export const recurringPatchSchema = z
+export const billOrIncomePatchSchema = z
   .object({
     name: fields.name.optional(),
     description: fields.description.optional(),
@@ -76,14 +76,14 @@ export const recurringPatchSchema = z
     endDate: fields.endDate.optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
-export type RecurringPatch = z.output<typeof recurringPatchSchema>;
+export type BillOrIncomePatch = z.output<typeof billOrIncomePatchSchema>;
 
-export const endRecurringSchema = z.object({
+export const endBillOrIncomeSchema = z.object({
   /** Also delete its upcoming transactions dated after today. */
   removeUpcoming: z.boolean(),
 });
 
-export type RecurringItem = {
+export type BillOrIncome = {
   id: string;
   name: string;
   description: string;
@@ -103,11 +103,11 @@ export type RecurringItem = {
   scheduleText: string;
 };
 
-export type RecurringListResponse = { items: RecurringItem[] };
-export type RecurringResponse = { item: RecurringItem };
+export type BillsIncomeListResponse = { items: BillOrIncome[] };
+export type BillOrIncomeResponse = { item: BillOrIncome };
 
 /** What creating an item would add to the periods that already exist. */
-export type RecurringPreview = {
+export type BillOrIncomePreview = {
   transactions: number;
   periods: number;
   /** How many of those periods ended before today. */
@@ -116,14 +116,14 @@ export type RecurringPreview = {
 };
 
 /** The most of an item's transactions one request returns. */
-export const MAX_RECURRING_TRANSACTIONS_PAGE = 100;
+export const MAX_BILL_OR_INCOME_TRANSACTIONS_PAGE = 100;
 
-export const recurringTransactionsQuerySchema = z.object({
+export const billOrIncomeTransactionsQuerySchema = z.object({
   limit: z.coerce
     .number("Enter a number")
     .int("Enter a whole number")
     .min(1, "Ask for at least one")
-    .max(MAX_RECURRING_TRANSACTIONS_PAGE, `Ask for ${MAX_RECURRING_TRANSACTIONS_PAGE} or fewer at a time`)
+    .max(MAX_BILL_OR_INCOME_TRANSACTIONS_PAGE, `Ask for ${MAX_BILL_OR_INCOME_TRANSACTIONS_PAGE} or fewer at a time`)
     .default(30),
   /** `nextCursor` from the page before. Left out for the newest. */
   before: z
@@ -131,10 +131,10 @@ export const recurringTransactionsQuerySchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}_[\w-]{1,100}$/, "That isn't a cursor from an earlier page")
     .optional(),
 });
-export type RecurringTransactionsQuery = z.output<typeof recurringTransactionsQuerySchema>;
+export type BillOrIncomeTransactionsQuery = z.output<typeof billOrIncomeTransactionsQuerySchema>;
 
-/** One page of everything tied to a recurring item, newest first. */
-export type RecurringTransactionsResponse = {
+/** One page of everything tied to a bill or income, newest first. */
+export type BillOrIncomeTransactionsResponse = {
   transactions: Transaction[];
   /** Pass as `before` for the next, older page. Null when this page reaches the oldest. */
   nextCursor: string | null;

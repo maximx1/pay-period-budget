@@ -1,6 +1,6 @@
 import { Plus, ReceiptText, Search, SearchX } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import type { RecurringItem } from "../../../shared/recurring.ts";
+import type { BillOrIncome } from "../../../shared/billsIncome.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
@@ -8,10 +8,10 @@ import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { useBudget } from "../budget/api.ts";
-import { useRecurringItems } from "./api.ts";
-import { RecurringCard } from "./RecurringCard.tsx";
-import { RecurringDetailDialog } from "./RecurringDetailDialog.tsx";
-import { RecurringDialog } from "./RecurringDialog.tsx";
+import { useBillsIncome } from "./api.ts";
+import { BillOrIncomeCard } from "./BillOrIncomeCard.tsx";
+import { BillOrIncomeDetailDialog } from "./BillOrIncomeDetailDialog.tsx";
+import { BillOrIncomeDialog } from "./BillOrIncomeDialog.tsx";
 
 type KindFilter = "all" | "expense" | "income";
 
@@ -23,23 +23,23 @@ const kindFilters = [
 
 const gridClass = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
-function matches(item: RecurringItem, search: string, kind: KindFilter, showArchived: boolean): boolean {
+function matches(item: BillOrIncome, search: string, kind: KindFilter, showArchived: boolean): boolean {
   if (item.archived && !showArchived) return false;
   if (kind !== "all" && item.kind !== kind) return false;
   const needle = search.trim().toLowerCase();
   return needle === "" || `${item.name}\n${item.description}`.toLowerCase().includes(needle);
 }
 
-/** Bills and income ("recurring items" in the code), as a filterable grid of cards. */
-export function RecurringPage() {
-  const items = useRecurringItems();
+/** Bills and income, as a filterable grid of cards. */
+export function BillsIncomePage() {
+  const items = useBillsIncome();
   const budget = useBudget();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
   // `item` is kept after closing so the dialog doesn't change its title while it fades out.
-  const [dialog, setDialog] = useState<{ open: boolean; item?: RecurringItem }>({ open: false });
-  const [detail, setDetail] = useState<{ open: boolean; item?: RecurringItem }>({ open: false });
+  const [dialog, setDialog] = useState<{ open: boolean; item?: BillOrIncome }>({ open: false });
+  const [detail, setDetail] = useState<{ open: boolean; item?: BillOrIncome }>({ open: false });
 
   const addButton = (
     <Button onClick={() => setDialog({ open: true })}>
@@ -114,7 +114,7 @@ export function RecurringPage() {
         ) : (
           <div className={gridClass}>
             {visible.map((item) => (
-              <RecurringCard
+              <BillOrIncomeCard
                 key={item.id}
                 item={item}
                 onOpen={() => setDetail({ open: true, item })}
@@ -129,15 +129,15 @@ export function RecurringPage() {
 
   return (
     <>
-      <PageHeader title="Bills & income" subtitle="What you pay and what you're paid, on a schedule or not." actions={items.data?.length ? addButton : undefined} />
+      <PageHeader title="Bills & Income" subtitle="What you pay and what you're paid, on a schedule or not." actions={items.data?.length ? addButton : undefined} />
       {content}
-      <RecurringDialog
+      <BillOrIncomeDialog
         open={dialog.open}
         onClose={() => setDialog((current) => ({ ...current, open: false }))}
         timezone={budget.data?.timezone ?? "UTC"}
         item={dialog.item}
       />
-      <RecurringDetailDialog
+      <BillOrIncomeDetailDialog
         open={detail.open}
         onClose={() => setDetail((current) => ({ ...current, open: false }))}
         timezone={budget.data?.timezone ?? "UTC"}

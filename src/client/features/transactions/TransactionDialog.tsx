@@ -20,7 +20,7 @@ import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
-import { useRecurringItems } from "../recurring/api.ts";
+import { useBillsIncome } from "../billsIncome/api.ts";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
 const parseAmount = (text: string) => {
@@ -35,7 +35,7 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   note: z.string().max(500, "Keep the note under 500 characters"),
   paid: z.boolean(),
   /** The bill or income it belongs to; empty for none. */
-  recurringId: z.string(),
+  billIncomeId: z.string(),
   /** An upcoming entry of that bill or income which this pays toward; empty for none. */
   countsToward: z.string(),
 });
@@ -99,7 +99,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           occursAt: transaction.occursAt,
           note: transaction.note ?? "",
           paid: transaction.status === "paid",
-          recurringId: transaction.recurringId ?? "",
+          billIncomeId: transaction.billIncomeId ?? "",
           countsToward: "",
         }
       : {
@@ -109,16 +109,16 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           occursAt: defaultOccursAt,
           note: "",
           paid: false,
-          recurringId: "",
+          billIncomeId: "",
           countsToward: "",
         },
   });
 
   // Bills and income to tie this to: the current ones, and the one it is already tied to
   // even if that has since ended.
-  const items = useRecurringItems();
-  const [chosenId, chosenKind] = watch(["recurringId", "kind"]);
-  const choices = (items.data ?? []).filter((item) => !item.archived || item.id === transaction?.recurringId);
+  const items = useBillsIncome();
+  const [chosenId, chosenKind] = watch(["billIncomeId", "kind"]);
+  const choices = (items.data ?? []).filter((item) => !item.archived || item.id === transaction?.billIncomeId);
   const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
 
   // What a new payment could be paying: the upcoming entries that bill or income added to
@@ -128,7 +128,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     : view.transactions.filter(
         (entry) =>
           chosenId !== "" &&
-          entry.recurringId === chosenId &&
+          entry.billIncomeId === chosenId &&
           entry.occurrenceDate !== null &&
           entry.status === "upcoming" &&
           entry.kind === chosenKind,
@@ -152,7 +152,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
       setValue("amount", centsToInput(item.defaultAmountCents));
     }
   }
-  const itemField = register("recurringId");
+  const itemField = register("billIncomeId");
 
   function finish({ period, countedToward }: TransactionResponse) {
     onClose();
@@ -167,10 +167,10 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, recurringId, countsToward }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward }) => {
     setFormError(null);
     const amountCents = parseAmount(amount) ?? 0;
-    const tiedTo = recurringId === "" ? null : recurringId;
+    const tiedTo = billIncomeId === "" ? null : billIncomeId;
     try {
       finish(
         transaction
@@ -183,7 +183,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
                 kind,
                 occursAt,
                 note,
-                ...(tiedTo !== transaction.recurringId && { recurringId: tiedTo }),
+                ...(tiedTo !== transaction.billIncomeId && { billIncomeId: tiedTo }),
               },
             })
           : await create.mutateAsync({
@@ -193,7 +193,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
               occursAt,
               note,
               paid,
-              recurringId: tiedTo,
+              billIncomeId: tiedTo,
               ...(countsToward !== "" && payable.some((entry) => entry.id === countsToward) && { countsToward }),
             }),
       );
@@ -201,7 +201,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
       if (error instanceof ApiError && error.fields?.amountCents) {
         setError("amount", { message: error.fields.amountCents });
       }
-      setFormError(applyApiError(error, setError, ["name", "occursAt", "note", "recurringId", "countsToward"]));
+      setFormError(applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "countsToward"]));
     }
   });
 
@@ -255,7 +255,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           label="Bill or income"
           options={itemOptions}
           hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : undefined}
-          error={errors.recurringId?.message}
+          error={errors.billIncomeId?.message}
           {...itemField}
           onChange={(event) => {
             void itemField.onChange(event);

@@ -366,7 +366,7 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
 
 ### 13.7 (2026-10-12)
 
-- **The card is the button.** Clicking anywhere on a card on the Bills & income page opens
+- **The card is the button.** Clicking anywhere on a card on the Bills & Income page opens
   its detail. The name is a real `<button>` whose `::after` covers the card; the pencil
   and the description (its links and its "more" toggle) sit above that and keep working.
 - **`RecurringDetailDialog`**: kind, schedule and usual amount; three figures (paid,
@@ -399,20 +399,40 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
 - No component tests exist in this project, so none were added; the endpoint behind both
   views is covered by `routes/recurring.transactions.test.ts`.
 
-## The name: "Bills & income" (agreed 2026-10-12)
+## The name: "Bills & Income" (agreed 2026-10-12; the code renamed the same day)
 
-The owner pointed out that "recurring" no longer fits: some of these never repeat. The
-screen already says "Bills" and "Income" in its filter and in the dialog; only the page
-title, the navigation and "Add recurring" say "Recurring". The owner agreed to this plan:
+The owner pointed out that "recurring" no longer fits: some of these never repeat, and
+asked for the code to match the screen. **Everything above this heading uses the names of
+the time it was written** (`recurringId`, `/api/recurring`, `list_recurring`, …). The
+names now, and the rule, are decision 13 in `README.md` and the last bullet of `CLAUDE.md`.
 
-- Call the page **Bills & income**. One of them is a *bill* (money out) or an *income*
-  (money in), with or without a schedule.
-- Keep **Accounts** for where money sits (savings, the joint checking account). A regular
-  transfer to savings is then a bill that *points at* an account, which is how
-  `backlog.md` already describes the Accounts feature.
-- Rename what is on screen first. Renaming the code (`recurring_items`, `/api/recurring`,
-  `features/recurring`, the MCP tools, `CLAUDE.md`) is a separate, mechanical task: it
-  touches the table name, every endpoint and the phone app, and should not be mixed into
-  a feature.
+What the rename did:
 
-The on-screen rename was done with 13.6. Until the code is renamed, `CLAUDE.md`'s rule stands as written: in code they are recurring items.
+- Files moved: `shared/recurring.ts` → `shared/billsIncome.ts`; server `routes/`,
+  `services/` and `repos/sqlite/` `recurring.ts` → `billsIncome.ts`;
+  `services/recurringLinks.ts` → `billIncomeLinks.ts`; `features/recurring/` →
+  `features/billsIncome/`, with `RecurringPage` → `BillsIncomePage` and the other
+  components → `BillOrIncome…`.
+- Collections are "bills income" (`bills_income`, `billsIncome`, `/api/bills-income`,
+  `list_bills_income`); one of them is a "bill or income" (`BillOrIncome`,
+  `create_bill_or_income`); an id that points at one is `billIncomeId` / `bill_income_id`.
+- The page moved from `/recurring` to `/bills-income`.
+- In the import's possible duplicates, `reason: "recurring"` became `"generated"`.
+- **The import file's field is now `billIncomeId`**, and every MCP tool that had
+  "recurring" in its name has a new name. An MCP file built before this, an assistant's
+  saved steps, or a conversion script written against the old names must be redone.
+- **Migration `0008` was written by hand.** `drizzle-kit generate` (told through its
+  prompts that these were renames) produced SQL that renamed the table, then rebuilt it
+  by copy, drop and rename, which with foreign keys on would have set every
+  transaction's link to null; and it never renamed the column, then copied from a column
+  that did not exist, which SQLite reads as the literal text. The file was replaced
+  before anything could apply it. What is there now is two `ALTER TABLE … RENAME`
+  statements and the two indexes dropped and recreated under their new names.
+- `src/server/db/migrations.test.ts` builds a database as it was before `0008`, fills it,
+  and lets the migration run: every item, transaction and link must survive, the unique
+  and foreign-key rules must still hold, and no old name may remain. The same migration
+  was also run on a copy of the dev database, and then on the dev database itself, with
+  each transaction's link compared before and after.
+- A deployed server must be backed up before it is updated across this migration: the
+  previous version of the code cannot read the database afterwards.
+- The Android app has to be rebuilt and reinstalled: the old build calls `/api/recurring`.

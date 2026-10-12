@@ -30,10 +30,10 @@ export const transactionInputSchema = z.object({
   note: noteSchema.optional(),
   /** Create it already marked as paid. */
   paid: z.boolean().optional(),
-  /** The recurring item this belongs to, if any. */
-  recurringId: idSchema.nullable().optional(),
+  /** The bill or income this belongs to, if any. */
+  billIncomeId: idSchema.nullable().optional(),
   /**
-   * An upcoming transaction a recurring item added, which this one pays part or all of.
+   * An upcoming transaction a bill or income added, which this one pays part or all of.
    * That entry shrinks by this amount and is removed once nothing is left of it. It also
    * ties this transaction to the same item.
    */
@@ -50,8 +50,8 @@ export const transactionPatchSchema = z
     /** Empty or null clears the note. */
     note: noteSchema.nullable().optional(),
     status: z.enum(TRANSACTION_STATUSES).optional(),
-    /** Ties it to a recurring item; null unties it. */
-    recurringId: idSchema.nullable().optional(),
+    /** Ties it to a bill or income; null unties it. */
+    billIncomeId: idSchema.nullable().optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type TransactionPatch = z.output<typeof transactionPatchSchema>;
@@ -77,10 +77,10 @@ export type Transaction = {
   paidAt: string | null;
   note: string | null;
   sortOrder: number;
-  /** The recurring item it belongs to: the one that generated it, or one it was tied to. Null for neither. */
-  recurringId: string | null;
+  /** The bill or income it belongs to: the one that generated it, or one it was tied to. Null for neither. */
+  billIncomeId: string | null;
   /**
-   * The scheduled date it was generated for. Set only on a transaction a recurring item
+   * The scheduled date it was generated for. Set only on a transaction a bill or income
    * added by itself, so it tells those apart from ones tied to the item afterwards.
    */
   occurrenceDate: LocalDate | null;
@@ -178,20 +178,20 @@ export type PossibleDuplicate = {
   /** The closest transaction of the same amount within DUPLICATE_WINDOW_DAYS. */
   existing: Transaction;
   /**
-   * What the existing one is: an entry a recurring item generated, something entered by
+   * What the existing one is: an entry a bill or income generated, something entered by
    * hand, or imported under a different key (reported only when the date and name also match).
    */
-  reason: "recurring" | "manual" | "imported";
+  reason: "generated" | "manual" | "imported";
   /** Days between the two dates; 0 when they share a date. */
   daysApart: number;
 };
 
-/** A guess at which recurring item an incoming row belongs to. Never applied by the server. */
-export type RecurringSuggestion = {
+/** A guess at which bill or income an incoming row belongs to. Never applied by the server. */
+export type BillOrIncomeSuggestion = {
   /** Position of the incoming row in the request. */
   index: number;
-  recurringId: string;
-  recurringName: string;
+  billIncomeId: string;
+  billIncomeName: string;
   /**
    * Why: `occurrence`, the row looks like the upcoming entry that item generated (and
    * `countsToward` names it); `same_description`, a transaction already tied to the item
@@ -211,7 +211,7 @@ export type TransactionImportResponse = {
    * account, `deleted` when there was one and the user deleted it.
    */
   skipped: Array<{ index: number; importKey: string; reason: "held" | "deleted" }>;
-  /** Pay periods created to hold the rows. Each brings its recurring items' transactions with it. */
+  /** Pay periods created to hold the rows. Each brings what its bills and income schedule with it. */
   periodsAdded: { earlier: number; later: number };
   /** The periods that received rows, oldest first. */
   periods: Array<{ id: string; startDate: LocalDate; endDate: LocalDate; count: number; netCents: number }>;
@@ -220,10 +220,10 @@ export type TransactionImportResponse = {
   /** Upcoming entries that rows of this request paid toward, and what is left of each. */
   countedToward: CountedToward[];
   /**
-   * For rows that say nothing about a recurring item: which one each probably belongs to.
-   * A report only. To accept one, put its `recurringId` (and `countsToward`) on the row.
+   * For rows that say nothing about a bill or income: which one each probably belongs to.
+   * A report only. To accept one, put its `billIncomeId` (and `countsToward`) on the row.
    */
-  recurringSuggestions: RecurringSuggestion[];
+  billOrIncomeSuggestions: BillOrIncomeSuggestion[];
   /** Today's period before and after, or null if no period covers today. */
   current: {
     periodId: string;
