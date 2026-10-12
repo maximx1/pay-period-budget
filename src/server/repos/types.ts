@@ -201,6 +201,20 @@ export interface TransactionRepo {
    * and occurrence date. Returns whether it was inserted.
    */
   createIfAbsent(transaction: TransactionRecord): Promise<boolean>;
+  /**
+   * A recurring item's transactions, newest first, at most `limit`. With `before`, only
+   * those older than that position in the same order.
+   */
+  listForRecurring(
+    userId: string,
+    recurringId: string,
+    page: { limit: number; before?: { occursAt: LocalDateTime; id: string } },
+  ): Promise<TransactionRecord[]>;
+  /** How many transactions a recurring item has, and their signed totals by status. */
+  sumForRecurring(
+    userId: string,
+    recurringId: string,
+  ): Promise<{ count: number; paidCents: number; upcomingCents: number }>;
   /** A recurring item's upcoming transactions dated after `date`. */
   listUpcomingForRecurringAfter(userId: string, recurringId: string, date: LocalDate): Promise<TransactionRecord[]>;
   update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;

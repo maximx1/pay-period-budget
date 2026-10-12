@@ -2,7 +2,12 @@ import { z } from "zod";
 import { localDateSchema } from "./budget.ts";
 import type { LocalDate } from "./dates.ts";
 import { RECURRENCE_UNITS, type RecurrenceUnit } from "./recurrence.ts";
-import { MAX_TRANSACTION_CENTS, TRANSACTION_KINDS, type TransactionKind } from "./transactions.ts";
+import {
+  MAX_TRANSACTION_CENTS,
+  type Transaction,
+  TRANSACTION_KINDS,
+  type TransactionKind,
+} from "./transactions.ts";
 
 export const MAX_RECURRENCE_INTERVAL = 52;
 
@@ -91,4 +96,31 @@ export type RecurringPreview = {
   /** How many of those periods ended before today. */
   pastPeriods: number;
   earliestDate: LocalDate | null;
+};
+
+/** The most of an item's transactions one request returns. */
+export const MAX_RECURRING_TRANSACTIONS_PAGE = 100;
+
+export const recurringTransactionsQuerySchema = z.object({
+  limit: z.coerce
+    .number("Enter a number")
+    .int("Enter a whole number")
+    .min(1, "Ask for at least one")
+    .max(MAX_RECURRING_TRANSACTIONS_PAGE, `Ask for ${MAX_RECURRING_TRANSACTIONS_PAGE} or fewer at a time`)
+    .default(30),
+  /** `nextCursor` from the page before. Left out for the newest. */
+  before: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}_[\w-]{1,100}$/, "That isn't a cursor from an earlier page")
+    .optional(),
+});
+export type RecurringTransactionsQuery = z.output<typeof recurringTransactionsQuerySchema>;
+
+/** One page of everything tied to a recurring item, newest first. */
+export type RecurringTransactionsResponse = {
+  transactions: Transaction[];
+  /** Pass as `before` for the next, older page. Null when this page reaches the oldest. */
+  nextCursor: string | null;
+  /** Over all of the item's transactions, not only this page. Amounts are signed. */
+  totals: { count: number; paidCents: number; upcomingCents: number };
 };

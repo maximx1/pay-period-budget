@@ -7,12 +7,15 @@ import {
   type RecurringItem,
   type RecurringPatch,
   type RecurringPreview,
+  type RecurringTransactionsQuery,
+  type RecurringTransactionsResponse,
 } from "../../shared/recurring.ts";
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, RecurringRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import { materializeInPeriod, ruleOf } from "./materialize.ts";
 import type { PeriodService } from "./periods.ts";
+import { toTransaction } from "./transactionMapper.ts";
 
 export type RecurringService = ReturnType<typeof createRecurringService>;
 
@@ -119,6 +122,30 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
         await repos.recurring.update(userId, id, changes, updatedAt);
         return toItem(after, await periods.today(repos, userId));
       });
+    },
+
+    /**
+     * One page of everything tied to the item, generated or linked afterwards, newest
+     * first, with totals over all of it. Reads only.
+     */
+    async transactions(
+      userId: string,
+      id: string,
+      { limit, before }: RecurringTransactionsQuery,
+    ): Promise<RecurringTransactionsResponse> {
+      if (!(await store.recurring.findById(userId, id))) throw notFound();
+
+      const separator = before?.indexOf("_") ?? -1;
+      const position = before ? { occursAt: before.slice(0, separator), id: before.slice(separator + 1) } : undefined;
+      // One more than asked for says whether anything older remains.
+      const records = await store.transactions.listForRecurring(userId, id, { limit: limit + 1, before: position });
+      const page = records.slice(0, limit);
+      const last = page.at(-1);
+      return {
+        transactions: page.map(toTransaction),
+        nextCursor: records.length > limit && last ? `${last.occursAt}_${last.id}` : null,
+        totals: await store.transactions.sumForRecurring(userId, id),
+      };
     },
 
     /** Deletes the template. Its transactions stay, no longer linked to it. */

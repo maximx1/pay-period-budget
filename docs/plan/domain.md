@@ -425,6 +425,7 @@ POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEa
 GET    /api/recurring
 POST   /api/recurring
 POST   /api/recurring/preview          what creating this item would add, without saving
+GET    /api/recurring/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
 PATCH  /api/recurring/:id
 DELETE /api/recurring/:id
 POST   /api/recurring/:id/end

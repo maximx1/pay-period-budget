@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn.ts";
 
 type FabProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label" | "title"> & {
@@ -6,15 +7,20 @@ type FabProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label" | "ti
   label: string;
 };
 
+/** Where AppShell wants floating buttons drawn: an overlay beside the scroller, not inside it. */
+export const FabSlotContext = createContext<HTMLElement | null>(null);
+
 /**
  * Floating action button pinned to the bottom-right corner of the page column.
- * Render it as the last element a page returns: it sticks to the bottom of the visible
- * area while the page scrolls, and reserves room so it never covers the final row.
+ * Render it as the last element a page returns. The button is drawn in an overlay outside
+ * the scrolling column, so scrolling never re-lays it out (a sticky element recomputes its
+ * offset every frame, which stuttered as the end of the page came into view). What stays
+ * in the page is a spacer, so the button never covers the final row.
  */
 export function Fab({ label, className, children, ...props }: FabProps) {
-  return (
-    <div className="pointer-events-none sticky bottom-6 z-10 mt-auto flex justify-end pt-4 pb-[env(safe-area-inset-bottom)]">
-      <button
+  const slot = useContext(FabSlotContext);
+  const button = (
+    <button
         type="button"
         {...props}
         aria-label={label}
@@ -26,7 +32,17 @@ export function Fab({ label, className, children, ...props }: FabProps) {
         )}
       >
         {children}
-      </button>
-    </div>
+    </button>
+  );
+
+  return (
+    <>
+      <div aria-hidden className="mt-auto h-[calc(4.5rem+env(safe-area-inset-bottom))] shrink-0" />
+      {slot ? (
+        createPortal(button, slot)
+      ) : (
+        <div className="pointer-events-none sticky bottom-6 z-10 -mt-[4.5rem] flex justify-end">{button}</div>
+      )}
+    </>
   );
 }

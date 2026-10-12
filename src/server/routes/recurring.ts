@@ -4,10 +4,12 @@ import {
   type RecurringListResponse,
   type RecurringPreview,
   type RecurringResponse,
+  type RecurringTransactionsResponse,
   recurringInputSchema,
   recurringPatchSchema,
+  recurringTransactionsQuerySchema,
 } from "../../shared/recurring.ts";
-import { type AppEnv, parseJson } from "../http.ts";
+import { type AppEnv, parseJson, parseQuery } from "../http.ts";
 import type { RecurringService } from "../services/recurring.ts";
 
 export function recurringRoutes(deps: { recurring: RecurringService; authed: MiddlewareHandler<AppEnv> }) {
@@ -25,6 +27,13 @@ export function recurringRoutes(deps: { recurring: RecurringService; authed: Mid
   routes.post("/preview", async (c) => {
     const input = await parseJson(c, recurringInputSchema);
     return c.json<RecurringPreview>(await recurring.preview(c.var.user.id, input));
+  });
+
+  routes.get("/:id/transactions", async (c) => {
+    const query = parseQuery(c, recurringTransactionsQuerySchema);
+    return c.json<RecurringTransactionsResponse>(
+      await recurring.transactions(c.var.user.id, c.req.param("id"), query),
+    );
   });
 
   routes.patch("/:id", async (c) => {

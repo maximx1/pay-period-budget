@@ -36,6 +36,21 @@ suggestions below the same day; 13.1 started.
 - The import's dry run already reports a bank row that looks like a generated occurrence
   (same amount, within three days).
 
+## Clarified by the owner (2026-10-12, after 13.1)
+
+The credit card **does** have a schedule: "normally I pay on the 5th and it's $200". That
+entry should keep being generated. On top of it come extra payments ("another $25, then
+$35, then $100") entered as one-off transactions and tied to the same item.
+
+That is what `recurringId` without `countsToward` does: an extra payment, grouped with the
+item, which leaves the scheduled entry alone. So:
+
+- **13.2 (items with no schedule) is dropped.** Nothing the owner described needs it. It
+  can be picked up later if an item that never generates anything is ever wanted.
+- The two ways of tying a payment to an item are both needed and mean different things:
+  *extra* (`recurringId`: the $25 on top of the $200) and *part of the scheduled entry*
+  (`countsToward`: $300 of the $900 rent). The dialog in 13.6 has to make that plain.
+
 ## Questions for the owner (both answered 2026-10-12: as suggested)
 
 **1. Is the credit card a recurring item without a schedule, or the first "account"?**
@@ -94,7 +109,9 @@ zero.
 
 ### 13.2 Recurring items with no schedule
 
-- [ ] Done
+**Dropped 2026-10-12**; see "Clarified by the owner". The text is kept for reference.
+
+- [ ] Not built
 
 - `recurrenceUnit: "none"`. It produces no occurrences, in generation and in back-fill.
   `firstDueDate` is not asked for; `nextDueDate` is null; the schedule reads "No schedule".
@@ -107,7 +124,7 @@ item between "none" and a schedule changes only what is generated from then on.
 
 ### 13.3 An item's transactions
 
-- [ ] Done
+- [x] Done
 
 - `GET /api/recurring/:id/transactions?limit=&before=` → newest first, `limit` up to 100
   (default 30), `before` a cursor from the previous page → `{ transactions, nextCursor,
@@ -198,3 +215,27 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
   accepted, any transaction payable toward, an overpayment going negative, and a row that
   pays an entry still reported as its duplicate, which first slipped through and got its
   own test): each fails a test in `routes/transactions.links.test.ts`.
+
+### 13.3 (2026-10-12)
+
+- `GET /api/recurring/:id/transactions` → `RecurringTransactionsResponse` in
+  `src/shared/recurring.ts`: one page of everything tied to the item, generated or linked
+  afterwards, newest first; `nextCursor` (null at the end); and `totals` over the whole
+  item, not just the page: `{ count, paidCents, upcomingCents }`, signed.
+- `limit` defaults to 30 and stops at 100. `before` takes the previous page's
+  `nextCursor`, which is the last row's date-time and id joined by an underscore. Clients
+  should treat it as opaque.
+- **Order is by date-time, then id**, not the manual order of the home screen. Manual
+  order sorts a moment's transactions across all items, which means nothing inside one
+  item's list; the id gives a stable order to page through. A test pages through nine
+  transactions, five of them at the same moment, at seven different page sizes.
+- The owner's own example is the first test: a card generated at $200 on the 5th, plus
+  $25, $35 and $100 tied to it.
+- An item that does not exist and someone else's get the same 404.
+- No new index: filtering by `recurring_id` uses the existing unique index on
+  `(recurring_id, occurrence_date)`.
+- The response does not say which period each transaction is in. The detail view (13.7)
+  can find it from the period list it already loads for the go-to-date dialog.
+- Checked by breaking four rules once each (ownership not checked, ties at a page boundary
+  skipped, a cursor offered at the end, oldest first): each fails a test in
+  `routes/recurring.transactions.test.ts`.

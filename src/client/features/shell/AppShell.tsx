@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { Drawer } from "../../components/ui/Drawer.tsx";
+import { FabSlotContext } from "../../components/ui/Fab.tsx";
 import { navItemForPath } from "./navItems.ts";
 import { SidePanel } from "./SidePanel.tsx";
 import { TopBar } from "./TopBar.tsx";
@@ -17,6 +18,7 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRoot = useRef<HTMLElement>(null);
+  const [fabSlot, setFabSlot] = useState<HTMLElement | null>(null);
 
   // A new screen starts at the top with the drawer out of the way.
   useEffect(() => {
@@ -44,7 +46,7 @@ export function AppShell() {
         <SidePanel onNavigate={() => setDrawerOpen(false)} />
       </Drawer>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <TopBar title={navItemForPath(pathname).label} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} />
         <main
           ref={scrollRoot}
@@ -52,9 +54,18 @@ export function AppShell() {
           className="flex-1 overflow-y-auto pr-[env(safe-area-inset-right)] [scrollbar-gutter:stable]"
         >
           <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
-            <Outlet />
+            <FabSlotContext value={fabSlot}>
+              <Outlet />
+            </FabSlotContext>
           </div>
         </main>
+        {/* Floating buttons live here, outside the scroller, so they never move with the page. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 pr-[env(safe-area-inset-right)]">
+          <div
+            ref={setFabSlot}
+            className="mx-auto flex w-full max-w-6xl justify-end px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8"
+          />
+        </div>
       </div>
     </div>
   );

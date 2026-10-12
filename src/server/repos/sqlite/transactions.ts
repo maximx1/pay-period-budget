@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import type { Db } from "../../db/client.ts";
 import { deletedImportKeys, transactions } from "../../db/schema.ts";
@@ -105,6 +105,39 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         .onConflictDoNothing({ target: [transactions.recurringId, transactions.occurrenceDate] })
         .returning({ id: transactions.id });
       return inserted.length > 0;
+    },
+    async listForRecurring(userId, recurringId, { limit, before }) {
+      return db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.recurringId, recurringId),
+            // The id breaks ties between transactions at the same moment, so a page boundary
+            // that falls among them neither repeats nor skips one.
+            before &&
+              or(
+                lt(transactions.occursAt, before.occursAt),
+                and(eq(transactions.occursAt, before.occursAt), lt(transactions.id, before.id)),
+              ),
+          ),
+        )
+        .orderBy(desc(transactions.occursAt), desc(transactions.id))
+        .limit(limit);
+    },
+    async sumForRecurring(userId, recurringId) {
+      const sumWhere = (status: "paid" | "upcoming") =>
+        sql<number>`coalesce(sum(case when ${transactions.status} = ${status} then ${transactions.amountCents} end), 0)`;
+      const [row] = await db
+        .select({ count: sql<number>`count(*)`, paidCents: sumWhere("paid"), upcomingCents: sumWhere("upcoming") })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.recurringId, recurringId)));
+      return {
+        count: Number(row?.count ?? 0),
+        paidCents: Number(row?.paidCents ?? 0),
+        upcomingCents: Number(row?.upcomingCents ?? 0),
+      };
     },
     async listUpcomingForRecurringAfter(userId, recurringId, date) {
       return db
