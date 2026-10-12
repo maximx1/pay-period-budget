@@ -48,7 +48,7 @@ const formSchema = z
   .object({
     name: z.string().trim().min(1, "Enter a name").max(80, "Keep the name under 80 characters"),
     kind: z.enum(TRANSACTION_KINDS),
-    amount: z.string().refine((text) => parseAmount(text) !== null, "Enter an amount like 60.00"),
+    amount: z.string(),
     recurrenceUnit: z.enum(RECURRENCE_UNITS),
     recurrenceInterval: z.string().refine((text) => parseInterval(text) !== null, `1 to ${MAX_RECURRENCE_INTERVAL}`),
     firstDueDate: localDateSchema,
@@ -56,23 +56,34 @@ const formSchema = z
     endDate: z.string().refine((text) => text === "" || isLocalDate(text), "Enter a valid date"),
     description: z.string().max(2000, "Keep the description under 2,000 characters"),
   })
-  .refine((values) => values.endDate === "" || values.endDate >= values.firstDueDate, {
-    path: ["endDate"],
-    message: END_BEFORE_START_MESSAGE,
-  });
+  // Something with no schedule need not have a usual amount; anything that repeats must.
+  .refine(
+    (values) =>
+      parseAmount(values.amount) !== null || (values.recurrenceUnit === "none" && values.amount.trim() === ""),
+    { path: ["amount"], message: "Enter an amount like 60.00" },
+  )
+  .refine(
+    (values) => values.recurrenceUnit === "none" || values.endDate === "" || values.endDate >= values.firstDueDate,
+    { path: ["endDate"], message: END_BEFORE_START_MESSAGE },
+  );
 type FormValues = z.infer<typeof formSchema>;
 
-const toInput = (values: FormValues): RecurringInput => ({
-  name: values.name.trim(),
-  kind: values.kind,
-  defaultAmountCents: parseAmount(values.amount) ?? 0,
-  recurrenceUnit: values.recurrenceUnit,
-  // A pay-period item has no interval to speak of; store the neutral value.
-  recurrenceInterval: values.recurrenceUnit === "period" ? 1 : (parseInterval(values.recurrenceInterval) ?? 1),
-  firstDueDate: values.firstDueDate,
-  endDate: values.endDate === "" ? null : values.endDate,
-  description: values.description.trim(),
-});
+const toInput = (values: FormValues): RecurringInput => {
+  const noSchedule = values.recurrenceUnit === "none";
+  return {
+    name: values.name.trim(),
+    kind: values.kind,
+    defaultAmountCents: parseAmount(values.amount) ?? 0,
+    recurrenceUnit: values.recurrenceUnit,
+    // A pay-period item, or one with no schedule, has no interval to speak of; store the neutral value.
+    recurrenceInterval:
+      values.recurrenceUnit === "period" || noSchedule ? 1 : (parseInterval(values.recurrenceInterval) ?? 1),
+    // With no schedule there is no first due date to give, and no end to a schedule either.
+    firstDueDate: noSchedule ? undefined : values.firstDueDate,
+    endDate: noSchedule || values.endDate === "" ? null : values.endDate,
+    description: values.description.trim(),
+  };
+};
 
 const kindOptions = [
   { value: "expense", label: "Bill" },
@@ -85,6 +96,10 @@ const unitOptions = [
   { value: "year", label: "years" },
   { value: "period", label: "pay period" },
 ];
+const NO_SCHEDULE_OPTION = { value: "none", label: "No schedule" };
+// Read as a sentence beside "Every 1": "Every 1 months". "No schedule" stands apart from that.
+const repeatOptions = (everyLabel: boolean) =>
+  everyLabel ? [...unitOptions, NO_SCHEDULE_OPTION] : [...unitOptions, { ...NO_SCHEDULE_OPTION, label: "never (no schedule)" }];
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
@@ -151,7 +166,7 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
       ? {
           name: item.name,
           kind: item.kind,
-          amount: centsToInput(item.defaultAmountCents),
+          amount: item.defaultAmountCents === 0 ? "" : centsToInput(item.defaultAmountCents),
           recurrenceUnit: item.recurrenceUnit,
           recurrenceInterval: String(item.recurrenceInterval),
           firstDueDate: item.firstDueDate,
@@ -173,11 +188,15 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
   const values = watch();
   const parsed = formSchema.safeParse(values);
   const everyPeriod = values.recurrenceUnit === "period";
+  const noSchedule = values.recurrenceUnit === "none";
+  // Neither has a number of weeks or months to ask for.
+  const noInterval = everyPeriod || noSchedule;
 
   // The schedule in words needs only the schedule fields to be valid, not the whole form.
-  const interval = everyPeriod ? 1 : parseInterval(values.recurrenceInterval);
-  const scheduleText =
-    interval !== null && isLocalDate(values.firstDueDate) && (values.endDate === "" || isLocalDate(values.endDate))
+  const interval = noInterval ? 1 : parseInterval(values.recurrenceInterval);
+  const scheduleText = noSchedule
+    ? "Nothing is added by itself. Tie transactions to it as they happen."
+    : interval !== null && isLocalDate(values.firstDueDate) && (values.endDate === "" || isLocalDate(values.endDate))
       ? describeRecurrence({
           unit: values.recurrenceUnit,
           interval,
@@ -230,7 +249,7 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
 
       <div className="grid grid-cols-2 items-start gap-3">
         <TextField
-          label="Amount"
+          label={noSchedule ? "Usual amount (optional)" : "Amount"}
           inputMode="decimal"
           placeholder="0.00"
           autoComplete="off"
@@ -247,8 +266,8 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
       </div>
 
       <div>
-        <div className={cn("grid items-start gap-3", everyPeriod ? "grid-cols-1" : "grid-cols-[5.5rem_minmax(0,1fr)]")}>
-          {!everyPeriod && (
+        <div className={cn("grid items-start gap-3", noInterval ? "grid-cols-1" : "grid-cols-[5.5rem_minmax(0,1fr)]")}>
+          {!noInterval && (
             <TextField
               label="Every"
               inputMode="numeric"
@@ -257,20 +276,26 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
               {...register("recurrenceInterval")}
             />
           )}
-          <SelectField label={everyPeriod ? "Repeats every" : "Repeats"} options={unitOptions} {...register("recurrenceUnit")} />
+          <SelectField
+            label={everyPeriod ? "Repeats every" : "Repeats"}
+            options={repeatOptions(noSchedule)}
+            {...register("recurrenceUnit")}
+          />
         </div>
         {scheduleText && <p className="mt-1.5 text-sm text-muted">{scheduleText}</p>}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-        <TextField
-          label="First due date"
-          type="date"
-          error={errors.firstDueDate?.message}
-          {...register("firstDueDate")}
-        />
-        <TextField label="Ends (optional)" type="date" error={errors.endDate?.message} {...register("endDate")} />
-      </div>
+      {!noSchedule && (
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+          <TextField
+            label="First due date"
+            type="date"
+            error={errors.firstDueDate?.message}
+            {...register("firstDueDate")}
+          />
+          <TextField label="Ends (optional)" type="date" error={errors.endDate?.message} {...register("endDate")} />
+        </div>
+      )}
 
       <TextAreaField
         label="Description"
@@ -280,11 +305,13 @@ function RecurringForm({ onClose, item, timezone }: Omit<RecurringDialogProps, "
       />
 
       {item ? (
-        <p className="text-sm text-muted">
-          Changes apply to periods generated from now on. Existing transactions stay as they are.
-        </p>
+        !noSchedule && (
+          <p className="text-sm text-muted">
+            Changes apply to periods generated from now on. Existing transactions stay as they are.
+          </p>
+        )
       ) : (
-        preview.data && parsed.success && <PreviewNote preview={preview.data} />
+        !noSchedule && preview.data && parsed.success && <PreviewNote preview={preview.data} />
       )}
 
       {confirming ? (

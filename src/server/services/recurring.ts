@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dateOf, type LocalDate } from "../../shared/dates.ts";
 import { describeRecurrence, nextOccurrence } from "../../shared/recurrence.ts";
 import {
+  AMOUNT_NEEDED_MESSAGE,
   END_BEFORE_START_MESSAGE,
   type RecurringInput,
   type RecurringItem,
@@ -43,7 +44,8 @@ function toItem(record: RecurringRecord, today: LocalDate): RecurringItem {
 export function createRecurringService(deps: { store: DataStore; periods: PeriodService; now?: () => Date }) {
   const { store, periods, now = () => new Date() } = deps;
 
-  const draft = (userId: string, input: RecurringInput, createdAt: Date): RecurringRecord => ({
+  /** `today` stands in for the first due date of an item with no schedule, which has none. */
+  const draft = (userId: string, input: RecurringInput, createdAt: Date, today: LocalDate): RecurringRecord => ({
     id: randomUUID(),
     userId,
     name: input.name,
@@ -52,7 +54,7 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
     defaultAmountCents: input.defaultAmountCents,
     recurrenceUnit: input.recurrenceUnit,
     recurrenceInterval: input.recurrenceInterval,
-    firstDueDate: input.firstDueDate,
+    firstDueDate: input.firstDueDate ?? today,
     endDate: input.endDate,
     createdAt,
     updatedAt: createdAt,
@@ -73,7 +75,7 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
       return store.transaction(async (repos) => {
         const today = await periods.today(repos, userId);
         const createdAt = now();
-        const record = await repos.recurring.create(draft(userId, input, createdAt));
+        const record = await repos.recurring.create(draft(userId, input, createdAt, today));
 
         // Ascending, so each period's change has reached the later ones before they add their own.
         for (const period of await repos.periods.listAll(userId)) {
@@ -87,7 +89,7 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
     /** What `create` would add to existing periods, without saving anything. */
     async preview(userId: string, input: RecurringInput): Promise<RecurringPreview> {
       const today = await periods.today(store, userId);
-      const record = draft(userId, input, now());
+      const record = draft(userId, input, now(), today);
       const preview: RecurringPreview = { transactions: 0, periods: 0, pastPeriods: 0, earliestDate: null };
 
       for (const period of await store.periods.listAll(userId)) {
@@ -116,6 +118,12 @@ export function createRecurringService(deps: { store: DataStore; periods: Period
         const datesTouched = patch.firstDueDate !== undefined || patch.endDate !== undefined;
         if (datesTouched && after.endDate !== null && after.endDate < after.firstDueDate) {
           throw new AppError(400, "validation", "Some fields need attention", { endDate: END_BEFORE_START_MESSAGE });
+        }
+        // Only an item with no schedule may go without a usual amount.
+        if (after.recurrenceUnit !== "none" && after.defaultAmountCents === 0) {
+          throw new AppError(400, "validation", "Some fields need attention", {
+            defaultAmountCents: AMOUNT_NEEDED_MESSAGE,
+          });
         }
 
         const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...changes } = after;

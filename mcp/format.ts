@@ -61,9 +61,10 @@ export function recurringLine(item: RecurringItem): string {
   const signedCents = item.kind === "expense" ? -item.defaultAmountCents : item.defaultAmountCents;
   return [
     item.name,
-    `${money(signedCents)} each time`,
+    item.kind,
+    item.defaultAmountCents === 0 ? "no usual amount" : `${money(signedCents)} each time`,
     item.scheduleText,
-    `first due ${item.firstDueDate}`,
+    ...(item.recurrenceUnit === "none" ? [] : [`first due ${item.firstDueDate}`]),
     ...(item.endDate ? [`ends ${item.endDate}`] : []),
     ...(item.archived ? ["archived"] : item.nextDueDate ? [`next due ${item.nextDueDate}`] : []),
     ...(item.description ? [`description: ${item.description}`] : []),

@@ -153,7 +153,7 @@ describe("reading the budget", () => {
     await expect(call("list_transactions", { from: "2026-01-01", to: "2028-01-01" })).rejects.toThrow(ApiRequestError);
 
     expect(await call("list_recurring")).toMatch(
-      /^1 recurring item:\n- Rent \| -\$900\.00 \(-90000 cents\) each time \| .+ \| first due 2026-01-25 \| next due 2026-01-25 \| description: to the landlord \| id [\w-]+$/,
+      /^1 recurring item:\n- Rent \| expense \| -\$900\.00 \(-90000 cents\) each time \| .+ \| first due 2026-01-25 \| next due 2026-01-25 \| description: to the landlord \| id [\w-]+$/,
     );
   });
 });

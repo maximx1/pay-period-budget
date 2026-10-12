@@ -206,3 +206,18 @@ describe("describeRecurrence", () => {
     expect(describeRecurrence(r)).toBe(expected);
   });
 });
+
+describe("an item with no schedule", () => {
+  const never = rule({ unit: "none", firstDueDate: "2026-01-15" });
+
+  it("never occurs, whatever the dates", () => {
+    expect(occurrencesBetween(never, "2020-01-01", "2030-12-31", "2020-01-01")).toEqual([]);
+    expect(occurrencesBetween(never, "2026-01-15", "2026-01-15", "2026-01-15")).toEqual([]);
+  });
+
+  it("has no next occurrence and says so in words", () => {
+    expect(nextOccurrence(never, "2026-01-01")).toBeNull();
+    expect(describeRecurrence(never)).toBe("No schedule");
+    expect(describeRecurrence({ ...never, interval: 3, endDate: "2027-01-01" })).toBe("No schedule");
+  });
+});

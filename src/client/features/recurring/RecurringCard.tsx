@@ -57,9 +57,12 @@ export function RecurringCard({ item, onEdit }: { item: RecurringItem; onEdit: (
         </IconButton>
       </div>
 
-      <p className={cn("text-xl font-bold tabular-nums", income ? "text-primary" : "text-fg")}>
-        {income ? formatCents(item.defaultAmountCents, { showPlus: true }) : formatCents(item.defaultAmountCents)}
-      </p>
+      {/* Only something with no schedule can be without a usual amount. */}
+      {item.defaultAmountCents > 0 && (
+        <p className={cn("text-xl font-bold tabular-nums", income ? "text-primary" : "text-fg")}>
+          {income ? formatCents(item.defaultAmountCents, { showPlus: true }) : formatCents(item.defaultAmountCents)}
+        </p>
+      )}
 
       {(item.nextDueDate || item.archived) && (
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">

@@ -10,6 +10,8 @@ import {
 } from "./transactions.ts";
 
 export const MAX_RECURRENCE_INTERVAL = 52;
+export const AMOUNT_NEEDED_MESSAGE = "Enter an amount greater than zero";
+export const FIRST_DUE_NEEDED_MESSAGE = "Enter the first due date";
 
 // Plain field rules, shared by the create and patch schemas below. Defaults live only on
 // the create schema: a patch must never fill in a field the caller didn't send.
@@ -17,11 +19,14 @@ const fields = {
   name: z.string().trim().min(1, "Enter a name").max(80, "Keep the name under 80 characters"),
   description: z.string().trim().max(2000, "Keep the description under 2,000 characters"),
   kind: z.enum(TRANSACTION_KINDS),
-  /** Always positive; `kind` says which way the money moves. */
+  /**
+   * Never negative; `kind` says which way the money moves. 0 means "no usual amount" and is
+   * allowed only for an item with no schedule.
+   */
   defaultAmountCents: z
     .number("Enter an amount")
     .int("Enter a whole number of cents")
-    .positive("Enter an amount greater than zero")
+    .min(0, AMOUNT_NEEDED_MESSAGE)
     .max(MAX_TRANSACTION_CENTS, "That amount is too large"),
   recurrenceUnit: z.enum(RECURRENCE_UNITS),
   recurrenceInterval: z
@@ -40,9 +45,19 @@ export const recurringInputSchema = z
     ...fields,
     description: fields.description.default(""),
     recurrenceInterval: fields.recurrenceInterval.default(1),
+    /** Needed for anything with a schedule. Without one it is not used and may be left out. */
+    firstDueDate: fields.firstDueDate.optional(),
     endDate: fields.endDate.default(null),
   })
-  .refine((item) => item.endDate === null || item.endDate >= item.firstDueDate, {
+  .refine((item) => item.recurrenceUnit === "none" || item.firstDueDate !== undefined, {
+    path: ["firstDueDate"],
+    message: FIRST_DUE_NEEDED_MESSAGE,
+  })
+  .refine((item) => item.recurrenceUnit === "none" || item.defaultAmountCents > 0, {
+    path: ["defaultAmountCents"],
+    message: AMOUNT_NEEDED_MESSAGE,
+  })
+  .refine((item) => item.endDate === null || item.firstDueDate === undefined || item.endDate >= item.firstDueDate, {
     path: ["endDate"],
     message: END_BEFORE_START_MESSAGE,
   });
@@ -73,9 +88,11 @@ export type RecurringItem = {
   name: string;
   description: string;
   kind: TransactionKind;
+  /** 0 when the item has no schedule and no usual amount. */
   defaultAmountCents: number;
   recurrenceUnit: RecurrenceUnit;
   recurrenceInterval: number;
+  /** For an item with no schedule this is only the day it was added. */
   firstDueDate: LocalDate;
   endDate: LocalDate | null;
   /** Its end date has passed; it produces nothing further. */

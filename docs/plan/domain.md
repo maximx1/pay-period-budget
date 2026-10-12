@@ -282,7 +282,7 @@ effect on starting amounts as creating them one at a time.
 ## Recurring items
 
 Fields: `id`, `userId`, `name`, `description`, `kind` (`expense` | `income`),
-`defaultAmountCents` (positive), `recurrenceUnit` (`week` | `month` | `year` | `period`),
+`defaultAmountCents` (positive; 0 only with no schedule), `recurrenceUnit` (`week` | `month` | `year` | `period` | `none`),
 `recurrenceInterval` (≥ 1), `firstDueDate`, `endDate` (nullable).
 
 ### Recurrence
@@ -295,6 +295,11 @@ Occurrences are `firstDueDate` + k × interval units, for k = 0, 1, 2 …, never
 - `month`: add `k × interval` months to `firstDueDate`, clamping the day. "The 25th of
   every month" = unit month, interval 1, first due on a 25th.
 - `year`: add `k × interval` years, clamping Feb 29 to Feb 28.
+- `none`: no schedule. No occurrence, ever: nothing is generated when a period is created
+  or when the item is. The item exists so that transactions can be tied to it as they
+  happen (money for the odd job, months apart). It may have no usual amount
+  (`defaultAmountCents` 0) and is given no first due date; the column holds the day it was
+  added. Every other unit needs both.
 - `period`: one occurrence per period, dated on the period's first day, in the period that
   *contains* `firstDueDate` and in every later one (interval ignored). It stops with periods
   that start after `endDate`. Meant for the paycheck: an item first due mid-period still

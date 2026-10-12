@@ -10,12 +10,16 @@ import {
   type LocalDate,
 } from "./dates.ts";
 
-export const RECURRENCE_UNITS = ["week", "month", "year", "period"] as const;
+/**
+ * "none" is an item with no schedule: nothing is ever generated from it. It exists so that
+ * transactions can be tied to it as they happen (money from the odd job, say).
+ */
+export const RECURRENCE_UNITS = ["week", "month", "year", "period", "none"] as const;
 export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
 
 export type Recurrence = {
   unit: RecurrenceUnit;
-  /** Every `interval` units. Ignored for "period". */
+  /** Every `interval` units. Ignored for "period" and "none". */
   interval: number;
   /** The first occurrence; also fixes the weekday, day of month or date the rule repeats on. */
   firstDueDate: LocalDate;
@@ -23,7 +27,7 @@ export type Recurrence = {
   endDate: LocalDate | null;
 };
 
-type DateUnit = Exclude<RecurrenceUnit, "period">;
+type DateUnit = Exclude<RecurrenceUnit, "period" | "none">;
 
 // The k-th occurrence is always computed from the first due date, never from the one before
 // it, so a monthly rule on the 31st gives Jan 31, Feb 28, Mar 31 instead of sticking at 28.
@@ -53,6 +57,7 @@ function firstIndexOnOrAfter(unit: DateUnit, interval: number, firstDueDate: Loc
  */
 export function occurrencesBetween(rule: Recurrence, from: LocalDate, to: LocalDate, periodStart: LocalDate): LocalDate[] {
   const { unit, interval, firstDueDate, endDate } = rule;
+  if (unit === "none") return [];
 
   if (unit === "period") {
     const reached = to >= firstDueDate;
@@ -69,10 +74,13 @@ export function occurrencesBetween(rule: Recurrence, from: LocalDate, to: LocalD
   }
 }
 
-/** The first occurrence on or after `onOrAfter`, or null if the rule has ended. Always null for "period". */
+/**
+ * The first occurrence on or after `onOrAfter`, or null if the rule has ended. Always null
+ * for "period" and "none".
+ */
 export function nextOccurrence(rule: Recurrence, onOrAfter: LocalDate): LocalDate | null {
   const { unit, interval, firstDueDate, endDate } = rule;
-  if (unit === "period") return null;
+  if (unit === "period" || unit === "none") return null;
 
   const date = occurrenceAt(unit, interval, firstDueDate, firstIndexOnOrAfter(unit, interval, firstDueDate, onOrAfter));
   return endDate !== null && date > endDate ? null : date;
@@ -87,6 +95,7 @@ function ordinal(n: number): string {
 /** The rule in words: "Every 2 weeks on Saturday", "Every month on the 25th, until Oct 12, 2027". */
 export function describeRecurrence(rule: Recurrence): string {
   const { unit, interval, firstDueDate, endDate } = rule;
+  if (unit === "none") return "No schedule";
   const every = (noun: string) => (interval === 1 ? `Every ${noun}` : `Every ${interval} ${noun}s`);
 
   let text: string;

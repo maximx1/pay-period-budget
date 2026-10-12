@@ -45,8 +45,9 @@ $35, then $100") entered as one-off transactions and tied to the same item.
 That is what `recurringId` without `countsToward` does: an extra payment, grouped with the
 item, which leaves the scheduled entry alone. So:
 
-- **13.2 (items with no schedule) is dropped.** Nothing the owner described needs it. It
-  can be picked up later if an item that never generates anything is ever wanted.
+- 13.2 (items with no schedule) was dropped at this point, since the card did not need
+  it. The owner then gave a case that does (occasional income from side jobs), and it was
+  built; see its notes.
 - The two ways of tying a payment to an item are both needed and mean different things:
   *extra* (`recurringId`: the $25 on top of the $200) and *part of the scheduled entry*
   (`countsToward`: $300 of the $900 rent). The dialog in 13.6 has to make that plain.
@@ -109,9 +110,11 @@ zero.
 
 ### 13.2 Recurring items with no schedule
 
-**Dropped 2026-10-12**; see "Clarified by the owner". The text is kept for reference.
+Dropped on 2026-10-12 after the owner's first clarification, then **asked for again the
+same day** with a case of its own: money from a friend for a day's roofing, then nothing
+for months, all to be gathered under one item.
 
-- [ ] Not built
+- [x] Done
 
 - `recurrenceUnit: "none"`. It produces no occurrences, in generation and in back-fill.
   `firstDueDate` is not asked for; `nextDueDate` is null; the schedule reads "No schedule".
@@ -239,3 +242,46 @@ Built as specified. The rules are in `domain.md` under "Linking to a recurring i
 - Checked by breaking four rules once each (ownership not checked, ties at a page boundary
   skipped, a cursor offered at the end, oldest first): each fails a test in
   `routes/recurring.transactions.test.ts`.
+
+### 13.2 (2026-10-12)
+
+- `recurrenceUnit: "none"`, in `RECURRENCE_UNITS`. `occurrencesBetween` returns nothing
+  for it, so neither generation, back-fill nor the preview needs to know about it;
+  `nextOccurrence` is null and `describeRecurrence` says "No schedule".
+- No migration. The unit is text, the amount is stored as 0 for "no usual amount", and
+  `first_due_date` (still not null) holds the day the item was added.
+- `recurringInputSchema`: `firstDueDate` is optional and `defaultAmountCents` may be 0,
+  each only when the unit is `none`; anything with a schedule is refused without them.
+  An edit is checked after merging, so an item cannot be left with a schedule and no
+  amount.
+- Giving an item a schedule later, or taking it away, changes only what is generated from
+  then on, as any edit does.
+- The dialog: "never (no schedule)" at the end of the Repeats list, shown as "No schedule"
+  once chosen. The number, the first due date and the end date go away; the amount
+  becomes "Usual amount (optional)"; a line says nothing is added by itself. The card
+  shows "No schedule" and no amount when there is none.
+- "End this" still archives one. Its wording ("it stops repeating") is slightly off for
+  something that never repeated; left alone until the naming question is settled.
+- The MCP server's `list_recurring` lines now give the kind, and say "no usual amount".
+- The owner's example is a test: one income item with no schedule, three payments tied to
+  it across eleven months, listed together with their total.
+- Checked in the browser on the dev account at 1280px dark and 375px light: choosing no
+  schedule, saving with no amount, and the card. The test item was deleted afterwards.
+- Checked by breaking three rules once each (such an item generating like a monthly one,
+  a repeating item accepted with no amount, an edit leaving one that way).
+
+## The naming question (open, 2026-10-12)
+
+The owner pointed out that "recurring" no longer fits: some of these never repeat. The
+screen already says "Bills" and "Income" in its filter and in the dialog; only the page
+title, the navigation and "Add recurring" say "Recurring". Suggested, not yet agreed:
+
+- Call the page **Bills & income**. One of them is a *bill* (money out) or an *income*
+  (money in), with or without a schedule.
+- Keep **Accounts** for where money sits (savings, the joint checking account). A regular
+  transfer to savings is then a bill that *points at* an account, which is how
+  `backlog.md` already describes the Accounts feature.
+- Rename what is on screen first. Renaming the code (`recurring_items`, `/api/recurring`,
+  `features/recurring`, the MCP tools, `CLAUDE.md`) is a separate, mechanical task: it
+  touches the table name, every endpoint and the phone app, and should not be mixed into
+  a feature.
