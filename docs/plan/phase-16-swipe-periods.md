@@ -5,7 +5,9 @@ swiping right opens the previous one, as well as the arrows.
 
 **Depends on:** phase 4 (the home screen). **Suggested model:** Sonnet. Client only.
 
-**Status:** planned 2026-10-12 at the owner's request. Not started.
+**Status:** planned 2026-10-12 at the owner's request and built the same day. **It has
+never been swiped with a real finger**: it was driven in a browser with simulated touches.
+See "Not checked" at the end before calling it done.
 
 ## What the owner asked for
 
@@ -51,7 +53,7 @@ Applied as sensible defaults; say so to overrule any of them.
 
 ### 16.1 Recognising a swipe
 
-- [ ] Done
+- [x] Done
 
 - `src/client/lib/swipe.ts`: a pure function that takes where a touch started and ended
   (points and the viewport's width) and answers `"left"`, `"right"` or `null`, by the
@@ -69,7 +71,7 @@ too steep; starting at either edge; a diagonal just inside and just outside the 
 
 ### 16.2 Swiping the home screen
 
-- [ ] Done
+- [x] Done
 
 - Move `goNext` and `goPrevious` out of `PeriodHeader` into `usePeriodNav(view)` in
   `features/periods/`, returning the two moves, whether each is possible, and whether one
@@ -97,4 +99,55 @@ back; a mouse drag on the desktop selects text.
 
 ## Implementation notes
 
-(None yet.)
+### 16.1 and 16.2 (2026-10-12)
+
+Built as planned. What the next person needs to know:
+
+- `src/client/lib/swipe.ts` is the rule (`swipeDirection`, with the three numbers as named
+  constants) and `src/client/lib/useSwipe.ts` is the hook. The rule has 17 table-driven
+  cases and one more for the width.
+- **Reorder mode is found through the page, not through state.** The day being reordered
+  is marked `data-swipe-lock` in `TransactionSection.tsx`, and the hook ignores a touch
+  while any element so marked is inside the swipe area. That kept the reorder state where
+  it lives; anything else that should hold the period still can use the same mark.
+- **`usePeriodNav(view)`** in `features/periods/` holds both moves. It is called once, in
+  the home page, and handed to `PeriodHeader` as `periodNav`, so the arrows and a swipe
+  share one "busy": neither starts while the other's request is out. Both arrows are now
+  disabled during either request (before, each only watched its own).
+- `goPrevious({ existingOnly: true })` is how a swipe stops at the earliest period
+  (decision 2). The arrow calls it without.
+- **The loaded period is its own component**, `LoadedPeriod` in `HomePage.tsx`, because
+  the hooks need a period to exist. The dialog state moved into it with the rest.
+- The swipe area is a `<div>` around the header, the summary and the two sections. It is
+  `flex-1`, so it reaches the bottom of the page column under a short period, and
+  `touch-pan-y touch-pinch-zoom`, so the browser still scrolls and zooms. The dialogs and
+  the + button are its siblings, not inside it: a touch in a dialog never reaches it.
+- **The slide.** A swipe navigates with `state: { arrivedAs: "next" | "previous" }`; the
+  area is keyed by the period's id and takes the class `period-from-next` or
+  `period-from-previous` (`styles.css`, inside the block that only applies when motion is
+  allowed). 150ms, 1.5rem and a fade. An arrow sets no state and does not slide.
+  Going back in the browser to a period reached by a swipe plays its slide again.
+- Checked by breaking the rule three times (no edge guard, any slope under 45 degrees
+  accepted, directions swapped): each fails cases in `swipe.test.ts`.
+
+**Checked** in the browser at 375px on the dev account, with touches made by dispatching
+pointer events from the console (the pane's clicks are mouse clicks): a swipe toward the
+left opened the next period and the one after, each with `period-from-next`; a swipe
+toward the right came back, with `period-from-previous`; at the earliest period, where
+the arrow would add one, a swipe right did nothing, and the number of periods was 4 before
+and after; a vertical drag, a 50px drag, a drag from the right edge, a cancelled touch and
+the same drag made with a mouse did nothing; nor did a drag inside the open transaction
+dialog, or with a day marked as being reordered.
+
+**Not checked, and it matters:**
+
+- **A real touch.** Simulated events prove the handlers and the rule. They do not prove
+  that `touch-action: pan-y` behaves on a phone: that scrolling up and down still feels
+  right, that a sideways drag is not cancelled by the browser part-way, and that the
+  threshold (64px, twice as far across as down) suits a thumb. Try it on the phone or the
+  Android emulator first thing.
+- Android's back gesture from the edge, with the app in the WebView.
+- Swiping forward into a period that has to be generated (the arrow's own path; avoided
+  here so as not to add periods to the dev account).
+- Reorder mode with real rows sharing a time; the dev account has none.
+- The slide with reduced motion turned on.

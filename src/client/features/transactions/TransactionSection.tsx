@@ -72,6 +72,8 @@ export function TransactionSection({
               <div
                 key={day}
                 data-day={day}
+                // Choosing an order is fiddly enough without the period sliding away under it.
+                data-swipe-lock={reordering ? "" : undefined}
                 className={cn(day === highlightDay && "rounded-lg ring-2 ring-ring ring-inset")}
               >
                 <div className="flex min-h-9 items-end justify-between px-4 pt-2 pb-1">

@@ -1,11 +1,9 @@
 import { CalendarSearch, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { formatDateRange } from "../../../shared/dates.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { useToast } from "../../components/ui/Toaster.tsx";
-import { ApiError } from "../../lib/api.ts";
-import { useAddEarlierPeriod, useLocatePeriod } from "./api.ts";
+import type { usePeriodNav } from "./usePeriodNav.ts";
 
 function describe({ isCurrent, startDate, endDate, datesEdited, seq }: PeriodView["period"], today: string) {
   const when = isCurrent
@@ -26,42 +24,17 @@ function describe({ isCurrent, startDate, endDate, datesEdited, seq }: PeriodVie
  */
 type PeriodHeaderProps = {
   view: PeriodView;
+  /** The moves to the neighbouring periods, shared with whatever else can make them. */
+  periodNav: ReturnType<typeof usePeriodNav>;
   today: string;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
 };
 
-export function PeriodHeader({ view, today, onOpenSettings, onOpenSearch }: PeriodHeaderProps) {
+export function PeriodHeader({ view, periodNav, today, onOpenSettings, onOpenSearch }: PeriodHeaderProps) {
   const { period, nav } = view;
-  const navigate = useNavigate();
-  const locate = useLocatePeriod();
-  const addEarlier = useAddEarlierPeriod();
-  const toast = useToast();
-
-  const atHorizon = !nav.nextId && !nav.nextDate;
-
-  async function goNext() {
-    if (nav.nextId) return navigate(`/periods/${nav.nextId}`);
-    if (!nav.nextDate) return;
-    try {
-      const { periodId } = await locate.mutateAsync(nav.nextDate);
-      navigate(`/periods/${periodId}`);
-    } catch (error) {
-      toast(error instanceof ApiError ? error.message : "Couldn't open the next period.", { variant: "error" });
-    }
-  }
-
   // At the earliest period the arrow adds the one before it, as the other arrow adds the next.
-  async function goPrevious() {
-    if (nav.prevId) return navigate(`/periods/${nav.prevId}`);
-    if (!nav.canAddPrevious) return;
-    try {
-      const { periodId } = await addEarlier.mutateAsync();
-      navigate(`/periods/${periodId}`);
-    } catch (error) {
-      toast(error instanceof ApiError ? error.message : "Couldn't add the period before this one.", { variant: "error" });
-    }
-  }
+  const { goNext, goPrevious, atHorizon, canGoPrevious, busy } = periodNav;
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -75,8 +48,8 @@ export function PeriodHeader({ view, today, onOpenSettings, onOpenSearch }: Peri
                 : "That's as far back as the budget goes"
           }
           variant="secondary"
-          disabled={(!nav.prevId && !nav.canAddPrevious) || addEarlier.isPending}
-          onClick={goPrevious}
+          disabled={!canGoPrevious || busy}
+          onClick={() => goPrevious()}
         >
           <ChevronLeft className="size-5" aria-hidden />
         </IconButton>
@@ -99,8 +72,8 @@ export function PeriodHeader({ view, today, onOpenSettings, onOpenSearch }: Peri
         <IconButton
           label={atHorizon ? "That's as far ahead as the budget goes" : "Next period"}
           variant="secondary"
-          disabled={atHorizon || locate.isPending}
-          onClick={goNext}
+          disabled={atHorizon || busy}
+          onClick={() => goNext()}
         >
           <ChevronRight className="size-5" aria-hidden />
         </IconButton>
