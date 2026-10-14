@@ -58,6 +58,8 @@ const fields = {
     .max(MAX_RECURRENCE_INTERVAL, `Must be ${MAX_RECURRENCE_INTERVAL} or less`),
   firstDueDate: localDateSchema,
   endDate: localDateSchema.nullable(),
+  /** The category its entries are filed under as they are added. */
+  categoryId: z.string().min(1).max(100).nullable(),
 };
 
 export const END_BEFORE_START_MESSAGE = "Must be on or after the first due date";
@@ -71,6 +73,7 @@ export const billOrIncomeInputSchema = z
     /** Needed for anything with a schedule. Without one it is not used and may be left out. */
     firstDueDate: fields.firstDueDate.optional(),
     endDate: fields.endDate.default(null),
+    categoryId: fields.categoryId.default(null),
   })
   .refine((item) => item.recurrenceUnit === "none" || item.firstDueDate !== undefined, {
     path: ["firstDueDate"],
@@ -102,6 +105,13 @@ export const billOrIncomePatchSchema = z
     recurrenceInterval: fields.recurrenceInterval.optional(),
     firstDueDate: fields.firstDueDate.optional(),
     endDate: fields.endDate.optional(),
+    /** Null takes its category away. Entries it adds from then on follow; existing ones do not. */
+    categoryId: fields.categoryId.optional(),
+    /**
+     * Also file every transaction already tied to it under its category (or under none),
+     * replacing whatever category each had.
+     */
+    applyToTransactions: z.boolean().optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type BillOrIncomePatch = z.output<typeof billOrIncomePatchSchema>;
@@ -125,6 +135,8 @@ export type BillOrIncome = {
   /** For an item with no schedule this is only the day it was added. */
   firstDueDate: LocalDate;
   endDate: LocalDate | null;
+  /** The category its entries are filed under as they are added, or null. */
+  categoryId: string | null;
   /** Its end date has passed; it produces nothing further. */
   archived: boolean;
   /** Next occurrence from today on, when it can be known ahead of time. */
@@ -134,7 +146,11 @@ export type BillOrIncome = {
 };
 
 export type BillsIncomeListResponse = { items: BillOrIncome[] };
-export type BillOrIncomeResponse = { item: BillOrIncome };
+export type BillOrIncomeResponse = {
+  item: BillOrIncome;
+  /** With `applyToTransactions`: how many transactions were filed differently as a result. */
+  refiledTransactions?: number;
+};
 
 /** What creating an item would add to the periods that already exist. */
 export type BillOrIncomePreview = {

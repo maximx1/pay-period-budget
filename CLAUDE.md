@@ -20,8 +20,9 @@ touching periods, transactions or bills and income.
 | `npm run dev` | API on :8787 (`tsx watch`) + Vite on :5173, which proxies `/api` |
 | `npm run check` | Typecheck + all tests. Must pass before a task is done |
 | `npm run test:watch` | Vitest in watch mode |
-| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before, and for a renamed table and column it wrote SQL that would have cleared every link (see `0008` and `src/server/db/migrations.test.ts`). Write renames by hand |
+| `npm run db:generate -- --name <what_changed>` | Create a migration after editing `src/server/db/schema.ts`. Read the SQL it writes: it has dropped `ON DELETE` from a foreign key added to an existing table before (again in `0010`), and for a renamed table and column it wrote SQL that would have cleared every link (see `0008` and `src/server/db/migrations.test.ts`). Write renames by hand |
 | `npm run db:seed` | Create the local dev account (see `src/server/scripts/seed.ts`) |
+| `npm run db:seed-demo` | Create a second local account, "demo", holding nine months of made-up budget to look at reports with. `-- --remove` deletes it |
 | `npm run build` / `npm start` | Build the client; run the API in production mode serving it |
 | `npm run db:backup -- <file>` | Write a consistent copy of the database |
 | `npm run build:android` | Build the client into `dist/android`, then copy it into `android/`. `.env.android` may give it a server address to start with |
@@ -48,6 +49,7 @@ src/client/   React app
   router.tsx    all routes
   features/<name>/   screens, hooks and components for one feature
   components/ui/     shared presentational primitives
+  components/charts/ the charts the Reports page draws with: plain SVG, no library
   lib/api.ts    the only place that calls fetch
 mcp/          MCP server an AI assistant runs locally; talks to the API with an API token.
               tools.ts = the tools (plain functions), api.ts = its only route to the API
@@ -88,6 +90,10 @@ android/      Capacitor's Android project. Generated once, then edited by hand; 
 - Style with the semantic colour utilities defined in `styles.css` (`bg-surface`,
   `text-muted`, `border-border`, `bg-primary`, ...). No raw palette classes like
   `bg-green-600`; they break dark mode.
+- Charts take their series colours from `components/charts/palette.ts` (`--chart-1` to
+  `--chart-8`), in that order and never shuffled or added to: the order is what keeps
+  neighbouring series apart for colour-blind readers. A ninth series is folded into
+  "Other". Every chart also offers its numbers as a table.
 - Give every CSS grid an explicit column count, including the one-column case
   (`grid-cols-1 xl:grid-cols-2`). Without it a long unbroken value widens the column past
   the screen on phones.

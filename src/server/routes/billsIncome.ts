@@ -38,7 +38,7 @@ export function billsIncomeRoutes(deps: { billsIncome: BillsIncomeService; authe
 
   routes.patch("/:id", async (c) => {
     const patch = await parseJson(c, billOrIncomePatchSchema);
-    return c.json<BillOrIncomeResponse>({ item: await billsIncome.update(c.var.user.id, c.req.param("id"), patch) });
+    return c.json<BillOrIncomeResponse>(await billsIncome.update(c.var.user.id, c.req.param("id"), patch));
   });
 
   routes.delete("/:id", async (c) => {

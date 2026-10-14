@@ -2,6 +2,11 @@
 // checking them at different widths and in both colour schemes. Not part of the production build.
 import { Inbox, Pencil, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { BarList } from "../../components/charts/BarList.tsx";
+import { DonutChart } from "../../components/charts/DonutChart.tsx";
+import { compactCents, NEUTRAL_COLOR, SERIES_COLORS } from "../../components/charts/palette.ts";
+import { XYChart } from "../../components/charts/XYChart.tsx";
+import { formatCents } from "../../../shared/money.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
@@ -101,6 +106,7 @@ export function UiKitPage() {
       <Section title="Feedback">
         <div className="flex flex-col gap-3">
           <Alert>Something needs your attention.</Alert>
+          <Alert tone="warning">You went over your budget for Groceries by $15.00 this period.</Alert>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => toast("Moved to Oct 16 – Oct 29, 2026")}>
               Show toast
@@ -125,6 +131,45 @@ export function UiKitPage() {
               title="Nothing here yet"
               description="Empty lists show an icon, a title and a hint about what to do next."
               action={<Button variant="secondary">Do the thing</Button>}
+            />
+          </Card>
+        </div>
+      </Section>
+
+      <Section title="Charts (components/charts)">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card>
+            <XYChart
+              label="Example columns and a line"
+              labels={["Jan 2", "Jan 16", "Jan 30", "Feb 13"]}
+              bars={{
+                mode: "stacked",
+                series: [
+                  { name: "Rent", color: SERIES_COLORS[0], values: [110_000, 0, 110_000, 0] },
+                  { name: "Groceries", color: SERIES_COLORS[1], values: [28_000, 31_000, 24_000, 35_500] },
+                  { name: "Uncategorised", color: NEUTRAL_COLOR, values: [9_000, 14_000, 6_500, 11_000] },
+                ],
+              }}
+              lines={[{ name: "Limit", color: SERIES_COLORS[3], values: [150_000, 150_000, null, 150_000] }]}
+              format={formatCents}
+              formatAxis={compactCents}
+            />
+          </Card>
+          <Card>
+            <DonutChart
+              label="Example shares"
+              totalLabel="spent"
+              format={formatCents}
+              slices={SERIES_COLORS.map((color, index) => ({ name: `Series ${index + 1}`, color, value: (9 - index) * 12_345 }))}
+            />
+          </Card>
+          <Card>
+            <BarList
+              rows={[
+                { name: "Groceries", value: 41_000, of: 32_000, text: "$410.00 of $320.00", detail: "Over in 2 of 6 pay periods" },
+                { name: "Fuel", value: 6_200, of: 10_000, text: "$62.00 of $100.00" },
+                { name: "A name with no limit", value: 3_000, text: "$30.00" },
+              ]}
             />
           </Card>
         </div>

@@ -22,6 +22,7 @@
     "check": "npm run typecheck && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/server/scripts/seed.ts",
+    "db:seed-demo": "tsx src/server/scripts/seedDemo.ts",
     "db:backup": "tsx src/server/scripts/backup.ts"
   },
   "dependencies": {

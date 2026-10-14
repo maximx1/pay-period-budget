@@ -38,6 +38,8 @@ export const transactionInputSchema = z.object({
    * ties this transaction to the same item.
    */
   countsToward: idSchema.optional(),
+  /** The category to file it under, if any. */
+  categoryId: idSchema.nullable().optional(),
 });
 export type TransactionInput = z.output<typeof transactionInputSchema>;
 
@@ -52,6 +54,8 @@ export const transactionPatchSchema = z
     status: z.enum(TRANSACTION_STATUSES).optional(),
     /** Ties it to a bill or income; null unties it. */
     billIncomeId: idSchema.nullable().optional(),
+    /** Files it under a category; null files it under none. */
+    categoryId: idSchema.nullable().optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type TransactionPatch = z.output<typeof transactionPatchSchema>;
@@ -86,6 +90,8 @@ export type Transaction = {
   occurrenceDate: LocalDate | null;
   /** The key it was imported under, or null if it was entered or generated in the app. */
   importKey: string | null;
+  /** The category it is filed under, or null. */
+  categoryId: string | null;
 };
 
 /** The most days one request for transactions by date may cover, counting both ends. */
@@ -105,6 +111,60 @@ export const transactionRangeSchema = z
 export type TransactionRange = z.output<typeof transactionRangeSchema>;
 
 export type TransactionListResponse = { transactions: Transaction[] };
+
+/** The most search results one request returns. */
+export const MAX_SEARCH_PAGE = 100;
+/** In a search's `categoryId`: only transactions filed under no category. */
+export const NO_CATEGORY = "none";
+export const NOTHING_TO_SEARCH_MESSAGE = "Enter something to search for, or choose a category or dates";
+
+/**
+ * Finds transactions across every pay period. `q` matches any part of the name or the
+ * note, whatever its capitals. Everything given must match; at least one thing must be given.
+ */
+export const transactionSearchSchema = z
+  .object({
+    q: z
+      .string()
+      .trim()
+      .max(100, "Keep the search under 100 characters")
+      .optional()
+      .transform((text) => text || undefined),
+    /** The first and last day to look in, both included. Either may be left out. */
+    from: rangeDateSchema.optional(),
+    to: rangeDateSchema.optional(),
+    /** A category's id, or NO_CATEGORY for transactions filed under nothing. */
+    categoryId: z.string().min(1).max(100).optional(),
+    limit: z.coerce
+      .number("Enter a number")
+      .int("Enter a whole number")
+      .min(1, "Ask for at least one")
+      .max(MAX_SEARCH_PAGE, `Ask for ${MAX_SEARCH_PAGE} or fewer at a time`)
+      .default(50),
+    /** `nextCursor` from the page before. Left out for the newest. */
+    before: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}_[\w-]{1,100}$/, "That isn't a cursor from an earlier page")
+      .optional(),
+  })
+  .refine(({ q, from, to, categoryId }) => [q, from, to, categoryId].some((value) => value !== undefined), {
+    path: ["q"],
+    message: NOTHING_TO_SEARCH_MESSAGE,
+  })
+  .refine(({ from, to }) => from === undefined || to === undefined || to >= from, {
+    path: ["to"],
+    message: "The end date is before the start date",
+  });
+export type TransactionSearchQuery = z.output<typeof transactionSearchSchema>;
+
+/** One page of what a search found, newest first. */
+export type TransactionSearchResponse = {
+  transactions: Transaction[];
+  /** Pass as `before` for the next, older page. Null when this page reaches the oldest. */
+  nextCursor: string | null;
+  /** Over everything the search found, not only this page. Each a positive amount. */
+  totals: { count: number; outCents: number; inCents: number };
+};
 
 /** What became of an upcoming entry that a payment counted toward. */
 export type CountedToward = {

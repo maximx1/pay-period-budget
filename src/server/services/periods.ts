@@ -13,6 +13,7 @@ import { addDays, diffDays, type LocalDate, todayIn } from "../../shared/dates.t
 import { earliestSeq, horizonSeq, MAX_HISTORY_YEARS, nominalPeriod } from "../../shared/schedule.ts";
 import { AppError } from "../lib/errors.ts";
 import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain, shiftHistory } from "./carry.ts";
+import { limitsWithSpending } from "./categoryLimits.ts";
 import { planDateChange } from "./periodDates.ts";
 import { toTransaction } from "./transactionMapper.ts";
 import {
@@ -31,6 +32,7 @@ const dateError = (message: string) => new AppError(400, "validation", message, 
 const anchorError = (message: string) => new AppError(400, "validation", message, { anchorDate: message });
 export const TOO_FAR_BACK = `That's more than ${MAX_HISTORY_YEARS} years back`;
 const noBudget = () => new AppError(409, "conflict", "Set up your budget first");
+const noCategory = () => new AppError(404, "not_found", "No such category");
 const historyIsDerived = () =>
   new AppError(409, "conflict", "Amounts before your budget started are worked out from its first period");
 
@@ -39,9 +41,11 @@ export function createPeriodService(deps: {
   now?: () => Date;
   /**
    * Runs inside the generating transaction for each period as it is created, before the
-   * next one is derived from it. The app uses this to add what its bills and income schedule.
+   * next one is derived from it. The app uses this to add what its bills and income
+   * schedule, and each category's usual limit. `how` is "forward" for a period generated
+   * after the latest and "earlier" for one added before the earliest, which is history.
    */
-  onPeriodCreated?: (repos: Repos, period: PeriodRecord) => Promise<void>;
+  onPeriodCreated?: (repos: Repos, period: PeriodRecord, how: "forward" | "earlier") => Promise<void>;
 }) {
   const { store, now = () => new Date(), onPeriodCreated = async () => {} } = deps;
 
@@ -96,7 +100,7 @@ export function createPeriodService(deps: {
         updatedAt: createdAt,
       };
       await repos.periods.create(period);
-      await onPeriodCreated(repos, period);
+      await onPeriodCreated(repos, period, "forward");
       last = period;
     }
   }
@@ -138,7 +142,7 @@ export function createPeriodService(deps: {
       updatedAt: createdAt,
     };
     await repos.periods.create(period);
-    await onPeriodCreated(repos, period);
+    await onPeriodCreated(repos, period, "earlier");
 
     // Bills and income due in it have just been added; back the starting amount off by them.
     const { paidCents, upcomingCents } = await repos.transactions.sumInRange(userId, period.startDate, period.endDate);
@@ -204,6 +208,7 @@ export function createPeriodService(deps: {
         projectedCents: period.startingCents + paidCents + upcomingCents,
       },
       transactions: records.map(toTransaction),
+      categoryLimits: await limitsWithSpending(repos, period, records),
       nav: {
         prevId: prev?.id ?? null,
         canAddPrevious,
@@ -386,6 +391,32 @@ export function createPeriodService(deps: {
       });
     },
 
+    /**
+     * Gives a period a limit for a category, replacing the one it has. Any period may have
+     * one, whenever it is; it moves no money.
+     */
+    setLimit(userId: string, periodId: string, categoryId: string, limitCents: number): Promise<PeriodView> {
+      return store.transaction(async (repos) => {
+        const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (!(await repos.categories.findById(userId, categoryId))) throw noCategory();
+        const updatedAt = now();
+        await repos.categoryLimits.set({ periodId, categoryId, userId, limitCents, createdAt: updatedAt, updatedAt });
+        return buildView(repos, budget, period, today);
+      });
+    },
+
+    /** Takes a period's limit for a category away. The category's usual limit is untouched. */
+    removeLimit(userId: string, periodId: string, categoryId: string): Promise<PeriodView> {
+      return store.transaction(async (repos) => {
+        const { budget, period, today } = await loadForEdit(repos, userId, periodId);
+        if (!(await repos.categories.findById(userId, categoryId))) throw noCategory();
+        if (!(await repos.categoryLimits.delete(userId, periodId, categoryId))) {
+          throw new AppError(404, "not_found", "That period has no limit for that category");
+        }
+        return buildView(repos, budget, period, today);
+      });
+    },
+
     /** Clears "may be out of date" by recalculating the whole flagged run this period is part of. */
     recalculate(userId: string, periodId: string): Promise<PeriodView> {
       return store.transaction(async (repos) => {
@@ -480,7 +511,7 @@ export function createPeriodService(deps: {
             updatedAt: createdAt,
           };
           await repos.periods.create(first);
-          await onPeriodCreated(repos, first);
+          await onPeriodCreated(repos, first, "forward");
           await ensureThroughIn(repos, userId, schedule, today, today);
 
           const { type, anchorDate, openingCents } = schedule;

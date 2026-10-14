@@ -37,8 +37,8 @@ different app.
 | [6](phase-06-period-adjustments.md) | Editing period dates and starting amounts | Done | n/a |
 | [7](phase-07-polish.md) | Manual ordering, settings, polish, date search | Done | n/a |
 | [8](phase-08-android.md) | Android app via Capacitor, biometric unlock | 8.1 to 8.3 done (8.3 on an emulator against the dev API); 8.4 written, fingerprint path not yet run | Sonnet for 8.2 and 8.3, Opus for 8.4 |
-| [9](phase-09-reset-starting.md) | Resetting a modified starting amount | Planned; scope to confirm with the owner | Opus |
-| [10](phase-10-projections.md) | Projections tab: what a future period will start with | Planned, not started | Opus for 10.1, Sonnet for the rest |
+| [9](phase-09-reset-starting.md) | Resetting a modified starting amount | Closed 2026-10-12, nothing to build: what was meant is the "Use calculated amount" button from phase 6 | n/a |
+| [10](phase-10-projections.md) | Projections tab: what a future period will start with | Dropped 2026-10-12 by the owner; reports are for later (see `backlog.md`) | n/a |
 | [11](phase-11-tokens-import-mcp.md) | API tokens, bulk transaction import, a local MCP server for assistants | Done 2026-10-11. Not yet deployed, or used with a real assistant | Opus for 11.1 and 11.4, Sonnet for the rest |
 | [12](phase-12-idle-timeout.md) | Idle timeout: the web app signs out and the Android app locks after ten minutes; face unlock | Built 2026-10-12. The Android half has not run on a phone | Opus |
 | [13](phase-13-recurring-links.md) | Transactions tied to a recurring item: linking, part payments, import recognition, MCP tools, a detail view | Done 2026-10-12, including the rename to bills and income in the code (decision 13). Not yet deployed | Opus for 13.1 to 13.3, Sonnet for the rest |
@@ -46,6 +46,9 @@ different app.
 | [15](phase-15-transfers.md) | Transfers: a third kind of bill or income for another account of your own (savings, joint, a loan), where money goes out and comes back, with a balance. Also Income and Expenses on the home card | Done 2026-10-12. Not yet deployed; adds migration `0009` | n/a |
 | [16](phase-16-swipe-periods.md) | Swipe left and right on the home screen for the next and previous pay period | Built 2026-10-12. Driven with simulated touches only; not yet tried with a finger | n/a |
 | [17](phase-17-mcp-switch.md) | A server setting that turns assistant (MCP) access on and off; on by default | Done 2026-10-12. Not yet deployed | n/a |
+| [18](phase-18-categories.md) | Categories: a transaction is filed under one, a bill or income passes its own on, and a category can have a limit for each pay period that the home screen warns about when it is passed | Done 2026-10-13. Not yet deployed; adds migration `0010`. Rebuild the MCP file and the Android app with it | n/a |
+| [19](phase-19-search.md) | Search across every transaction: by words in the name or note, by category, within dates; "find others like this" | Done 2026-10-13, built unattended on the owner's assumptions-allowed instruction. Not yet deployed | n/a |
+| [20](phase-20-reports.md) | Reports: twenty-five charts and tables over a span of pay periods, by bill, by category, over time and as shares | Done 2026-10-13, likewise. Not yet deployed. No chart library was added | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

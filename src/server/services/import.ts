@@ -251,15 +251,20 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
 
     // Links are checked row by row, in order, so several rows can pay toward one entry.
     const links = createLinkPlanner(repos, userId);
-    const linkedTo = new Map<number, string | null>();
+    const linkedTo = new Map<number, { billIncomeId: string | null; categoryId: string | null }>();
     const linkProblems: Record<string, string> = {};
     for (const { index, row } of fresh) {
-      const link = await links.plan({ billIncomeId: row.billIncomeId, countsToward: row.countsToward, amountCents: signed(row) });
+      const link = await links.plan({
+        billIncomeId: row.billIncomeId,
+        countsToward: row.countsToward,
+        amountCents: signed(row),
+        categoryId: row.categoryId,
+      });
       if ("problems" in link) {
         for (const [field, message] of Object.entries(link.problems)) {
           linkProblems[`transactions.${index}.${field}`] = message;
         }
-      } else linkedTo.set(index, link.billIncomeId);
+      } else linkedTo.set(index, link);
     }
     if (Object.keys(linkProblems).length > 0) {
       const count = new Set(Object.keys(linkProblems).map((path) => path.split(".")[1])).size;
@@ -299,9 +304,10 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
         paidAt: row.paid ? createdAt : null,
         sortOrder,
         note: row.note || null,
-        billIncomeId: linkedTo.get(index) ?? null,
+        billIncomeId: linkedTo.get(index)?.billIncomeId ?? null,
         occurrenceDate: null,
         importKey: row.importKey ?? null,
+        categoryId: linkedTo.get(index)?.categoryId ?? null,
         createdAt,
         updatedAt: createdAt,
       };

@@ -5,6 +5,8 @@ import type { DataStore, Repos } from "../types.ts";
 import { createApiTokenRepo } from "./apiTokens.ts";
 import { createPeriodRepo } from "./periods.ts";
 import { createBillsIncomeRepo } from "./billsIncome.ts";
+import { createCategoryRepo } from "./categories.ts";
+import { createCategoryLimitRepo } from "./categoryLimits.ts";
 import { createScheduleRepo } from "./schedules.ts";
 import { createSessionRepo } from "./sessions.ts";
 import { createSettingsRepo } from "./settings.ts";
@@ -21,6 +23,8 @@ function createRepos(db: Db): Repos {
     periods: createPeriodRepo(db),
     transactions: createTransactionRepo(db),
     billsIncome: createBillsIncomeRepo(db),
+    categories: createCategoryRepo(db),
+    categoryLimits: createCategoryLimitRepo(db),
   };
 }
 

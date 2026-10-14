@@ -163,6 +163,8 @@ export type TransactionRecord = {
   occurrenceDate: LocalDate | null;
   /** The key it was imported under, or null if it was not imported. Unique per user. */
   importKey: string | null;
+  /** The category it is filed under, or null. */
+  categoryId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -170,9 +172,28 @@ export type TransactionRecord = {
 export type TransactionRecordPatch = Partial<
   Pick<
     TransactionRecord,
-    "name" | "amountCents" | "occursAt" | "status" | "paidAt" | "sortOrder" | "note" | "billIncomeId" | "occurrenceDate"
+    | "name"
+    | "amountCents"
+    | "occursAt"
+    | "status"
+    | "paidAt"
+    | "sortOrder"
+    | "note"
+    | "billIncomeId"
+    | "occurrenceDate"
+    | "categoryId"
   >
 >;
+
+/** What a search looks for. Everything given must match. */
+export type TransactionSearch = {
+  /** Part of the name or the note, compared without regard to case. */
+  text?: string;
+  from?: LocalDate;
+  to?: LocalDate;
+  /** A category's id; null for transactions filed under none; undefined for any. */
+  categoryId?: string | null;
+};
 
 export interface TransactionRepo {
   findById(userId: string, id: string): Promise<TransactionRecord | null>;
@@ -231,6 +252,19 @@ export interface TransactionRepo {
    * tied to it by hand: those are the user's own entries.
    */
   listUpcomingForBillOrIncomeAfter(userId: string, billIncomeId: string, date: LocalDate): Promise<TransactionRecord[]>;
+  /**
+   * Files every transaction tied to a bill or income under this category (null: under
+   * none). Returns how many were filed differently before.
+   */
+  setCategoryForBillOrIncome(userId: string, billIncomeId: string, categoryId: string | null, now: Date): Promise<number>;
+  /** What a search matches, newest first, at most `limit`. With `before`, only those older than that position. */
+  search(
+    userId: string,
+    criteria: TransactionSearch,
+    page: { limit: number; before?: { occursAt: LocalDateTime; id: string } },
+  ): Promise<TransactionRecord[]>;
+  /** How many a search matches in all, and their money out and money in, each as a positive amount. */
+  searchTotals(userId: string, criteria: TransactionSearch): Promise<{ count: number; outCents: number; inCents: number }>;
   update(userId: string, id: string, patch: TransactionRecordPatch, now: Date): Promise<void>;
   delete(userId: string, id: string): Promise<void>;
 }
@@ -249,6 +283,8 @@ export type BillOrIncomeRecord = {
   recurrenceInterval: number;
   firstDueDate: LocalDate;
   endDate: LocalDate | null;
+  /** The category its entries are filed under as they are added, or null. */
+  categoryId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -267,6 +303,48 @@ export interface BillsIncomeRepo {
   delete(userId: string, id: string): Promise<void>;
 }
 
+export type CategoryRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  /** The limit a newly generated period is given for it. Null: none. */
+  defaultLimitCents: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CategoryRecordPatch = Partial<Pick<CategoryRecord, "name" | "defaultLimitCents">>;
+
+export interface CategoryRepo {
+  findById(userId: string, id: string): Promise<CategoryRecord | null>;
+  /** All of the user's categories, by name. */
+  list(userId: string): Promise<CategoryRecord[]>;
+  create(category: CategoryRecord): Promise<CategoryRecord>;
+  update(userId: string, id: string, patch: CategoryRecordPatch, now: Date): Promise<void>;
+  /** What was filed under it stays, filed under nothing. Its limits go with it. */
+  delete(userId: string, id: string): Promise<void>;
+}
+
+export type CategoryLimitRecord = {
+  periodId: string;
+  categoryId: string;
+  userId: string;
+  limitCents: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export interface CategoryLimitRepo {
+  /** Every limit the user has, in any period. */
+  listForUser(userId: string): Promise<CategoryLimitRecord[]>;
+  /** A period's limits, each with its category's name, by that name. */
+  listForPeriod(userId: string, periodId: string): Promise<Array<CategoryLimitRecord & { categoryName: string }>>;
+  /** Gives the period this limit for the category, replacing the one it has if any. */
+  set(limit: CategoryLimitRecord): Promise<void>;
+  /** Returns whether there was one to remove. */
+  delete(userId: string, periodId: string, categoryId: string): Promise<boolean>;
+}
+
 export interface Repos {
   users: UserRepo;
   sessions: SessionRepo;
@@ -276,6 +354,8 @@ export interface Repos {
   periods: PeriodRepo;
   transactions: TransactionRepo;
   billsIncome: BillsIncomeRepo;
+  categories: CategoryRepo;
+  categoryLimits: CategoryLimitRepo;
 }
 
 export interface DataStore extends Repos {

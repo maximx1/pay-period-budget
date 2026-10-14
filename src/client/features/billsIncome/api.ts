@@ -84,11 +84,13 @@ export function useCreateBillOrIncome() {
 }
 
 export function useUpdateBillOrIncome() {
+  const refreshList = useRefresh({ periods: false });
+  const refreshEverything = useRefresh({ periods: true });
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: BillOrIncomePatch }) =>
       api.patch<BillOrIncomeResponse>(`/api/bills-income/${id}`, patch),
-    // Editing the template never changes existing transactions, so periods stay as they are.
-    onSuccess: useRefresh({ periods: false }),
+    // Editing the template changes existing transactions only when it was asked to refile them.
+    onSuccess: (response) => (response.refiledTransactions === undefined ? refreshList() : refreshEverything()),
   });
 }
 

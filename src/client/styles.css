@@ -20,6 +20,17 @@
   --danger-fg: #ffffff;
   --danger-bg: #fdecec;
   --warning: #a16207;
+  --warning-bg: #fdf3d7;
+  /* Chart series, in a fixed order that keeps neighbours apart for colour-blind readers. Do not reorder. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #4a3aa7;
+  --chart-8: #e34948;
+  --chart-neutral: #9aa39d;
   --ring: #16a34a;
 }
 
@@ -38,6 +49,16 @@
     --danger-fg: #450a0a;
     --danger-bg: #2d1515;
     --warning: #fbbf24;
+    --warning-bg: #2c2410;
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-8: #e66767;
+    --chart-neutral: #6b7a71;
     --ring: #4ade80;
   }
 }
@@ -61,6 +82,16 @@
   --danger-fg: #450a0a;
   --danger-bg: #2d1515;
   --warning: #fbbf24;
+  --warning-bg: #2c2410;
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+  --chart-neutral: #6b7a71;
   --ring: #4ade80;
 }
 
@@ -78,6 +109,16 @@
   --color-danger-fg: var(--danger-fg);
   --color-danger-bg: var(--danger-bg);
   --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-neutral: var(--chart-neutral);
   --color-ring: var(--ring);
 }
 

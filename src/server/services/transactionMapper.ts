@@ -15,5 +15,6 @@ export function toTransaction(record: TransactionRecord): Transaction {
     billIncomeId: record.billIncomeId,
     occurrenceDate: record.occurrenceDate,
     importKey: record.importKey,
+    categoryId: record.categoryId,
   };
 }

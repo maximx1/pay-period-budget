@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Search } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -21,6 +22,7 @@ import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import { useBillsIncome } from "../billsIncome/api.ts";
+import { useCategories } from "../categories/api.ts";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
 const parseAmount = (text: string) => {
@@ -38,6 +40,8 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   billIncomeId: z.string(),
   /** An upcoming entry of that bill or income which this pays toward; empty for none. */
   countsToward: z.string(),
+  /** The category it is filed under; empty for none. */
+  categoryId: z.string(),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -55,6 +59,8 @@ type TransactionDialogProps = {
   timezone: string;
   /** Present when editing; absent when adding. */
   transaction?: Transaction;
+  /** Asks for a search for other transactions like the one being edited. */
+  onFindLike?: (transaction: Transaction) => void;
 };
 
 export function TransactionDialog({ open, onClose, transaction, ...rest }: TransactionDialogProps) {
@@ -65,7 +71,7 @@ export function TransactionDialog({ open, onClose, transaction, ...rest }: Trans
   );
 }
 
-function TransactionForm({ onClose, view, timezone, transaction }: Omit<TransactionDialogProps, "open">) {
+function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: Omit<TransactionDialogProps, "open">) {
   const toast = useToast();
   const create = useCreateTransaction();
   const update = useUpdateTransaction();
@@ -101,6 +107,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           paid: transaction.status === "paid",
           billIncomeId: transaction.billIncomeId ?? "",
           countsToward: "",
+          categoryId: transaction.categoryId ?? "",
         }
       : {
           name: "",
@@ -111,6 +118,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           paid: false,
           billIncomeId: "",
           countsToward: "",
+          categoryId: "",
         },
   });
 
@@ -120,6 +128,12 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
   const [chosenId, chosenKind] = watch(["billIncomeId", "kind"]);
   const choices = (items.data ?? []).filter((item) => !item.archived || item.id === transaction?.billIncomeId);
   const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
+
+  const categories = useCategories();
+  const categoryOptions = [
+    { value: "", label: "None" },
+    ...(categories.data ?? []).map((category) => ({ value: category.id, label: category.name })),
+  ];
 
   // What a new payment could be paying: the upcoming entries that bill or income added to
   // the period on screen. Paying toward one shrinks it, so the bill is not counted twice.
@@ -152,6 +166,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     if (getValues("amount").trim() === "" && item.defaultAmountCents > 0) {
       setValue("amount", centsToInput(item.defaultAmountCents));
     }
+    if (getValues("categoryId") === "" && item.categoryId) setValue("categoryId", item.categoryId);
   }
   const itemField = register("billIncomeId");
   const chosen = choices.find((choice) => choice.id === chosenId);
@@ -176,10 +191,11 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId }) => {
     setFormError(null);
     const amountCents = parseAmount(amount) ?? 0;
     const tiedTo = billIncomeId === "" ? null : billIncomeId;
+    const filedUnder = categoryId === "" ? null : categoryId;
     try {
       finish(
         transaction
@@ -193,6 +209,7 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
                 occursAt,
                 note,
                 ...(tiedTo !== transaction.billIncomeId && { billIncomeId: tiedTo }),
+                ...(filedUnder !== transaction.categoryId && { categoryId: filedUnder }),
               },
             })
           : await create.mutateAsync({
@@ -203,6 +220,9 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
               note,
               paid,
               billIncomeId: tiedTo,
+              // Said outright once the list has loaded, so what the form shows is what is saved.
+              // Until then it is left to the server, which files it where its bill or income is.
+              ...(categories.data && { categoryId: filedUnder }),
               ...(countsToward !== "" && payable.some((entry) => entry.id === countsToward) && { countsToward }),
             }),
       );
@@ -210,7 +230,9 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
       if (error instanceof ApiError && error.fields?.amountCents) {
         setError("amount", { message: error.fields.amountCents });
       }
-      setFormError(applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "countsToward"]));
+      setFormError(
+        applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "countsToward", "categoryId"]),
+      );
     }
   });
 
@@ -283,6 +305,15 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
         />
       )}
 
+      {categoryOptions.length > 1 && (
+        <SelectField
+          label="Category"
+          options={categoryOptions}
+          error={errors.categoryId?.message}
+          {...register("categoryId")}
+        />
+      )}
+
       {showNote ? (
         <TextField label="Note" autoComplete="off" error={errors.note?.message} {...register("note")} />
       ) : (
@@ -292,6 +323,17 @@ function TransactionForm({ onClose, view, timezone, transaction }: Omit<Transact
           className="-my-1 min-h-11 self-start rounded-lg text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           Add a note
+        </button>
+      )}
+
+      {transaction && onFindLike && (
+        <button
+          type="button"
+          onClick={() => onFindLike(transaction)}
+          className="-my-1 inline-flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <Search className="size-4" aria-hidden />
+          Find others like this
         </button>
       )}
 

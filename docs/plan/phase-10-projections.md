@@ -6,7 +6,14 @@ beginning 12/23/26?", for any future period, including ones that do not exist ye
 **Depends on:** phase 5 (recurring items). **Suggested model:** Opus for 10.1 (it restates
 the period and recurrence rules without writing anything), Sonnet for the rest.
 
-**Status:** planned 2026-10-11 at the owner's request. Not started.
+**Status: dropped 2026-10-12.** The owner: "it really was a half thought idea. I'll get
+into reports later." Not to be built from this file as it stands; it is kept as a starting
+point for the reports work noted in `backlog.md`. If it is picked up, a scheduled
+*transfer* (phase 15) counts as money out, through `entryKindOf`.
+
+*What follows is the plan as written on 2026-10-11.*
+
+Planned 2026-10-11 at the owner's request. Not started.
 
 ## What a projection is
 

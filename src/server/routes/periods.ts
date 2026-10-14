@@ -1,4 +1,5 @@
 import { Hono, type MiddlewareHandler } from "hono";
+import { categoryLimitSchema } from "../../shared/categories.ts";
 import {
   type LocateResponse,
   locateSchema,
@@ -50,6 +51,17 @@ export function periodRoutes(deps: { periods: PeriodService; authed: MiddlewareH
   routes.post("/:id/dates/revert", async (c) =>
     c.json<PeriodDatesResponse>(await periods.revertDates(c.var.user.id, c.req.param("id"))),
   );
+
+  routes.put("/:id/limits/:categoryId", async (c) => {
+    const { limitCents } = await parseJson(c, categoryLimitSchema);
+    const { id, categoryId } = c.req.param();
+    return c.json<PeriodView>(await periods.setLimit(c.var.user.id, id, categoryId, limitCents));
+  });
+
+  routes.delete("/:id/limits/:categoryId", async (c) => {
+    const { id, categoryId } = c.req.param();
+    return c.json<PeriodView>(await periods.removeLimit(c.var.user.id, id, categoryId));
+  });
 
   return routes;
 }

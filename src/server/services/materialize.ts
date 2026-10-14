@@ -46,6 +46,7 @@ export async function materializeInPeriod(
         billIncomeId: item.id,
         occurrenceDate: date,
         importKey: null,
+        categoryId: item.categoryId,
         createdAt: now,
         updatedAt: now,
       }));

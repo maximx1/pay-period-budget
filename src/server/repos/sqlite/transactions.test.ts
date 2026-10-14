@@ -27,6 +27,7 @@ const tx = (overrides: Partial<TransactionRecord>): TransactionRecord => ({
   billIncomeId: null,
   occurrenceDate: null,
   importKey: null,
+  categoryId: null,
   createdAt: now,
   updatedAt: now,
   ...overrides,

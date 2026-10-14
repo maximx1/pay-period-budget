@@ -6,7 +6,19 @@ can exist before the budget's first one.
 **Depends on:** phase 6 and the earlier-periods work (decision 12). **Suggested model:**
 Opus. This is carry-forward arithmetic, where a budget silently goes wrong.
 
-**Status:** planned 2026-10-11 at the owner's request. **Confirm the scope below with the
+**Status: closed 2026-10-12, nothing to build.** The owner said what was meant: "if you
+modify a starting amount for a period we should have a revert button or something next to
+it that reverts it back to the actual calculated starting value." That is the **Use
+calculated amount** button phase 6 built, described under "What exists today" below. It
+was tried again on a copy of the dev database the same day: a period's starting amount set
+to $5,000.00 by hand, carried forward, showed the pencil beside "Starting" and the line
+"The starting amount was set by hand. Use calculated amount" in the summary card; pressing
+it put that period and every later one back to the cent. The four wider readings (a) to
+(d) below were guesses and are not wanted. If one ever is, it starts from this file.
+
+*What follows is the plan as written on 2026-10-11, kept for the record.*
+
+Planned 2026-10-11 at the owner's request. **Confirm the scope below with the
 owner before building anything.** The request was one sentence, made while choosing how
 earlier periods should treat money: "We're going to need a new phase added to implement
 resetting a modified starting."

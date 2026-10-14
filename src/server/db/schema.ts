@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
 import { BILL_OR_INCOME_KINDS } from "../../shared/billsIncome.ts";
@@ -137,6 +138,47 @@ export const periods = sqliteTable(
   ],
 );
 
+/** What a transaction is filed under ("Groceries"), with the limit a pay period usually gets for it. */
+export const categories = sqliteTable(
+  "categories",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** What each newly generated period is given as its limit. Null: no limit. */
+    defaultLimitCents: integer("default_limit_cents"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  // "Groceries" and "groceries" are the same category.
+  (t) => [uniqueIndex("categories_user_name_unique").on(t.userId, sql`lower(${t.name})`)],
+);
+
+/** One period's limit for one category: a copy of the category's usual limit, then its own. */
+export const periodCategoryLimits = sqliteTable(
+  "period_category_limits",
+  {
+    periodId: text("period_id")
+      .notNull()
+      .references(() => periods.id, { onDelete: "cascade" }),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    limitCents: integer("limit_cents").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.periodId, t.categoryId] }),
+    index("period_category_limits_category_idx").on(t.categoryId),
+  ],
+);
+
 /** Bills and income: templates that produce transactions. (Not "accounts".) */
 export const billsIncome = sqliteTable(
   "bills_income",
@@ -156,6 +198,8 @@ export const billsIncome = sqliteTable(
     recurrenceInterval: integer("recurrence_interval").notNull().default(1),
     firstDueDate: text("first_due_date").notNull(),
     endDate: text("end_date"),
+    /** What its entries are filed under as they are added. Cleared if that category is deleted. */
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -185,6 +229,8 @@ export const transactions = sqliteTable(
     occurrenceDate: text("occurrence_date"),
     /** The importer's own name for this row, so importing the same row again adds nothing. */
     importKey: text("import_key"),
+    /** What it is filed under, if anything. Cleared if that category is deleted. */
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -195,6 +241,7 @@ export const transactions = sqliteTable(
     // One transaction per occurrence of an item. Rows with no item have a null bill_income_id,
     // and SQLite treats nulls as distinct, so they are unaffected.
     uniqueIndex("transactions_bill_income_occurrence_unique").on(t.billIncomeId, t.occurrenceDate),
+    index("transactions_category_idx").on(t.categoryId),
   ],
 );
 

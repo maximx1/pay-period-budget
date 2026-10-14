@@ -7,6 +7,8 @@ import { cn } from "../../lib/cn.ts";
 
 type TransactionRowProps = {
   transaction: Transaction;
+  /** The name of the category it is filed under, if any. */
+  categoryName?: string;
   onToggle: () => void;
   onEdit: () => void;
   /** When set, the row shows move buttons in place of the paid switch. Undefined ends of the range are disabled. */
@@ -14,13 +16,13 @@ type TransactionRowProps = {
 };
 
 /** One transaction: a paid/upcoming switch on the left, the rest of the row opens it for editing. */
-export function TransactionRow({ transaction, onToggle, onEdit, reorder }: TransactionRowProps) {
+export function TransactionRow({ transaction, categoryName, onToggle, onEdit, reorder }: TransactionRowProps) {
   const { name, amountCents, occursAt, note } = transaction;
   const paid = transaction.status === "paid";
   const income = amountCents > 0;
   // Midnight means "no particular time", which is how bills arrive.
   const time = occursAt.endsWith("T00:00") ? null : formatTime(occursAt);
-  const details = [time, note].filter(Boolean).join(" · ");
+  const details = [categoryName, time, note].filter(Boolean).join(" · ");
 
   return (
     <li className="flex items-center gap-1 pr-2 pl-1">

@@ -9,11 +9,13 @@ import {
   type BillOrIncome,
   type BillOrIncomePatch,
   type BillOrIncomePreview,
+  type BillOrIncomeResponse,
   type BillOrIncomeTransactionsQuery,
   type BillOrIncomeTransactionsResponse,
 } from "../../shared/billsIncome.ts";
 import { AppError } from "../lib/errors.ts";
-import type { DataStore, BillOrIncomeRecord } from "../repos/types.ts";
+import type { DataStore, BillOrIncomeRecord, Repos } from "../repos/types.ts";
+import { NO_SUCH_CATEGORY } from "./billIncomeLinks.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import { materializeInPeriod, ruleOf } from "./materialize.ts";
 import type { PeriodService } from "./periods.ts";
@@ -37,6 +39,7 @@ function toItem(record: BillOrIncomeRecord, today: LocalDate): BillOrIncome {
     recurrenceInterval: record.recurrenceInterval,
     firstDueDate: record.firstDueDate,
     endDate: record.endDate,
+    categoryId: record.categoryId,
     archived,
     nextDueDate: archived ? null : nextOccurrence(rule, today),
     scheduleText: describeRecurrence(rule),
@@ -59,9 +62,17 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
     recurrenceInterval: input.recurrenceInterval,
     firstDueDate: input.firstDueDate ?? today,
     endDate: input.endDate,
+    categoryId: input.categoryId,
     createdAt,
     updatedAt: createdAt,
   });
+
+  /** A category must be one of the user's own. Unknown and someone else's are refused in the same words. */
+  async function checkCategory(repos: Repos, userId: string, categoryId: string | null): Promise<void> {
+    if (categoryId !== null && !(await repos.categories.findById(userId, categoryId))) {
+      throw new AppError(400, "validation", "Some fields need attention", { categoryId: NO_SUCH_CATEGORY });
+    }
+  }
 
   return {
     async list(userId: string): Promise<BillOrIncome[]> {
@@ -78,6 +89,7 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
       return store.transaction(async (repos) => {
         const today = await periods.today(repos, userId);
         const createdAt = now();
+        await checkCategory(repos, userId, input.categoryId);
         const record = await repos.billsIncome.create(draft(userId, input, createdAt, today));
 
         // Ascending, so each period's change has reached the later ones before they add their own.
@@ -106,17 +118,23 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
       return preview;
     },
 
-    /** Changes the template only. Transactions that already exist are never touched. */
-    update(userId: string, id: string, patch: BillOrIncomePatch): Promise<BillOrIncome> {
+    /**
+     * Changes the template only. Transactions that already exist are never touched, with
+     * one exception the caller asks for: `applyToTransactions` files every transaction tied
+     * to the item under its category.
+     */
+    update(userId: string, id: string, patch: BillOrIncomePatch): Promise<BillOrIncomeResponse> {
       return store.transaction(async (repos) => {
         const before = await repos.billsIncome.findById(userId, id);
         if (!before) throw notFound();
 
+        const { applyToTransactions, ...fieldChanges } = patch;
         const updatedAt = now();
         const after: BillOrIncomeRecord = { ...before, updatedAt };
-        for (const [key, value] of Object.entries(patch)) {
+        for (const [key, value] of Object.entries(fieldChanges)) {
           if (value !== undefined) Object.assign(after, { [key]: value });
         }
+        if (after.categoryId !== before.categoryId) await checkCategory(repos, userId, after.categoryId);
 
         const datesTouched = patch.firstDueDate !== undefined || patch.endDate !== undefined;
         if (datesTouched && after.endDate !== null && after.endDate < after.firstDueDate) {
@@ -138,7 +156,12 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
 
         const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...changes } = after;
         await repos.billsIncome.update(userId, id, changes, updatedAt);
-        return toItem(after, await periods.today(repos, userId));
+        const item = toItem(after, await periods.today(repos, userId));
+        if (!applyToTransactions) return { item };
+        return {
+          item,
+          refiledTransactions: await repos.transactions.setCategoryForBillOrIncome(userId, id, after.categoryId, updatedAt),
+        };
       });
     },
 

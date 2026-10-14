@@ -108,3 +108,20 @@ export function useRecalculateStartingAmount() {
     onSuccess: useRefreshPeriods(),
   });
 }
+
+/** Gives a period a limit for a category, or changes the one it has. This period only. */
+export function useSetPeriodLimit() {
+  return useMutation({
+    mutationFn: ({ periodId, categoryId, limitCents }: { periodId: string; categoryId: string; limitCents: number }) =>
+      api.put<PeriodView>(`/api/periods/${periodId}/limits/${categoryId}`, { limitCents }),
+    onSuccess: useRefreshPeriods(),
+  });
+}
+
+export function useRemovePeriodLimit() {
+  return useMutation({
+    mutationFn: ({ periodId, categoryId }: { periodId: string; categoryId: string }) =>
+      api.delete<PeriodView>(`/api/periods/${periodId}/limits/${categoryId}`),
+    onSuccess: useRefreshPeriods(),
+  });
+}

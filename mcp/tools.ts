@@ -5,6 +5,14 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import type { AuthResponse } from "../src/shared/auth.ts";
 import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shared/budget.ts";
+import type { Report } from "../src/shared/reports.ts";
+import {
+  categoryInputSchema,
+  categoryLimitSchema,
+  type CategoryListResponse,
+  categoryPatchSchema,
+  type CategoryResponse,
+} from "../src/shared/categories.ts";
 import { dateOf, isLocalDate, nowIn, todayIn } from "../src/shared/dates.ts";
 import {
   MAX_BILL_OR_INCOME_TRANSACTIONS_PAGE,
@@ -20,7 +28,11 @@ import {
   type ImportRow,
   importRowSchema,
   MAX_IMPORT_ROWS,
+  MAX_SEARCH_PAGE,
   MAX_TRANSACTION_RANGE_DAYS,
+  NO_CATEGORY,
+  NOTHING_TO_SEARCH_MESSAGE,
+  type TransactionSearchResponse,
   type PossibleDuplicate,
   type BillOrIncomeSuggestion,
   type TransactionImportResponse,
@@ -30,7 +42,17 @@ import {
   type TransactionResponse,
 } from "../src/shared/transactions.ts";
 import { type Api, ApiRequestError } from "./api.ts";
-import { money, periodReport, plural, billOrIncomeLine, transactionLine, transactionList } from "./format.ts";
+import {
+  billOrIncomeLine,
+  categoryLine,
+  limitLines,
+  money,
+  periodReport,
+  plural,
+  reportText,
+  transactionLine,
+  transactionList,
+} from "./format.ts";
 
 /** Something the caller got wrong, or that could not be done; the message is the tool's answer. */
 export class ToolFailure extends Error {}
@@ -79,7 +101,16 @@ const patchFields = transactionPatchSchema.shape;
 const billOrIncomeFields = billOrIncomeInputSchema.shape;
 const billOrIncomePatchFields = billOrIncomePatchSchema.shape;
 
+const categoryFields = categoryInputSchema.shape;
+const categoryPatchFields = categoryPatchSchema.shape;
+
 const BILL_INCOME_ID_RULE = "The id of a bill or income, from list_bills_income.";
+const CATEGORY_ID_RULE = "The id of a category, from list_categories.";
+const LIMIT_RULE = "A whole number of cents, zero or more ($200.00 is 20000). Zero means nothing may be spent.";
+const APPLY_TO_PERIODS_RULE =
+  "True also gives the usual limit to the current pay period and every later one that already exists, replacing " +
+  "the limit each has (or, when the usual limit is being taken away, removing it). Left out, only pay periods " +
+  "created from now on follow. Periods that have ended are never touched: use set_period_limit for those.";
 const COUNTS_TOWARD_RULE =
   "The id of an upcoming transaction that a bill or income generated, when this one pays part or all of it. " +
   "That entry shrinks by this amount and is removed once nothing is left, so the bill is not counted twice. " +
@@ -241,10 +272,10 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       name: "get_period",
       title: "One pay period",
       description:
-        "One pay period: its starting amount, totals and every transaction in it. Give `id`, or a `date` to get the " +
+        "One pay period: its starting amount, totals, category limits and every transaction in it. Give `id`, or a `date` to get the " +
         'period containing it, or neither for the current period. "Leftover so far" is the starting amount plus paid ' +
         "transactions and should match the bank balance; \"projected leftover\" also counts upcoming ones and is what the " +
-        "next period starts with.",
+        "next period starts with. A limit line marked OVER is what the owner sees as a warning on that period.",
       inputSchema: {
         id: z.string().min(1).optional().describe("A period id from list_periods."),
         date: z.string().refine(isLocalDate, "Use YYYY-MM-DD").optional().describe("YYYY-MM-DD. The period containing this date."),
@@ -291,6 +322,59 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
     }),
 
     define({
+      name: "search_transactions",
+      title: "Search transactions",
+      description:
+        "Finds transactions in any pay period, newest first, with how many matched and what they add up to. " +
+        "`q` matches any part of the name or the note, whatever its capitals. Give at least one of q, categoryId, from " +
+        `and to; everything given must match. Up to ${MAX_SEARCH_PAGE} per call; pass the cursor it gives as \`before\` for older ones. ` +
+        "Unlike list_transactions there is no limit on the span of dates.",
+      inputSchema: {
+        q: z.string().optional().describe('Words to look for, such as "kroger". Up to 100 characters.'),
+        categoryId: z
+          .string()
+          .optional()
+          .describe(`${CATEGORY_ID_RULE} Or "${NO_CATEGORY}" for transactions filed under no category.`),
+        from: z.string().optional().describe("YYYY-MM-DD, the first day to look in."),
+        to: z.string().optional().describe("YYYY-MM-DD, the last day to look in."),
+        limit: z.number().int().min(1).max(MAX_SEARCH_PAGE).default(50).describe("How many to return."),
+        before: z.string().optional().describe("The cursor from the previous call, for the next older page."),
+      },
+      readOnly: true,
+      async run({ q, categoryId, from, to, limit, before }) {
+        if (![q?.trim(), categoryId, from, to].some(Boolean)) throw new ToolFailure(`${NOTHING_TO_SEARCH_MESSAGE}.`);
+        const query = new URLSearchParams({ limit: String(limit) });
+        for (const [key, value] of Object.entries({ q, categoryId, from, to, before })) if (value) query.set(key, value);
+        const { transactions, nextCursor, totals } = await api.get<TransactionSearchResponse>(`/api/transactions/search?${query}`);
+        return [
+          `${plural(totals.count, "transaction")} found: ${money(totals.outCents)} out, ${money(totals.inCents)} in.`,
+          ...(totals.count === 0
+            ? []
+            : [`${transactions.length === totals.count ? "All of them" : `These ${transactions.length}`}, newest first:`, transactionList(transactions)]),
+          ...(nextCursor ? [`There are older ones. Call again with before: "${nextCursor}"`] : []),
+        ].join("\n");
+      },
+    }),
+
+    define({
+      name: "get_report",
+      title: "Report over a span of pay periods",
+      description:
+        "Adds up the pay periods that share at least one day with `from`..`to`, whole: income, expenses and leftover " +
+        "for each one, then money out by category and by bill, category limits that were passed, the names most was " +
+        "spent under, and anything from before today still marked upcoming. Paid and upcoming transactions both count. " +
+        "Use it to answer questions about trends, rather than adding transactions up by hand.",
+      inputSchema: {
+        from: z.string().describe("YYYY-MM-DD, the first day."),
+        to: z.string().describe("YYYY-MM-DD, the last day."),
+      },
+      readOnly: true,
+      async run({ from, to }) {
+        return reportText(await api.get<Report>(`/api/reports?${new URLSearchParams({ from, to })}`));
+      },
+    }),
+
+    define({
       name: "create_transaction",
       title: "Add a transaction",
       description:
@@ -309,6 +393,10 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
           `${BILL_INCOME_ID_RULE} Ties this transaction to that item, as a payment or receipt in addition to whatever the item schedules.`,
         ),
         countsToward: transactionFields.countsToward.describe(COUNTS_TOWARD_RULE),
+        categoryId: transactionFields.categoryId.describe(
+          `${CATEGORY_ID_RULE} Files the transaction under it. Left out, a transaction tied to a bill or income takes ` +
+            "that item's category, if it has one; null files it under none.",
+        ),
       },
       readOnly: false,
       async run(input) {
@@ -327,8 +415,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       name: "update_transaction",
       title: "Change a transaction",
       description:
-        "Changes one transaction; give only the fields that change: its details, whether it is paid, or which bill or income " +
-        "it is tied to. Changing the date moves it to the period that covers the new date.",
+        "Changes one transaction; give only the fields that change: its details, whether it is paid, which bill or income " +
+        "it is tied to, or which category it is filed under. Changing the date moves it to the period that covers the new date.",
       inputSchema: {
         id: z.string().min(1).describe("The transaction's id, from list_transactions or get_period."),
         name: patchFields.name,
@@ -338,6 +426,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         note: patchFields.note.describe("An empty string or null removes the note."),
         status: patchFields.status.describe('"paid" once the money has moved, "upcoming" if it has not.'),
         billIncomeId: patchFields.billIncomeId.describe(`${BILL_INCOME_ID_RULE} Ties it to that item; null unties it.`),
+        categoryId: patchFields.categoryId.describe(`${CATEGORY_ID_RULE} Files it under that category; null files it under none.`),
       },
       readOnly: false,
       async run({ id, ...patch }) {
@@ -441,6 +530,9 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         firstDueDate: billOrIncomeFields.firstDueDate.describe('YYYY-MM-DD. The first occurrence; it also fixes the weekday or day of the month. Not used with "none".'),
         endDate: billOrIncomeFields.endDate.describe("YYYY-MM-DD, or left out. No occurrences after this date."),
         description: billOrIncomeFields.description.describe("Optional notes: an account number, a link to pay it."),
+        categoryId: billOrIncomeFields.categoryId.describe(
+          `${CATEGORY_ID_RULE} Every entry the item adds, and every transaction tied to it without a category of its own, is filed under it.`,
+        ),
         dryRun: z.boolean().default(true).describe("True (the default) reports without saving. False saves."),
       },
       readOnly: false,
@@ -462,7 +554,8 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       title: "Change a bill or income",
       description:
         "Changes a bill or income; give only the fields that change. It never touches transactions that already exist: " +
-        "a new amount or schedule applies to pay periods created from now on. To turn a bill that is really a savings " +
+        "a new amount, schedule or category applies to what it adds from now on. The one exception is " +
+        "applyToTransactions, which files everything already tied to it under its category. To turn a bill that is really a savings " +
         'account or a loan into a transfer, send kind: "transfer" (and openingCents if it held something already): ' +
         "everything tied to it stays tied, and its balance is worked out from those transactions at once.",
       inputSchema: {
@@ -478,14 +571,29 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         firstDueDate: billOrIncomePatchFields.firstDueDate.describe("YYYY-MM-DD."),
         endDate: billOrIncomePatchFields.endDate.describe("YYYY-MM-DD, or null for no end."),
         description: billOrIncomePatchFields.description,
+        categoryId: billOrIncomePatchFields.categoryId.describe(
+          `${CATEGORY_ID_RULE} What it adds from now on is filed under it; null takes its category away.`,
+        ),
+        applyToTransactions: billOrIncomePatchFields.applyToTransactions.describe(
+          "True also files every transaction already tied to this item under its category (or under none, if it has " +
+            "none), replacing whatever category each of them had. Ask the owner before using it.",
+        ),
       },
       readOnly: false,
       async run({ id, ...patch }) {
         if (Object.values(patch).every((value) => value === undefined)) {
           throw new ToolFailure("Give at least one field to change.");
         }
-        const { item } = await api.patch<BillOrIncomeResponse>(`/api/bills-income/${encodeURIComponent(id)}`, patch);
-        return `Changed: ${billOrIncomeLine(item)}\nTransactions that already exist are as they were.`;
+        const { item, refiledTransactions } = await api.patch<BillOrIncomeResponse>(
+          `/api/bills-income/${encodeURIComponent(id)}`,
+          patch,
+        );
+        const existing =
+          refiledTransactions === undefined
+            ? "Transactions that already exist are as they were."
+            : `${plural(refiledTransactions, "transaction")} already tied to it ${refiledTransactions === 1 ? "was" : "were"} ` +
+              `${item.categoryId ? `filed under category ${item.categoryId}` : "left with no category"}; nothing else about them changed.`;
+        return `Changed: ${billOrIncomeLine(item)}\n${existing}`;
       },
     }),
 
@@ -528,6 +636,118 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
     }),
 
     define({
+      name: "list_categories",
+      title: "Categories",
+      description:
+        "The categories transactions are filed under, such as Groceries. A transaction has at most one. A category may " +
+        "have a usual limit: each pay period gets its own copy of it when the period is created, and get_period " +
+        "reports what has been spent against it and whether the period is over.",
+      inputSchema: {},
+      readOnly: true,
+      async run() {
+        const { categories } = await api.get<CategoryListResponse>("/api/categories");
+        if (categories.length === 0) return "No categories yet.";
+        return [`${plural(categories.length, "category", "categories")}:`, ...categories.map((category) => `- ${categoryLine(category)}`)].join("\n");
+      },
+    }),
+
+    define({
+      name: "create_category",
+      title: "Add a category",
+      description:
+        "Adds a category to file transactions under. Names are unique whatever their capitals. A usual limit is " +
+        "optional; with one, every pay period created from now on starts with that limit for the category.",
+      inputSchema: {
+        name: categoryFields.name,
+        defaultLimitCents: categoryFields.defaultLimitCents.describe(`The usual limit for each pay period. ${LIMIT_RULE} Left out or null, there is none.`),
+        applyToPeriods: categoryFields.applyToPeriods.describe(APPLY_TO_PERIODS_RULE),
+      },
+      readOnly: false,
+      async run(input) {
+        const { category } = await api.post<CategoryResponse>("/api/categories", input);
+        return `Added: ${categoryLine(category)}`;
+      },
+    }),
+
+    define({
+      name: "update_category",
+      title: "Change a category",
+      description:
+        "Renames a category or changes its usual limit; give only what changes. A new usual limit by itself applies " +
+        "only to pay periods created from now on; applyToPeriods brings the current and later ones into line too.",
+      inputSchema: {
+        id: z.string().min(1).describe(CATEGORY_ID_RULE),
+        name: categoryPatchFields.name,
+        defaultLimitCents: categoryPatchFields.defaultLimitCents.describe(`${LIMIT_RULE} null takes the usual limit away.`),
+        applyToPeriods: categoryPatchFields.applyToPeriods.describe(APPLY_TO_PERIODS_RULE),
+      },
+      readOnly: false,
+      async run({ id, ...patch }) {
+        if (Object.values(patch).every((value) => value === undefined)) {
+          throw new ToolFailure("Give at least one field to change.");
+        }
+        const { category } = await api.patch<CategoryResponse>(`/api/categories/${encodeURIComponent(id)}`, patch);
+        return `Changed: ${categoryLine(category)}`;
+      },
+    }),
+
+    define({
+      name: "delete_category",
+      title: "Delete a category",
+      description:
+        "Deletes a category for good. Its transactions and its bills and income stay, filed under nothing, and its " +
+        "limits are removed from every pay period. There is no undo.",
+      inputSchema: { id: z.string().min(1).describe(CATEGORY_ID_RULE) },
+      readOnly: false,
+      destructive: true,
+      async run({ id }) {
+        await api.delete(`/api/categories/${encodeURIComponent(id)}`);
+        return `Deleted category ${id}. What was filed under it remains, with no category.`;
+      },
+    }),
+
+    define({
+      name: "set_period_limit",
+      title: "Set a pay period's limit for a category",
+      description:
+        "Gives one pay period a limit for a category, or changes the one it has. It affects that period only and " +
+        "moves no money. This is how a period that is already over, or one from before the budget began, gets a " +
+        "limit: they are never given one automatically. The category's usual limit is not changed.",
+      inputSchema: {
+        periodId: z.string().min(1).describe("A period id from list_periods or get_period."),
+        categoryId: z.string().min(1).describe(CATEGORY_ID_RULE),
+        limitCents: categoryLimitSchema.shape.limitCents.describe(LIMIT_RULE),
+      },
+      readOnly: false,
+      async run({ periodId, categoryId, limitCents }) {
+        const view = await api.put<PeriodView>(
+          `/api/periods/${encodeURIComponent(periodId)}/limits/${encodeURIComponent(categoryId)}`,
+          { limitCents },
+        );
+        return [`Period ${view.period.startDate} to ${view.period.endDate} now has:`, ...limitLines(view.categoryLimits)].join("\n");
+      },
+    }),
+
+    define({
+      name: "remove_period_limit",
+      title: "Remove a pay period's limit for a category",
+      description:
+        "Takes one pay period's limit for a category away. That period only; the category's usual limit and every " +
+        "other period's limit stay as they are. set_period_limit puts one back.",
+      inputSchema: {
+        periodId: z.string().min(1).describe("A period id from list_periods or get_period."),
+        categoryId: z.string().min(1).describe(CATEGORY_ID_RULE),
+      },
+      readOnly: false,
+      async run({ periodId, categoryId }) {
+        const view = await api.delete<PeriodView>(
+          `/api/periods/${encodeURIComponent(periodId)}/limits/${encodeURIComponent(categoryId)}`,
+        );
+        return [`Removed. Period ${view.period.startDate} to ${view.period.endDate} now has:`, ...limitLines(view.categoryLimits)].join("\n");
+      },
+    }),
+
+    define({
       name: "import_transactions",
       title: "Import transactions from a file",
       description:
@@ -535,14 +755,16 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         "never retype amounts by hand.\n\n" +
         'The file is a JSON array of rows: {"name": string, "amountCents": positive integer, "kind": "expense" | "income", ' +
         '"occursAt": "YYYY-MM-DDTHH:mm", "paid": true, "note"?: string, "importKey"?: string, "billIncomeId"?: string, ' +
-        '"countsToward"?: string}. Put the bank\'s own description in note: it is how the import learns which rows ' +
+        '"countsToward"?: string, "categoryId"?: string | null}. Put the bank\'s own description in note: it is how the import learns which rows ' +
         "belong to which bill or income. " +
         "Set paid: true for anything that has already cleared. importKey is your own stable name for the row (the bank's " +
         "transaction id, or date + amount + description + a counter among identical rows): a row whose key was imported " +
         "before is skipped, so the same file, or an overlapping export, can be imported again safely. A row whose " +
         "transaction the owner later deleted is skipped too, so it does not come back.\n\n" +
         "billIncomeId ties a row to a bill or income. countsToward says the row pays an upcoming entry that an item " +
-        "generated: the entry is replaced by the real payment instead of both being counted.\n\n" +
+        "generated: the entry is replaced by the real payment instead of both being counted. categoryId files a row " +
+        "under a category from list_categories; a row tied to a bill or income takes that item's category when it " +
+        "names none, and null says none. The server suggests no categories: decide them in the script.\n\n" +
         "dryRun defaults to true: it reports what would happen and saves nothing. Read the report. It suggests which " +
         "rows belong to which bill or income and lists rows that may repeat something already in the budget; act on " +
         "those by adding billIncomeId or countsToward to rows, or taking rows out, in the file (better: in the script " +

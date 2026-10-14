@@ -24,10 +24,12 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { SelectField } from "../../components/ui/SelectField.tsx";
 import { TextAreaField } from "../../components/ui/TextAreaField.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
+import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
 import { useDebouncedValue } from "../../lib/useDebouncedValue.ts";
 import { applyApiError } from "../auth/formErrors.ts";
+import { useCategories } from "../categories/api.ts";
 import {
   useCreateBillOrIncome,
   useDeleteBillOrIncome,
@@ -65,6 +67,8 @@ const formSchema = z
     /** Empty means it never ends. */
     endDate: z.string().refine((text) => text === "" || isLocalDate(text), "Enter a valid date"),
     description: z.string().max(2000, "Keep the description under 2,000 characters"),
+    /** The category its entries are filed under; empty for none. */
+    categoryId: z.string(),
   })
   // Something with no schedule need not have a usual amount; anything that repeats must.
   .refine(
@@ -94,6 +98,7 @@ const toInput = (values: FormValues): BillOrIncomeInput => {
     firstDueDate: noSchedule ? undefined : values.firstDueDate,
     endDate: noSchedule || values.endDate === "" ? null : values.endDate,
     description: values.description.trim(),
+    categoryId: values.categoryId === "" ? null : values.categoryId,
   };
 };
 
@@ -174,6 +179,13 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"end" | "delete" | null>(null);
   const [removeUpcoming, setRemoveUpcoming] = useState(true);
+  const [applyToTransactions, setApplyToTransactions] = useState(false);
+  const toast = useToast();
+  const categories = useCategories();
+  const categoryOptions = [
+    { value: "", label: "None" },
+    ...(categories.data ?? []).map((category) => ({ value: category.id, label: category.name })),
+  ];
   // What "On a schedule" goes back to after a look at "As it happens".
   const [scheduledUnit, setScheduledUnit] = useState<RecurrenceUnit>(
     item && item.recurrenceUnit !== "none" ? item.recurrenceUnit : "month",
@@ -202,6 +214,7 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           firstDueDate: item.recurrenceUnit === "none" ? today : item.firstDueDate,
           endDate: item.endDate ?? "",
           description: item.description,
+          categoryId: item.categoryId ?? "",
         }
       : {
           name: "",
@@ -213,6 +226,7 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           firstDueDate: today,
           endDate: "",
           description: "",
+          categoryId: "",
         },
   });
 
@@ -221,6 +235,9 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const everyPeriod = values.recurrenceUnit === "period";
   const noSchedule = values.recurrenceUnit === "none";
   const transfer = values.kind === "transfer";
+  // Entries it adds from now on follow a change of category by themselves; whether the
+  // transactions already tied to it should follow is asked.
+  const categoryChanged = item !== undefined && values.categoryId !== (item.categoryId ?? "");
   // Neither has a number of weeks or months to ask for.
   const noInterval = everyPeriod || noSchedule;
 
@@ -251,8 +268,19 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const onSubmit = handleSubmit(async (submitted) => {
     setFormError(null);
     try {
-      if (item) await update.mutateAsync({ id: item.id, patch: toInput(submitted) });
-      else await create.mutateAsync(toInput(submitted));
+      if (item) {
+        const refile = categoryChanged && applyToTransactions;
+        const { refiledTransactions } = await update.mutateAsync({
+          id: item.id,
+          patch: { ...toInput(submitted), ...(refile && { applyToTransactions: true }) },
+        });
+        if (refiledTransactions !== undefined) {
+          const chosen = categories.data?.find((category) => category.id === submitted.categoryId)?.name;
+          toast(
+            `${count(refiledTransactions, "transaction")} ${chosen ? `filed under ${chosen}` : "left with no category"}.`,
+          );
+        }
+      } else await create.mutateAsync(toInput(submitted));
       onClose();
     } catch (error) {
       if (error instanceof ApiError && error.fields?.defaultAmountCents) {
@@ -262,7 +290,7 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
         setError("opening", { message: error.fields.openingCents });
       }
       setFormError(
-        applyApiError(error, setError, ["name", "recurrenceInterval", "firstDueDate", "endDate", "description"]),
+        applyApiError(error, setError, ["name", "recurrenceInterval", "firstDueDate", "endDate", "description", "categoryId"]),
       );
     }
   });
@@ -363,6 +391,36 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
             {...register("firstDueDate")}
           />
           <TextField label="Ends (optional)" type="date" error={errors.endDate?.message} {...register("endDate")} />
+        </div>
+      )}
+
+      {categoryOptions.length > 1 && (
+        <div>
+          <SelectField
+            label="Category"
+            options={categoryOptions}
+            hint="Optional. What it adds, and what is tied to it, is filed under this from now on."
+            error={errors.categoryId?.message}
+            {...register("categoryId")}
+          />
+          {categoryChanged && (
+            <label className="mt-1 flex min-h-11 cursor-pointer items-start gap-3 py-2 text-sm text-fg">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-5 shrink-0 accent-primary"
+                checked={applyToTransactions}
+                onChange={(event) => setApplyToTransactions(event.target.checked)}
+              />
+              <span>
+                <span className="font-medium">
+                  {values.categoryId === ""
+                    ? "Also take the category off the transactions already tied to this"
+                    : "Also set it on the transactions already tied to this"}
+                </span>
+                <span className="block text-muted">Every one of them, replacing any category they have now.</span>
+              </span>
+            </label>
+          )}
         </div>
       )}
 

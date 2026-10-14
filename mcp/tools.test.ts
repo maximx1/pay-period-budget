@@ -509,6 +509,188 @@ describe("bills and income", () => {
   });
 });
 
+describe("categories and limits", () => {
+  const idIn = (text: string) => /\| id ([\w-]+)/.exec(text)![1]!;
+  const periodId = async (date: string) => /\| id ([\w-]+)/.exec(await call("get_period", { date }))![1]!;
+
+  it("adds, lists, changes and deletes a category", async () => {
+    expect(await call("list_categories")).toBe("No categories yet.");
+
+    const added = await call("create_category", { name: "Groceries", defaultLimitCents: 20_000 });
+    expect(added).toMatch(/^Added: Groceries \| usual limit \$200\.00 \(20000 cents\) each pay period \| id [\w-]+$/);
+    const id = idIn(added);
+    await call("create_category", { name: "Car" });
+    expect((await call("list_categories")).split("\n")).toEqual([
+      "2 categories:",
+      expect.stringMatching(/^- Car \| no usual limit \| id [\w-]+$/),
+      `- Groceries | usual limit $200.00 (20000 cents) each pay period | id ${id}`,
+    ]);
+
+    expect(await call("update_category", { id, name: "Food", defaultLimitCents: null })).toBe(
+      `Changed: Food | no usual limit | id ${id}`,
+    );
+    await expect(call("update_category", { id })).rejects.toThrow("Give at least one field to change.");
+    await expect(call("create_category", { name: "food" })).rejects.toThrow("You already have a category with that name");
+
+    expect(await call("delete_category", { id })).toBe(
+      `Deleted category ${id}. What was filed under it remains, with no category.`,
+    );
+    await expect(call("delete_category", { id })).rejects.toThrow("No such category");
+  });
+
+  it("files transactions, and reports a period that has gone over its limit", async () => {
+    const id = idIn(await call("create_category", { name: "Groceries", defaultLimitCents: 20_000, applyToPeriods: true }));
+
+    const first = await call("create_transaction", row("2026-01-14", { amountCents: 12_000, categoryId: id }));
+    expect(first).toContain(`| category ${id} | id `);
+    const upcoming = await call("create_transaction", row("2026-01-20", { amountCents: 9_500, paid: false, categoryId: id }));
+    const unfiled = await call("create_transaction", row("2026-01-21", { amountCents: 70_000 }));
+    expect(unfiled).not.toContain("category");
+
+    const report = await call("get_period");
+    expect(report).toContain(
+      "1 category limit (spent is money out less money in, paid and upcoming, filed under the category):\n" +
+        `- Groceries: spent $215.00 (21500 cents) of $200.00 (20000 cents), $120.00 (12000 cents) of it paid | category ${id}\n` +
+        "OVER: You're set to go over your budget for Groceries by $15.00 this period.",
+    );
+    expect(report).toContain(`| paid | Groceries | category ${id} | id `);
+
+    await call("update_transaction", { id: /\| id ([\w-]+)$/m.exec(upcoming)![1]!, status: "paid" });
+    expect(await call("get_period")).toContain("OVER: You went over your budget for Groceries by $15.00 this period.");
+
+    // Unfiled, it no longer counts.
+    const changed = await call("update_transaction", { id: /\| id ([\w-]+)$/m.exec(first)![1]!, categoryId: null });
+    expect(changed).not.toContain("category");
+    const after = await call("get_period");
+    expect(after).toContain("- Groceries: spent $95.00 (9500 cents) of $200.00 (20000 cents)");
+    expect(after).not.toContain("OVER");
+  });
+
+  it("gives a past period a limit, changes it and takes it away", async () => {
+    const id = idIn(await call("create_category", { name: "Groceries", defaultLimitCents: 20_000, applyToPeriods: true }));
+    const past = await periodId("2025-12-20");
+    // Asked for or not, a period that is over was given none.
+    expect(await call("get_period", { id: past })).toContain("No category limits in this period.");
+    await call("create_transaction", row("2025-12-20", { amountCents: 4_000, categoryId: id }));
+
+    expect(await call("set_period_limit", { periodId: past, categoryId: id, limitCents: 3_000 })).toBe(
+      [
+        "Period 2025-12-16 to 2025-12-29 now has:",
+        "1 category limit (spent is money out less money in, paid and upcoming, filed under the category):",
+        `- Groceries: spent $40.00 (4000 cents) of $30.00 (3000 cents), $40.00 (4000 cents) of it paid | category ${id}`,
+        "OVER: You went over your budget for Groceries by $10.00 this period.",
+      ].join("\n"),
+    );
+    expect(await call("set_period_limit", { periodId: past, categoryId: id, limitCents: 5_000 })).not.toContain("OVER");
+    // The current period's own limit, and the usual one, are untouched.
+    expect(await call("get_period")).toContain("of $200.00 (20000 cents)");
+    expect(await call("list_categories")).toContain("usual limit $200.00 (20000 cents)");
+
+    expect(await call("remove_period_limit", { periodId: past, categoryId: id })).toBe(
+      "Removed. Period 2025-12-16 to 2025-12-29 now has:\nNo category limits in this period.",
+    );
+    await expect(call("remove_period_limit", { periodId: past, categoryId: id })).rejects.toThrow(
+      "That period has no limit for that category",
+    );
+    await expect(call("set_period_limit", { periodId: past, categoryId: "nope", limitCents: 1 })).rejects.toThrow("No such category");
+    await expect(call("set_period_limit", { periodId: "nope", categoryId: id, limitCents: 1 })).rejects.toThrow("No such period");
+  });
+
+  it("puts a category on a bill or income, and on what is already tied to it when asked", async () => {
+    const id = idIn(await call("create_category", { name: "Housing" }));
+    const rent = idIn(
+      await call("create_bill_or_income", {
+        name: "Rent",
+        kind: "expense",
+        defaultAmountCents: 90_000,
+        recurrenceUnit: "month",
+        firstDueDate: "2026-01-25",
+        dryRun: false,
+      }),
+    );
+    await call("create_transaction", row("2026-01-14", { name: "Late fee", billIncomeId: rent }));
+
+    const quiet = await call("update_bill_or_income", { id: rent, categoryId: id });
+    expect(quiet).toContain(`| category ${id} |`);
+    expect(quiet).toContain("Transactions that already exist are as they were.");
+    expect(await call("list_bills_income")).toContain(`| category ${id} |`);
+    expect(await call("get_period")).not.toContain(`| category ${id} | id`);
+
+    // A payment tied to it from now on takes its category without being told to.
+    expect(await call("create_transaction", row("2026-01-15", { name: "Top-up", billIncomeId: rent }))).toContain(`| category ${id} | id `);
+
+    const loud = await call("update_bill_or_income", { id: rent, applyToTransactions: true });
+    expect(loud).toContain(`2 transactions already tied to it were filed under category ${id}; nothing else about them changed.`);
+    const report = await call("get_period");
+    expect(report.match(new RegExp(`\\| category ${id} \\| id `, "g"))).toHaveLength(3);
+  });
+
+  it("files the rows of an imported file", async () => {
+    const id = idIn(await call("create_category", { name: "Groceries" }));
+    writeFile([
+      row("2026-01-20", { name: "Kroger", importKey: "a", categoryId: id }),
+      row("2026-01-21", { name: "Cinema", importKey: "b" }),
+    ]);
+    await call("import_transactions", { file: FILE, dryRun: false });
+
+    const listed = await call("list_transactions", { from: "2026-01-20", to: "2026-01-21" });
+    expect(listed).toContain(`Kroger | imported as "a" | category ${id} | id `);
+    expect(listed).toMatch(/Cinema \| imported as "b" \| id /);
+
+    writeFile([row("2026-01-22", { importKey: "c", categoryId: "nope" })]);
+    await expect(call("import_transactions", { file: FILE })).rejects.toThrow("categoryId: No such category");
+  });
+});
+
+describe("searching and reporting", () => {
+  it("searches by words, category and dates, across periods", async () => {
+    const id = /\| id ([\w-]+)/.exec(await call("create_category", { name: "Groceries" }))![1]!;
+    await call("create_transaction", row("2025-12-20", { name: "KROGER #512", amountCents: 5_000, categoryId: id }));
+    await call("create_transaction", row("2026-01-14", { name: "Kroger fuel", amountCents: 4_000 }));
+    await call("create_transaction", row("2026-01-15", { name: "Refund", amountCents: 700, kind: "income", note: "kroger", categoryId: id }));
+    await call("create_transaction", row("2026-01-16", { name: "Cinema" }));
+
+    const found = await call("search_transactions", { q: "kroger" });
+    expect(found.split("\n").slice(0, 2)).toEqual([
+      "3 transactions found: $90.00 (9000 cents) out, $7.00 (700 cents) in.",
+      "All of them, newest first:",
+    ]);
+    expect(found.split("\n").slice(2).map((line) => line.split(" | ")[3])).toEqual(["Refund", "Kroger fuel", "KROGER #512"]);
+
+    expect(await call("search_transactions", { q: "kroger", categoryId: "none" })).toContain("1 transaction found: $40.00 (4000 cents) out");
+    expect(await call("search_transactions", { categoryId: id, from: "2026-01-01" })).toContain("1 transaction found: $0.00 (0 cents) out, $7.00 (700 cents) in.");
+    expect(await call("search_transactions", { q: "nothing like it" })).toBe("0 transactions found: $0.00 (0 cents) out, $0.00 (0 cents) in.");
+
+    const paged = await call("search_transactions", { q: "kroger", limit: 2 });
+    expect(paged).toContain("These 2, newest first:");
+    const cursor = /before: "([^"]+)"/.exec(paged)![1]!;
+    expect(await call("search_transactions", { q: "kroger", limit: 2, before: cursor })).toContain("KROGER #512");
+    await expect(call("search_transactions", {})).rejects.toThrow("Enter something to search for");
+  });
+
+  it("reports a span in words", async () => {
+    const id = /\| id ([\w-]+)/.exec(await call("create_category", { name: "Groceries", defaultLimitCents: 3_000, applyToPeriods: true }))![1]!;
+    await call("create_transaction", row("2025-12-20", { name: "Kroger", amountCents: 5_000, categoryId: id }));
+    await call("create_transaction", row("2026-01-14", { name: "KROGER", amountCents: 4_000, categoryId: id }));
+    await call("create_transaction", row("2026-01-14", { name: "Paycheck", amountCents: 200_000, kind: "income" }));
+    await call("create_transaction", row("2026-01-13", { name: "Gift", amountCents: 1_000, paid: false }));
+
+    const text = await call("get_report", { from: "2025-12-16", to: "2026-01-26" });
+    expect(text).toContain("Report for 3 pay periods, 2025-12-16 to 2026-01-26.");
+    expect(text).toContain("Income $2,000.00 (200000 cents), expenses $100.00 (10000 cents), income less expenses $1,900.00 (190000 cents).");
+    expect(text).toContain("- 2025-12-16 to 2025-12-29: $0.00 (0 cents) | $50.00 (5000 cents) | $0.00 (0 cents) | $950.00 (95000 cents)");
+    expect(text).toContain("- 2026-01-13 to 2026-01-26 (current): $2,000.00 (200000 cents) | $50.00 (5000 cents) | $0.00 (0 cents) | $2,900.00 (290000 cents)");
+    expect(text).toContain("- Groceries: $90.00 (9000 cents)\n- Uncategorised: $10.00 (1000 cents)");
+    expect(text).toContain("- Not tied to a bill: $100.00 (10000 cents)");
+    expect(text).toContain("- 2026-01-13 to 2026-01-26: Groceries over by $10.00 (1000 cents) (spent $40.00 (4000 cents) of $30.00 (3000 cents))");
+    expect(text).toContain("- KROGER: $90.00 (9000 cents) in 2 transactions");
+    expect(text).toContain("1 transaction dated before today is still marked upcoming:");
+
+    expect(await call("get_report", { from: "2024-01-01", to: "2024-02-01" })).toBe("No pay period falls between 2024-01-01 and 2024-02-01.");
+    await expect(call("get_report", { from: "2026-02-01", to: "2026-01-01" })).rejects.toThrow();
+  });
+});
+
 describe("links in an imported file", () => {
   let rentId: string;
   let dueId: string;
@@ -686,6 +868,8 @@ describe("over the protocol", () => {
       ["list_periods", true, false],
       ["get_period", true, false],
       ["list_transactions", true, false],
+      ["search_transactions", true, false],
+      ["get_report", true, false],
       ["create_transaction", false, false],
       ["update_transaction", false, false],
       ["delete_transaction", false, true],
@@ -695,6 +879,12 @@ describe("over the protocol", () => {
       ["update_bill_or_income", false, false],
       ["end_bill_or_income", false, true],
       ["delete_bill_or_income", false, true],
+      ["list_categories", true, false],
+      ["create_category", false, false],
+      ["update_category", false, false],
+      ["delete_category", false, true],
+      ["set_period_limit", false, false],
+      ["remove_period_limit", false, false],
       ["import_transactions", false, false],
     ]);
     const createTool = offered.find((tool) => tool.name === "create_bill_or_income")!;

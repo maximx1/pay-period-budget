@@ -8,6 +8,7 @@ import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { useDebouncedValue } from "../../lib/useDebouncedValue.ts";
+import { PeriodLimitsSection } from "./PeriodLimitsSection.tsx";
 import {
   useChangePeriodDates,
   usePeriodDatesPreview,
@@ -21,7 +22,7 @@ type PeriodSettingsDialogProps = {
   view: PeriodView;
 };
 
-/** For the exceptions: a payday that lands early or late, or a starting amount that needs correcting. */
+/** For the exceptions: a payday that lands early or late, a starting amount that needs correcting, a limit for this period alone. */
 export function PeriodSettingsDialog({ open, onClose, view }: PeriodSettingsDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="Period settings">
@@ -230,9 +231,11 @@ function PeriodSettingsForm({ onClose, view }: Omit<PeriodSettingsDialogProps, "
         </section>
       )}
 
+      <PeriodLimitsSection view={view} />
+
       <DialogActions>
         <Button variant="ghost" onClick={onClose}>
-          Cancel
+          {canSave ? "Cancel" : "Close"}
         </Button>
         <Button type="submit" loading={saving} disabled={!canSave}>
           Save

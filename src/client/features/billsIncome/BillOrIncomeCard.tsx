@@ -44,12 +44,14 @@ function Description({ text }: { text: string }) {
 
 type BillOrIncomeCardProps = {
   item: BillOrIncome;
+  /** The name of the category its entries are filed under, if any. */
+  categoryName?: string;
   /** The card itself: show what has gone to this bill or income. */
   onOpen: () => void;
   onEdit: () => void;
 };
 
-export function BillOrIncomeCard({ item, onOpen, onEdit }: BillOrIncomeCardProps) {
+export function BillOrIncomeCard({ item, categoryName, onOpen, onEdit }: BillOrIncomeCardProps) {
   const income = item.kind === "income";
   const transfer = item.kind === "transfer";
 
@@ -77,6 +79,7 @@ export function BillOrIncomeCard({ item, onOpen, onEdit }: BillOrIncomeCardProps
           <p className="text-sm text-muted">
             {transfer && "Transfer · "}
             {item.scheduleText}
+            {categoryName && ` · ${categoryName}`}
           </p>
         </div>
         <IconButton label={`Edit ${item.name}`} onClick={onEdit} className="relative z-10 -mt-2 -mr-2">

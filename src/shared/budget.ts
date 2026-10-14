@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PeriodCategoryLimit } from "./categories.ts";
 import { isLocalDate, type LocalDate } from "./dates.ts";
 import { SCHEDULE_TYPES, type ScheduleType } from "./schedule.ts";
 import type { Transaction } from "./transactions.ts";
@@ -75,6 +76,8 @@ export type PeriodView = {
   };
   /** In display order: by date-time, then manual order, then creation. */
   transactions: Transaction[];
+  /** This period's limits, by category name, with what has been spent against each. */
+  categoryLimits: PeriodCategoryLimit[];
   nav: {
     prevId: string | null;
     /** With no previous period: whether one may be added before this one (as far back as MAX_HISTORY_YEARS). */

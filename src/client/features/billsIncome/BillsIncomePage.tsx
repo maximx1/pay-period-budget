@@ -8,6 +8,7 @@ import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { useBudget } from "../budget/api.ts";
+import { useCategories } from "../categories/api.ts";
 import { useBillsIncome } from "./api.ts";
 import { BillOrIncomeCard } from "./BillOrIncomeCard.tsx";
 import { BillOrIncomeDetailDialog } from "./BillOrIncomeDetailDialog.tsx";
@@ -33,6 +34,8 @@ const gridClass = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid
 export function BillsIncomePage() {
   const items = useBillsIncome();
   const budget = useBudget();
+  const categories = useCategories();
+  const categoryNames = new Map(categories.data?.map((category) => [category.id, category.name]));
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [schedule, setSchedule] = useState<ScheduleFilter>("any");
@@ -118,6 +121,7 @@ export function BillsIncomePage() {
               <BillOrIncomeCard
                 key={item.id}
                 item={item}
+                categoryName={item.categoryId ? categoryNames.get(item.categoryId) : undefined}
                 onOpen={() => setDetail({ open: true, item })}
                 onEdit={() => setDialog({ open: true, item })}
               />

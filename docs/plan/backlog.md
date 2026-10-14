@@ -73,10 +73,20 @@ inside the Android app. Complements rather than replaces the biometric unlock in
 - When editing a bill or income, optionally apply the new amount or date to its upcoming
   transactions in periods that already exist.
 - Skip or snooze a single occurrence.
-- Categories or tags, and filtering by them.
+- Categories are planned as [phase 18](phase-18-categories.md). Left here from it: a page
+  of one category's transactions, filtering and searching by category, the import
+  suggesting a category, and showing limits on the home screen before they are passed.
 - Splitting an occurrence that is paid in two parts.
-- Search across all transactions by name.
+- Search across all transactions is [phase 19](phase-19-search.md). Left from it: capitals
+  of accented letters, and searching by amount.
 - CSV export, and import from a bank export.
+
+## Reports
+
+Built as [phase 20](phase-20-reports.md). Still only ideas: what a future period will
+start with, worked out without creating anything (`phase-10-projections.md`, planned and
+then dropped); a period's projected leftover set against how it really ended, which needs
+the projection to be recorded when the period closes; exporting a report.
 
 ## Platform
 

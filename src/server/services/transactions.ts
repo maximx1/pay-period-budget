@@ -7,12 +7,15 @@ import type {
   TransactionPatch,
   TransactionRange,
   TransactionResponse,
+  TransactionSearchQuery,
+  TransactionSearchResponse,
 } from "../../shared/transactions.ts";
+import { NO_CATEGORY } from "../../shared/transactions.ts";
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import type { PeriodService } from "./periods.ts";
-import { createLinkPlanner } from "./billIncomeLinks.ts";
+import { createLinkPlanner, NO_SUCH_CATEGORY } from "./billIncomeLinks.ts";
 import { toTransaction } from "./transactionMapper.ts";
 
 export type TransactionService = ReturnType<typeof createTransactionService>;
@@ -60,11 +63,42 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
       return (await store.transactions.listInRange(userId, from, to)).map(toTransaction);
     },
 
+    /**
+     * One page of the transactions matching a search, in any pay period, newest first, with
+     * totals over all that match. Reads only.
+     */
+    async search(userId: string, query: TransactionSearchQuery): Promise<TransactionSearchResponse> {
+      const criteria = {
+        text: query.q,
+        from: query.from,
+        to: query.to,
+        categoryId: query.categoryId === undefined ? undefined : query.categoryId === NO_CATEGORY ? null : query.categoryId,
+      };
+      const separator = query.before?.indexOf("_") ?? -1;
+      const before = query.before
+        ? { occursAt: query.before.slice(0, separator), id: query.before.slice(separator + 1) }
+        : undefined;
+      // One more than asked for says whether anything older remains.
+      const records = await store.transactions.search(userId, criteria, { limit: query.limit + 1, before });
+      const page = records.slice(0, query.limit);
+      const last = page.at(-1);
+      return {
+        transactions: page.map(toTransaction),
+        nextCursor: records.length > query.limit && last ? `${last.occursAt}_${last.id}` : null,
+        totals: await store.transactions.searchTotals(userId, criteria),
+      };
+    },
+
     create(userId: string, input: TransactionInput): Promise<TransactionResponse> {
       return store.transaction(async (repos) => {
         const amountCents = signed(input.amountCents, input.kind);
         const links = createLinkPlanner(repos, userId);
-        const link = await links.plan({ billIncomeId: input.billIncomeId, countsToward: input.countsToward, amountCents });
+        const link = await links.plan({
+          billIncomeId: input.billIncomeId,
+          countsToward: input.countsToward,
+          amountCents,
+          categoryId: input.categoryId,
+        });
         if ("problems" in link) throw linkError(link.problems);
 
         const period = await periodFor(repos, userId, input.occursAt);
@@ -82,6 +116,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           billIncomeId: link.billIncomeId,
           occurrenceDate: null,
           importKey: null,
+          categoryId: link.categoryId,
           createdAt,
           updatedAt: createdAt,
         });
@@ -118,6 +153,13 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           // Untied, it keeps the date: that is still what it was.
           if (link.billIncomeId !== null) after.occurrenceDate = null;
         }
+        if (patch.categoryId !== undefined && patch.categoryId !== before.categoryId) {
+          // Unknown and someone else's are refused in the same words.
+          if (patch.categoryId !== null && !(await repos.categories.findById(userId, patch.categoryId))) {
+            throw linkError({ categoryId: NO_SUCH_CATEGORY });
+          }
+          after.categoryId = patch.categoryId;
+        }
         // Moving to a different date and time means joining the end of whatever is already there.
         if (after.occursAt !== before.occursAt) after.sortOrder = await lastPlaceAt(repos, userId, after.occursAt);
 
@@ -125,11 +167,11 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
         const newPeriod =
           oldPeriod && after.occursAt === before.occursAt ? oldPeriod : await periodFor(repos, userId, after.occursAt);
 
-        const { name, amountCents, occursAt, paidAt, note, sortOrder, billIncomeId, occurrenceDate } = after;
+        const { name, amountCents, occursAt, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId } = after;
         await repos.transactions.update(
           userId,
           id,
-          { name, amountCents, occursAt, status, paidAt, note, sortOrder, billIncomeId, occurrenceDate },
+          { name, amountCents, occursAt, status, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId },
           updatedAt,
         );
 

@@ -16,6 +16,7 @@ const tx = (id: string, amountCents: number, status: Transaction["status"]): Tra
   billIncomeId: null,
   occurrenceDate: null,
   importKey: null,
+  categoryId: null,
 });
 
 const view: PeriodView = {
@@ -34,6 +35,7 @@ const view: PeriodView = {
   },
   totals: { paidCents: -4000, upcomingCents: 147_300, leftoverCents: 96_000, projectedCents: 243_300 },
   transactions: [tx("rent", -4000, "paid"), tx("ice", -2700, "upcoming"), tx("pay", 150_000, "upcoming")],
+  categoryLimits: [],
   nav: { prevId: null, canAddPrevious: false, nextId: null, nextDate: null },
 };
 

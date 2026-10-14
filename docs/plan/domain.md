@@ -21,6 +21,10 @@ say what to build; this file says what must always be true.
   until 2026-10-12, which older plan files still say. The word **account** is reserved
   for a future feature: the places money lives or goes, such as a savings account or a
   person you pay. See `backlog.md`.)
+- **Category**: what a transaction is filed under, by name ("Groceries"). At most one per
+  transaction. It moves no money.
+- **Limit**: the most a pay period means to spend in one category. A category has a
+  *usual limit*; each period has its own copy, which can differ.
 - **Starting amount**: what a period begins with. Normally the previous period's projected
   leftover.
 - **Projected leftover**: starting amount + every transaction in the period, paid or not.
@@ -228,7 +232,7 @@ See decision 1 in `README.md`; the rules below assume the default.
 ## Transactions
 
 Fields: `id`, `userId`, `name`, `amountCents` (signed), `occursAt`, `status`
-(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, for generated ones `billIncomeId`
+(`upcoming` | `paid`), `paidAt`, `sortOrder`, `note`, `categoryId` (nullable), for generated ones `billIncomeId`
 and `occurrenceDate`, and for imported ones `importKey`.
 
 - The API accepts a positive amount plus `kind` (`expense` | `income`) and stores the
@@ -265,6 +269,69 @@ is deleted. Paying more than is left finishes it, and the rest is an ordinary pa
   (money out toward money out) can be paid toward.
 - Several rows of one import may pay toward the same entry; they are taken in order.
 - It is one-way. Changing or deleting the payment later does not bring the entry back.
+
+### Filing under a category
+
+A transaction's `categoryId` names the one category it is filed under, or is null. A
+category is a name, unique for its user without regard to case ("Groceries" and
+"groceries" are one), and optionally a usual limit (see "Limits").
+
+- `categoryId` on create, on update (null unfiles) and on each import row must name one of
+  the user's own categories. An unknown id and someone else's are refused in the same
+  words, as a field error.
+- **Left out on create or on an import row**, a transaction tied to a bill or income takes
+  that item's category, and a payment that `countsToward` an entry takes the entry's.
+  `null` says "none". Nothing is taken on update: changing or removing the tie later
+  leaves the category as it is.
+- A bill or income has a `categoryId` of its own. Every entry it adds is filed under it.
+  Changing it changes nothing that exists, like any edit to the item, with one exception
+  the caller asks for: `applyToTransactions` on `PATCH /api/bills-income/:id` files every
+  transaction tied to the item, generated or tied by hand, under the item's category (or
+  under none), replacing whatever each had. The response's `refiledTransactions` says how
+  many were filed differently before.
+- Filing, refiling and unfiling move no money and change no starting amount.
+- Deleting a category is a hard delete. Its transactions and its bills and income stay,
+  filed under nothing; its limits go with it.
+
+### Limits
+
+A category's `defaultLimitCents` is its usual limit: null for none, 0 for "spend nothing".
+A period's limit for a category is a row of its own (`period_category_limits`), a copy made
+once and then independent, the way an entry is a copy of its bill.
+
+**Where a period's limits come from:**
+
+1. **When a period is generated forwards**: one for every category with a usual limit.
+2. **Never when a period is added before the earliest** (`addEarlier`, and an import with
+   `addEarlierPeriods`): that is history, and limits there are set by hand.
+3. **`applyToPeriods`** on creating a category or changing one: the current period and
+   every later one that exists (end date today or after) are set to the usual limit,
+   replacing what each has, one set by hand included; if the usual limit is null, theirs
+   are removed. Without it, nothing that exists changes. Periods that have ended are never
+   touched by it.
+4. **By hand**: `PUT` and `DELETE /api/periods/:id/limits/:categoryId`, for any period,
+   past ones and ones before the budget included.
+
+**What counts against one.** For each limit, over the period's transactions filed under
+that category:
+
+```
+spentCents      = max(0, −(sum of amountCents))                 paid and upcoming
+paidSpentCents  = max(0, −(sum of amountCents where paid))
+```
+
+Money in under the category (a refund) lowers what was spent; more in than out is zero,
+not negative. Transactions filed under nothing count toward nothing. Spending follows the
+transactions' dates like everything else, so moving a period's boundary moves the spending
+and leaves the limit where it was.
+
+**Over** means `spentCents > limitCents`; exactly the limit is not over. The wording is
+`overLimitMessage` in `src/shared/categories.ts`, used by the home screen and the MCP
+server alike: "You went over your budget for X by $Y this period." when the paid spending
+alone is over, and "You're set to go over ..." when it is only over with what is upcoming.
+
+Limits are bookkeeping: setting, changing or removing one moves no money and no starting
+amount.
 
 ### Importing
 
@@ -408,13 +475,21 @@ periods            id, user_id → users, schedule_id → budget_schedules, seq,
                    unique (user_id, seq); unique (user_id, start_date)
 transactions       id, user_id → users, name, amount_cents, occurs_at, status, paid_at,
                    sort_order, note, bill_income_id → bills_income (set null),
-                   occurrence_date, import_key, created_at, updated_at
-                   index (user_id, occurs_at)
+                   occurrence_date, import_key, category_id → categories (set null),
+                   created_at, updated_at
+                   index (user_id, occurs_at); index (category_id)
                    unique (bill_income_id, occurrence_date)   -- nulls don't collide
                    unique (user_id, import_key)             -- likewise
 bills_income       id, user_id → users, name, description, kind, opening_cents, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
+                   category_id → categories (set null),
                    created_at, updated_at
+categories         id, user_id → users, name, default_limit_cents (null = none),
+                   created_at, updated_at
+                   unique (user_id, lower(name))
+period_category_limits   period_id → periods, category_id → categories, user_id → users,
+                   limit_cents, created_at, updated_at
+                   primary key (period_id, category_id); all three cascade
 api_tokens         id, user_id → users, name, token_hash, hint, scope, created_at,
                    last_used_at, expires_at (null = never)
                    unique (token_hash)
@@ -478,20 +553,32 @@ POST   /api/periods/:id/dates/revert
 PATCH  /api/periods/:id/starting       { startingCents, carryForward }
 POST   /api/periods/:id/starting/revert
 POST   /api/periods/:id/recalculate
+PUT    /api/periods/:id/limits/:categoryId   { limitCents } → PeriodView
+DELETE /api/periods/:id/limits/:categoryId   → PeriodView; 404 if the period has none for it
 GET    /api/transactions?from=&to=     dated within the range, both ends included, at most 366 days → { transactions }; creates nothing
-POST   /api/transactions               may carry billIncomeId and countsToward (see "Linking to a bill or income")
-PATCH  /api/transactions/:id           may carry billIncomeId; null unties
+GET    /api/transactions/search?q=&from=&to=&categoryId=&limit=&before=
+                                       any period, newest first → { transactions, nextCursor, totals: { count, outCents, inCents } }.
+                                       q is part of the name or note, whatever its capitals; categoryId "none" is filed under nothing;
+                                       at least one of q, from, to, categoryId. Creates nothing
+POST   /api/transactions               may carry billIncomeId and countsToward (see "Linking to a bill or income"), and categoryId
+PATCH  /api/transactions/:id           may carry billIncomeId; null unties. And categoryId; null unfiles
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
 GET    /api/bills-income
-POST   /api/bills-income
+POST   /api/bills-income                  may carry categoryId
 POST   /api/bills-income/preview          what creating this item would add, without saving
 GET    /api/bills-income/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
                                            totals: { count, paidCents, upcomingCents (signed nets), paidOutCents, paidInCents (positive), balanceCents (a transfer's; else null) }
-PATCH  /api/bills-income/:id
+PATCH  /api/bills-income/:id              may carry categoryId and applyToTransactions → { item, refiledTransactions? }
 DELETE /api/bills-income/:id
 POST   /api/bills-income/:id/end
+GET    /api/categories                 → { categories }, by name
+POST   /api/categories                 { name, defaultLimitCents?, applyToPeriods? }
+PATCH  /api/categories/:id             { name?, defaultLimitCents? (null removes it), applyToPeriods? }
+DELETE /api/categories/:id             its transactions stay, filed under nothing
+GET    /api/reports?from=&to=          → Report (src/shared/reports.ts): the pay periods sharing a day with the span, whole,
+                                       paid and upcoming together. Creates nothing
 ```
 
 `PeriodView`:
@@ -505,6 +592,7 @@ POST   /api/bills-income/:id/end
   },
   totals: { paidCents, upcomingCents, leftoverCents, projectedCents },
   transactions: Transaction[],          // ordered; empty until phase 4
+  categoryLimits: Array<{ categoryId, name, limitCents, spentCents, paidSpentCents }>,   // by name
   nav: { prevId: string | null, canAddPrevious: boolean, nextId: string | null, nextDate: LocalDate | null },
 }
 ```

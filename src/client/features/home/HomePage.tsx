@@ -1,13 +1,15 @@
-import { CalendarClock, CalendarX, CircleCheck, Plus } from "lucide-react";
+import { CalendarClock, CalendarX, CircleCheck, Plus, Search } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
+import { overLimitMessage } from "../../../shared/categories.ts";
 import { dateOf, formatDay, isLocalDate, type LocalDate, todayIn } from "../../../shared/dates.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Fab } from "../../components/ui/Fab.tsx";
+import { IconButton } from "../../components/ui/IconButton.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
@@ -18,6 +20,8 @@ import { GoToDateDialog } from "../periods/GoToDateDialog.tsx";
 import { PeriodHeader } from "../periods/PeriodHeader.tsx";
 import { PeriodSettingsDialog } from "../periods/PeriodSettingsDialog.tsx";
 import { PeriodSummary } from "../periods/PeriodSummary.tsx";
+import { SearchDialog, type SearchStart } from "../search/SearchDialog.tsx";
+import { TopBarAction } from "../shell/TopBar.tsx";
 import { type PeriodNavState, usePeriodNav } from "../periods/usePeriodNav.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { useReorderTransactions, useSetTransactionStatus } from "../transactions/api.ts";
@@ -119,6 +123,9 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   const [dialog, setDialog] = useState<{ open: boolean; transaction?: Transaction }>({ open: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // `start` is what the search opens already looking for, e.g. a transaction's name.
+  const [transactionSearch, setTransactionSearch] = useState<{ open: boolean; start?: SearchStart }>({ open: false });
+  const openTransactionSearch = (start?: SearchStart) => setTransactionSearch({ open: true, start });
 
   // One set of moves for the arrows and for swiping, so neither starts while the other is under way.
   const periodNav = usePeriodNav(view);
@@ -135,6 +142,12 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   const today = todayIn(timezone, new Date());
   const toggle = (transaction: Transaction) =>
     setStatus.mutate({ id: transaction.id, status: transaction.status === "paid" ? "upcoming" : "paid" });
+
+  // One line for each category whose limit this period has passed, or is set to pass.
+  const overLimits = view.categoryLimits.flatMap((limit) => {
+    const message = overLimitMessage(limit);
+    return message ? [{ categoryId: limit.categoryId, message }] : [];
+  });
 
   // A section reorders only its own rows; the other section's rows at the same moment keep their places.
   const reorder = (occursAt: string, sectionOrder: string[]) => {
@@ -161,11 +174,21 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
           today={today}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenSearch={() => setSearchOpen(true)}
+          onOpenTransactionSearch={() => openTransactionSearch()}
         />
         {soughtDay && !view.transactions.some((transaction) => dateOf(transaction.occursAt) === soughtDay) && (
           <p role="status" className="mb-4 text-sm text-muted">
             Nothing on {formatDay(soughtDay)}.
           </p>
+        )}
+        {overLimits.length > 0 && (
+          <div className="mb-4 flex flex-col gap-2">
+            {overLimits.map(({ categoryId, message }) => (
+              <Alert key={categoryId} tone="warning">
+                {message}
+              </Alert>
+            ))}
+          </div>
         )}
         <PeriodSummary view={view} />
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
@@ -204,7 +227,22 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
         view={view}
         timezone={timezone}
         transaction={dialog.transaction}
+        onFindLike={(transaction) => {
+          setDialog((current) => ({ ...current, open: false }));
+          openTransactionSearch({ text: transaction.name });
+        }}
       />
+      <SearchDialog
+        open={transactionSearch.open}
+        onClose={() => setTransactionSearch((current) => ({ ...current, open: false }))}
+        today={today}
+        start={transactionSearch.start}
+      />
+      <TopBarAction>
+        <IconButton label="Search transactions" aria-haspopup="dialog" onClick={() => openTransactionSearch()}>
+          <Search className="size-6" aria-hidden />
+        </IconButton>
+      </TopBarAction>
       <Fab label="Add transaction" onClick={() => setDialog({ open: true })}>
         <Plus className="size-6" aria-hidden />
       </Fab>

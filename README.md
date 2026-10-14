@@ -36,6 +36,7 @@ The database is `data/app.db`. Delete the `data/` folder to start again from not
 | `npm start` | Run in production mode: one process serving the API and `dist/client` |
 | `npm run db:generate -- --name <what_changed>` | Create a migration after editing the schema |
 | `npm run db:seed` | Create the local stub account |
+| `npm run db:seed-demo` | Create a second local account, "demo", with nine months of made-up data for looking at reports (`-- --remove` deletes it) |
 | `npm run db:backup -- <file>` | Write a consistent copy of the database, safe while running |
 | `npm run build:mcp` | Build the MCP server for AI assistants into `dist/mcp/ppb-mcp.mjs` |
 
@@ -207,12 +208,16 @@ token the server refused.
 | --- | --- |
 | `get_budget` | Pay schedule, first period, opening balance, time zone, today's date there |
 | `list_periods` | Every pay period with its dates |
-| `get_period` | One period (by id, by date, or the current one): starting amount, totals, transactions |
+| `get_period` | One period (by id, by date, or the current one): starting amount, totals, category limits with what has been spent against each, transactions |
 | `list_transactions` | Transactions between two dates, at most 366 days |
+| `search_transactions` | Transactions in any pay period by words in the name or note, by category, within dates, with what they add up to |
+| `get_report` | A span of pay periods added up: each period's income, expenses and leftover; money out by category and by bill; limits passed; the names most was spent under |
 | `list_bills_income` | The bills and income the budget knows about |
 | `list_bill_or_income_transactions` | Everything tied to one of them, newest first, with totals |
 | `create_bill_or_income`, `update_bill_or_income`, `end_bill_or_income`, `delete_bill_or_income` | Add (previewed first), change, stop or remove one. `update_bill_or_income` with `kind: "transfer"` turns a bill that is really a savings account or a loan into a transfer |
-| `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time; a transaction can be tied to a bill or income, or count toward an upcoming one |
+| `create_transaction`, `update_transaction`, `delete_transaction` | One transaction at a time; a transaction can be tied to a bill or income, count toward an upcoming one, and be filed under a category |
+| `list_categories`, `create_category`, `update_category`, `delete_category` | The categories transactions are filed under, each with the limit a pay period usually gets |
+| `set_period_limit`, `remove_period_limit` | One pay period's own limit for a category, which is how a period that is already over gets one |
 | `import_transactions` | Many transactions from a JSON file, previewed first |
 
 Amounts are whole cents with a kind (`expense` or `income`); results show dollars and
@@ -254,6 +259,12 @@ Two more optional fields tie a row to one of your bills or incomes:
   entry the item added; that entry is replaced by the real payment (or shrinks, if the row
   pays only part), so the bill is not counted twice.
 
+A third files a row under a category:
+
+- `"categoryId"`: an id from `list_categories`. A row tied to a bill or income takes that
+  item's category when it names none; `null` says "none". The import suggests no
+  categories, so the script decides them, usually from the bank's description.
+
 **Money moved to another account of your own** (savings, a joint account, a loan) belongs
 to a *transfer*: a bill or income whose money goes both ways. Import both rows and tie both
 to the transfer with `billIncomeId`: the one going out as an `expense`, the one coming back
@@ -289,6 +300,12 @@ What to ask the assistant to do, in this order:
 Rows dated before the earliest pay period are refused unless the import is run with
 `addEarlierPeriods: true`, which adds the periods to hold them (up to five years back). The
 import is all or nothing: one bad row and nothing is saved.
+
+**Limits on old periods.** A category's usual limit goes to each pay period as it is
+created, and to the current and later ones if you ask when you set it. Periods that were
+already over get none. To have them after importing history, ask the assistant to call
+`set_period_limit` for each period from `list_periods`; `get_period` then says which went
+over.
 
 If you delete a transaction that was imported, it stays deleted: later imports skip that
 row and say so. To get it back, run the import with `restoreDeleted: true`.

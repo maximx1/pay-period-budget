@@ -99,6 +99,7 @@ describe("bills and income: create, read, update, delete", () => {
       recurrenceInterval: 1,
       firstDueDate: "2026-01-25",
       endDate: null,
+      categoryId: null,
       archived: false,
       nextDueDate: "2026-01-25",
       scheduleText: "Every month on the 25th",
@@ -393,6 +394,7 @@ describe("generated transactions stand on their own", () => {
       billIncomeId: item.id,
       occurrenceDate: "2026-01-25",
       importKey: null,
+      categoryId: null,
       createdAt: t.clock.now(),
       updatedAt: t.clock.now(),
     };

@@ -8,6 +8,8 @@ import {
   transactionPatchSchema,
   transactionRangeSchema,
   type TransactionResponse,
+  type TransactionSearchResponse,
+  transactionSearchSchema,
 } from "../../shared/transactions.ts";
 import { type AppEnv, parseJson, parseQuery } from "../http.ts";
 import type { ImportService } from "../services/import.ts";
@@ -28,6 +30,11 @@ export function transactionRoutes(deps: {
   routes.get("/", async (c) => {
     const range = parseQuery(c, transactionRangeSchema);
     return c.json<TransactionListResponse>({ transactions: await transactions.list(c.var.user.id, range) });
+  });
+
+  routes.get("/search", async (c) => {
+    const query = parseQuery(c, transactionSearchSchema);
+    return c.json<TransactionSearchResponse>(await transactions.search(c.var.user.id, query));
   });
 
   routes.post("/", async (c) => {

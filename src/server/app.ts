@@ -11,14 +11,19 @@ import { requireAuth, SESSION_EXPIRES_HEADER } from "./middleware/session.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { budgetRoutes } from "./routes/budget.ts";
 import { periodRoutes } from "./routes/periods.ts";
+import { reportRoutes } from "./routes/reports.ts";
 import { billsIncomeRoutes } from "./routes/billsIncome.ts";
+import { categoryRoutes } from "./routes/categories.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { IMPORT_PATH, transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
 import { createImportService } from "./services/import.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
+import { createReportService } from "./services/reports.ts";
 import { createBillsIncomeService } from "./services/billsIncome.ts";
+import { createCategoryService } from "./services/categories.ts";
+import { addUsualLimits } from "./services/categoryLimits.ts";
 import { createTransactionService } from "./services/transactions.ts";
 
 export type AppDeps = {
@@ -40,12 +45,18 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   const periods = createPeriodService({
     store,
     now,
-    // Each new period gets its bills and income before the next is derived from it.
-    onPeriodCreated: (repos, period) => materializeAllInPeriod(repos, period, clock()),
+    // Each new period gets its bills and income before the next is derived from it. Limits
+    // go only to periods generated forwards: one added before the earliest is history.
+    onPeriodCreated: async (repos, period, how) => {
+      await materializeAllInPeriod(repos, period, clock());
+      if (how === "forward") await addUsualLimits(repos, period, clock());
+    },
   });
   const transactions = createTransactionService({ store, periods, now });
   const imports = createImportService({ store, periods, now });
   const billsIncome = createBillsIncomeService({ store, periods, now });
+  const categories = createCategoryService({ store, periods, now });
+  const reports = createReportService({ store, periods });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -81,6 +92,8 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   api.route("/periods", periodRoutes({ periods, authed }));
   api.route("/transactions", transactionRoutes({ transactions, imports, authed }));
   api.route("/bills-income", billsIncomeRoutes({ billsIncome, authed }));
+  api.route("/categories", categoryRoutes({ categories, authed }));
+  api.route("/reports", reportRoutes({ reports, authed }));
   api.route("/settings", settingsRoutes({ periods, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");

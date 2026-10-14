@@ -6,6 +6,7 @@ import type { Transaction } from "../../../shared/transactions.ts";
 import { Card } from "../../components/ui/Card.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { cn } from "../../lib/cn.ts";
+import { useCategories } from "../categories/api.ts";
 import { TransactionRow } from "./TransactionRow.tsx";
 
 type TransactionSectionProps = {
@@ -45,6 +46,8 @@ export function TransactionSection({
   highlightDay,
 }: TransactionSectionProps) {
   const headingId = useId();
+  const categories = useCategories();
+  const categoryNames = new Map(categories.data?.map((category) => [category.id, category.name]));
   // The day whose rows are showing move buttons, if any.
   const [reorderingDay, setReorderingDay] = useState<LocalDate | null>(null);
 
@@ -109,6 +112,7 @@ export function TransactionSection({
                       <TransactionRow
                         key={transaction.id}
                         transaction={transaction}
+                        categoryName={transaction.categoryId ? categoryNames.get(transaction.categoryId) : undefined}
                         onToggle={() => onToggle(transaction)}
                         onEdit={() => onEdit(transaction)}
                         reorder={

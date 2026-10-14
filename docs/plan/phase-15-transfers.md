@@ -61,7 +61,8 @@ counted as spent when it was set aside.
 
 Applied as sensible defaults; say so to overrule any of them.
 
-1. **On screen it is "Transfer"; in the code the kind is `"transfer"`.** It is the usual
+1. **On screen it is "Transfer"; in the code the kind is `"transfer"`.** (Confirmed by the
+   owner 2026-10-12: "Transfer is fine now.") It is the usual
    word for money moved between your own accounts, it fits a savings account and a loan
    alike, and it is not "account", which stays reserved (see `CLAUDE.md`). **"Account" was
    the other candidate** and is the more natural name for the thing itself ("HELOC:
@@ -211,8 +212,8 @@ It was correct and unhelpful: the net of everything marked paid, deposits less p
   positive amount, so Starting + Income − Expenses is the projected figure.
 - They are added up in `PeriodSummary.tsx` from the period's transactions; the API's
   totals are unchanged, and `paidCents` still heads the Paid section.
-- **A choice to confirm:** "in the period" was taken to mean paid and upcoming together.
-  If Income and Expenses should count only what is paid, they would instead add up to
-  "leftover so far"; it is a one-line filter either way.
+- **Confirmed by the owner 2026-10-12:** they count everything in the period, paid and
+  upcoming together. "Literally just a summary view of everything that will be paid and
+  everything that came in for the entire period. It'll be projected value."
 - Checked on the dev account's current period: $3,840.08 + $2,746.81 − $184.78 =
   $6,402.11, the projected figure shown.

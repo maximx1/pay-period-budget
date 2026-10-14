@@ -1,10 +1,12 @@
-import { House, type LucideIcon, ReceiptText, Settings } from "lucide-react";
+import { ChartColumn, House, type LucideIcon, ReceiptText, Settings, Tags } from "lucide-react";
 
 export type NavItem = { to: string; label: string; icon: LucideIcon };
 
 export const navItems: readonly NavItem[] = [
   { to: "/", label: "Home", icon: House },
   { to: "/bills-income", label: "Bills & Income", icon: ReceiptText },
+  { to: "/categories", label: "Categories", icon: Tags },
+  { to: "/reports", label: "Reports", icon: ChartColumn },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

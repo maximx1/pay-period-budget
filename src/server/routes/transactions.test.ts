@@ -500,6 +500,7 @@ describe("listing transactions by date", () => {
       billIncomeId: null,
       occurrenceDate: null,
       importKey: null,
+      categoryId: null,
     });
     expect(found[2]).toMatchObject({ amountCents: 2700, kind: "income", status: "upcoming" });
 

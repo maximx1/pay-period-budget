@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import type { Db } from "../../db/client.ts";
 import { deletedImportKeys, transactions } from "../../db/schema.ts";
-import type { TransactionRepo } from "../types.ts";
+import type { TransactionRepo, TransactionSearch } from "../types.ts";
 import { rethrowConstraint } from "./errors.ts";
 
 // Rows per statement, kept well under SQLite's limit on bound values.
@@ -14,6 +14,28 @@ function inRange(userId: string, startDate: LocalDate, endDate: LocalDate) {
     eq(transactions.userId, userId),
     gte(transactions.occursAt, atStartOfDay(startDate)),
     lt(transactions.occursAt, atStartOfDay(addDays(endDate, 1))),
+  );
+}
+
+/** The conditions a search puts on a user's transactions. */
+function matching(userId: string, { text, from, to, categoryId }: TransactionSearch) {
+  // The text is matched literally: its own % and _ are not wildcards.
+  const pattern = text === undefined ? undefined : `%${text.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+  return and(
+    eq(transactions.userId, userId),
+    pattern === undefined
+      ? undefined
+      : or(
+          sql`lower(${transactions.name}) like ${pattern} escape '\\'`,
+          sql`lower(coalesce(${transactions.note}, '')) like ${pattern} escape '\\'`,
+        ),
+    from === undefined ? undefined : gte(transactions.occursAt, atStartOfDay(from)),
+    to === undefined ? undefined : lt(transactions.occursAt, atStartOfDay(addDays(to, 1))),
+    categoryId === undefined
+      ? undefined
+      : categoryId === null
+        ? isNull(transactions.categoryId)
+        : eq(transactions.categoryId, categoryId),
   );
 }
 
@@ -175,6 +197,49 @@ export function createTransactionRepo(db: Db): TransactionRepo {
           ),
         )
         .orderBy(asc(transactions.occursAt));
+    },
+    async search(userId, criteria, { limit, before }) {
+      return db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            matching(userId, criteria),
+            before &&
+              or(
+                lt(transactions.occursAt, before.occursAt),
+                and(eq(transactions.occursAt, before.occursAt), lt(transactions.id, before.id)),
+              ),
+          ),
+        )
+        .orderBy(desc(transactions.occursAt), desc(transactions.id))
+        .limit(limit);
+    },
+    async searchTotals(userId, criteria) {
+      const [row] = await db
+        .select({
+          count: sql<number>`count(*)`,
+          outCents: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 then -${transactions.amountCents} end), 0)`,
+          inCents: sql<number>`coalesce(sum(case when ${transactions.amountCents} > 0 then ${transactions.amountCents} end), 0)`,
+        })
+        .from(transactions)
+        .where(matching(userId, criteria));
+      return { count: Number(row?.count ?? 0), outCents: Number(row?.outCents ?? 0), inCents: Number(row?.inCents ?? 0) };
+    },
+    async setCategoryForBillOrIncome(userId, billIncomeId, categoryId, now) {
+      const changed = await db
+        .update(transactions)
+        .set({ categoryId, updatedAt: now })
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.billIncomeId, billIncomeId),
+            // "is not" also tells a category from none, which "<>" does not.
+            sql`${transactions.categoryId} is not ${categoryId}`,
+          ),
+        )
+        .returning({ id: transactions.id });
+      return changed.length;
     },
     async update(userId, id, patch, now) {
       await db

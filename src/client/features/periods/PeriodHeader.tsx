@@ -1,4 +1,4 @@
-import { CalendarSearch, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
+import { CalendarSearch, ChevronLeft, ChevronRight, Search, Settings2 } from "lucide-react";
 import { Link } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { formatDateRange } from "../../../shared/dates.ts";
@@ -29,9 +29,18 @@ type PeriodHeaderProps = {
   today: string;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
+  /** Opens the search across all transactions. Shown here from `lg` up; a phone has it in the top bar. */
+  onOpenTransactionSearch: () => void;
 };
 
-export function PeriodHeader({ view, periodNav, today, onOpenSettings, onOpenSearch }: PeriodHeaderProps) {
+export function PeriodHeader({
+  view,
+  periodNav,
+  today,
+  onOpenSettings,
+  onOpenSearch,
+  onOpenTransactionSearch,
+}: PeriodHeaderProps) {
   const { period, nav } = view;
   // At the earliest period the arrow adds the one before it, as the other arrow adds the next.
   const { goNext, goPrevious, atHorizon, canGoPrevious, busy } = periodNav;
@@ -80,6 +89,12 @@ export function PeriodHeader({ view, periodNav, today, onOpenSettings, onOpenSea
         <IconButton label="Period settings" aria-haspopup="dialog" onClick={onOpenSettings}>
           <Settings2 className="size-5" aria-hidden />
         </IconButton>
+        {/* A wrapper does the hiding: the button's own display class would win over "hidden". */}
+        <span className="hidden lg:inline-flex">
+          <IconButton label="Search transactions" aria-haspopup="dialog" onClick={onOpenTransactionSearch}>
+            <Search className="size-5" aria-hidden />
+          </IconButton>
+        </span>
       </div>
 
       {!period.isCurrent && (
