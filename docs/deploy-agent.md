@@ -362,8 +362,18 @@ Nothing is deleted, and setting the line back to `true` turns them on again.
 
 ## Updating later
 
+Take a backup first:
+
 ```bash
 deploy/backup.sh BACKUP_DIR
+```
+
+**Check:** it prints `Saved BACKUP_DIR/app-<date>-<time>.db` and that file exists and is not
+empty. If it does not, stop and report it; do not update without a backup.
+
+Then update:
+
+```bash
 git pull --ff-only origin main
 docker compose up -d --build
 ```
