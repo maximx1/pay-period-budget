@@ -380,7 +380,7 @@ docker compose up -d --build
 
 Wait for `healthy` as in step 4. Database changes are applied automatically when the new
 version starts. If it does not become healthy, report the logs; the backup just taken is
-the way back.
+the way back. Restoring it is in [restore.md](restore.md), and only when the owner asks.
 
 ## If something is wrong
 

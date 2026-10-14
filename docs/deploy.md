@@ -261,18 +261,8 @@ the server if the server is the only place they exist.
 
 ### Restoring
 
-```bash
-docker compose stop app
-```
-
-```bash
-docker compose run --rm -v /var/backups/pay-period-budget:/backups:ro app \
-  sh -c 'cp /backups/app-20261010-030000.db /data/app.db && rm -f /data/app.db-wal /data/app.db-shm'
-```
-
-```bash
-docker compose start app
-```
+[restore.md](restore.md) puts a snapshot back, after saving what is there now so the
+restore can be undone. It is written so an AI assistant can follow it as well.
 
 ## Looking at what it is doing
 
