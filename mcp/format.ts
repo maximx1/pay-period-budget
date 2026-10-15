@@ -139,6 +139,7 @@ export function reportText(report: Report): string {
 
   return [
     `Report for ${plural(periods.length, "pay period")}, ${report.from} to ${report.to}. Whole pay periods, paid and upcoming together; today is ${report.today}.`,
+    "Each transfer counts once a pay period, as what was sent to it less what came back; the transactions themselves are unchanged.",
     `Income ${money(income)}, expenses ${money(expenses)}, income less expenses ${money(income - expenses)}.`,
     "",
     "Each pay period (income | expenses | of which tied to a bill or transfer | leftover at its end):",

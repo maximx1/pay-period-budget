@@ -11,6 +11,7 @@ import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
+import { useBillsIncome } from "../billsIncome/api.ts";
 import { useCategories } from "../categories/api.ts";
 import { rankSeries } from "../reports/derive.ts";
 import { useRecalculateStartingAmount, useRevertStartingAmount } from "./api.ts";
@@ -104,8 +105,9 @@ function PaidProgress({ paidCents, toComeCents }: { paidCents: number; toComeCen
  * plus everything paid, which is what the bank should show) and the one at the end of the
  * period once everything upcoming is paid too. Beside them: what the period started with,
  * all the money coming in and all the money going out, paid or not, so the three make the
- * end balance. Under them a bar of how much of the money, in and out, is handled. The caret
- * opens where the money out went, by category and by bills against spontaneous spending,
+ * end balance; each transfer counts once there, as the difference between what was sent to
+ * it and what came back. Under them a bar of how much of the money, in and out, is handled. The caret
+ * opens where the money out went, by category and by bills, transfers and spontaneous spending,
  * and what the Paid and Upcoming totals below are made of. A period that is over with
  * anything still upcoming turns the card yellow and its current balance red. A line appears
  * when the starting amount was set by hand or may be out of date.
@@ -119,9 +121,12 @@ export function PeriodSummary({ view, today }: { view: PeriodView; today: LocalD
   const breakdownId = useId();
 
   const categories = useCategories();
-  const figures = summaryFigures(view);
-  const incomeCents = figures.incomePaidCents + figures.incomeToComeCents;
-  const expenseCents = figures.expensesPaidCents + figures.expensesToComeCents;
+  const billsIncome = useBillsIncome();
+  const transfers = new Map(
+    billsIncome.data?.filter((item) => item.kind === "transfer").map((item) => [item.id, { categoryId: item.categoryId }]),
+  );
+  const figures = summaryFigures(view, transfers);
+  const { incomeCents, expenseCents } = figures;
   const unresolved = endedWithUpcoming(view, today);
   const upcomingCount = view.transactions.filter((transaction) => transaction.status === "upcoming").length;
 
@@ -229,14 +234,21 @@ export function PeriodSummary({ view, today }: { view: PeriodView; today: LocalD
             segments={series.map(({ key, name, color }) => ({ name, color, value: byKey.get(key) ?? 0 }))}
           />
           <SegmentedBar
-            title="Bills and spontaneous spending"
+            title="Bills, transfers and spontaneous spending"
             summary={formatCents(expenseCents)}
             format={formatCents}
             segments={[
               { name: "From bills", value: figures.expensesFromBillsCents, color: SERIES_COLORS[0] },
-              { name: "Spontaneous", value: figures.expensesSpontaneousCents, color: SERIES_COLORS[1] },
+              { name: "Transfers", value: figures.expensesToTransfersCents, color: SERIES_COLORS[1] },
+              { name: "Spontaneous", value: figures.expensesSpontaneousCents, color: SERIES_COLORS[2] },
             ]}
           />
+          {transfers.size > 0 && (
+            <p className="text-sm text-muted">
+              A transfer counts once here, as what was sent less what came back this period. Its transactions below
+              stay as they are.
+            </p>
+          )}
           <p className="text-sm text-muted">
             The Paid total is income received less expenses paid,{" "}
             <span className="font-semibold text-fg tabular-nums">{formatCents(totals.paidCents, { showPlus: true })}</span>.

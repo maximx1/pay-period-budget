@@ -1,42 +1,63 @@
 import type { PeriodView } from "../../../shared/budget.ts";
+import { netTransfers } from "../../../shared/flows.ts";
 
-/** A period's money split by direction and by whether it has happened yet. All positive. */
+/** A period's money, each amount positive. */
 export type SummaryFigures = {
+  /**
+   * Transaction by transaction, by direction and by whether it has happened yet: what the
+   * progress bar counts. The Paid section's total is incomePaid - expensesPaid, the
+   * Upcoming one's the same for what is to come.
+   */
   incomePaidCents: number;
   incomeToComeCents: number;
   expensesPaidCents: number;
   expensesToComeCents: number;
-  /** Money out, paid or not, by category id; null for what is filed under none. */
+  /**
+   * The rest count each transfer's money sent and brought back once, as the difference
+   * (netTransfers). Money in and out, paid or not: starting + income - expenses is still
+   * the balance at the end of the period.
+   */
+  incomeCents: number;
+  expenseCents: number;
+  /** Money out by category id; null for what is filed under none. A transfer counts under its own category. */
   expensesByCategory: Map<string | null, number>;
-  /** Money out that came from a bill (or a transfer), and money out added on its own. */
+  /** Money out tied to a bill, money sent to transfers, and money out tied to neither. */
   expensesFromBillsCents: number;
+  expensesToTransfersCents: number;
   expensesSpontaneousCents: number;
 };
 
 /**
- * Each direction by itself, paid and upcoming apart. Netted together they would hide each
- * other: the Paid section's total is incomePaid - expensesPaid, the Upcoming one's the same
- * for what is to come. The direction is the amount's sign, which also covers transfers.
+ * The figures the summary card shows and draws. The direction is the amount's sign.
+ * `transfers` holds each transfer's id with its category; until it has loaded, transfers
+ * count like bills.
  */
-export function summaryFigures(view: PeriodView): SummaryFigures {
+export function summaryFigures(view: PeriodView, transfers: ReadonlyMap<string, { categoryId: string | null }>): SummaryFigures {
   const figures: SummaryFigures = {
     incomePaidCents: 0,
     incomeToComeCents: 0,
     expensesPaidCents: 0,
     expensesToComeCents: 0,
+    incomeCents: 0,
+    expenseCents: 0,
     expensesByCategory: new Map(),
     expensesFromBillsCents: 0,
+    expensesToTransfersCents: 0,
     expensesSpontaneousCents: 0,
   };
-  for (const { amountCents, status, categoryId, billIncomeId } of view.transactions) {
+  for (const { amountCents, status } of view.transactions) {
     const paid = status === "paid";
+    if (amountCents > 0) figures[paid ? "incomePaidCents" : "incomeToComeCents"] += amountCents;
+    else figures[paid ? "expensesPaidCents" : "expensesToComeCents"] -= amountCents;
+  }
+  for (const { amountCents, categoryId, billIncomeId, transfer } of netTransfers(view.transactions, transfers)) {
     if (amountCents > 0) {
-      figures[paid ? "incomePaidCents" : "incomeToComeCents"] += amountCents;
+      figures.incomeCents += amountCents;
       continue;
     }
     const out = -amountCents;
-    figures[paid ? "expensesPaidCents" : "expensesToComeCents"] += out;
-    figures[billIncomeId ? "expensesFromBillsCents" : "expensesSpontaneousCents"] += out;
+    figures.expenseCents += out;
+    figures[transfer ? "expensesToTransfersCents" : billIncomeId ? "expensesFromBillsCents" : "expensesSpontaneousCents"] += out;
     figures.expensesByCategory.set(categoryId, (figures.expensesByCategory.get(categoryId) ?? 0) + out);
   }
   return figures;

@@ -211,8 +211,13 @@ function Reports({ report }: { report: Report }) {
       }
     }
     const categories = rankSeries(categoryOut, (id) => categoryName.get(id), "Uncategorised");
-    const bills = rankSeries(billOut, (id) => item.get(id)?.name, "Not tied to a bill");
-    const sources = rankSeries(sourceIn, (id) => item.get(id)?.name, "Other income");
+    // A transfer says so, as it is neither a bill nor income: "Savings (transfer)".
+    const itemName = (id: string) => {
+      const entry = item.get(id);
+      return entry && entry.kind === "transfer" ? `${entry.name} (transfer)` : entry?.name;
+    };
+    const bills = rankSeries(billOut, itemName, "Not tied to a bill");
+    const sources = rankSeries(sourceIn, itemName, "Other income");
 
     /** One series per ranked thing, each period's money added under the key it is drawn as. */
     const stack = <Flow,>(
@@ -256,16 +261,18 @@ function Reports({ report }: { report: Report }) {
     (flow) => flow.outCents,
   );
   const byCategory = d.stack(d.categories, (period) => period.categories, (flow) => flow.categoryId, (flow) => flow.outCents);
+  // billOutCents includes what was sent to transfers, each already netted within its period.
+  const billsOnly = (period: Report["periods"][number]) => period.billOutCents - period.transferOutCents;
   const committed: ChartSeries[] = [
-    { name: "Bills and transfers", color: BLUE, values: periods.map((period) => period.billOutCents) },
-    { name: "Everything else", color: ORANGE, values: periods.map((period) => period.expenseCents - period.billOutCents) },
+    { name: "Bills", color: BLUE, values: periods.map(billsOnly) },
+    { name: "Transfers", color: ORANGE, values: periods.map((period) => period.transferOutCents) },
+    { name: "Everything else", color: AQUA, values: periods.map((period) => period.expenseCents - period.billOutCents) },
   ];
+  const shareOf = (part: (period: Report["periods"][number]) => number) =>
+    periods.map((period) => (period.incomeCents > 0 ? (part(period) / period.incomeCents) * 100 : null));
   const shares: ChartSeries[] = [
-    {
-      name: "Bills and transfers",
-      color: BLUE,
-      values: periods.map((period) => (period.incomeCents > 0 ? (period.billOutCents / period.incomeCents) * 100 : null)),
-    },
+    { name: "Bills", color: BLUE, values: shareOf(billsOnly) },
+    { name: "Transfers", color: ORANGE, values: shareOf((period) => period.transferOutCents) },
     {
       name: "Left over",
       color: AQUA,
@@ -549,22 +556,22 @@ function Reports({ report }: { report: Report }) {
         )}
         <ReportCard
           title="Committed and everything else"
-          about="How much of each pay period's spending was tied to a bill or transfer, and how much was not."
+          about="How much of each pay period's spending went to bills, how much was sent to transfers (less what came back), and the rest."
           table={seriesTable("Pay period", titles, committed, money.format)}
         >
-          <XYChart label="Spending tied to bills against the rest, in each pay period" labels={labels} titles={titles} bars={{ series: committed, mode: "stacked" }} {...money} />
+          <XYChart label="Spending on bills, transfers and the rest, in each pay period" labels={labels} titles={titles} bars={{ series: committed, mode: "stacked" }} {...money} />
         </ReportCard>
         <ReportCard
           title="Shares of income"
-          about="The part of each pay period's income that went to bills and transfers, and the part left over."
+          about="The part of each pay period's income that went to bills, the part sent to transfers, and the part left over."
           table={seriesTable("Pay period", titles, shares, percent)}
         >
-          <XYChart label="Bills and leftover as shares of income" labels={labels} titles={titles} lines={shares} format={percent} formatAxis={percent} />
+          <XYChart label="Bills, transfers and leftover as shares of income" labels={labels} titles={titles} lines={shares} format={percent} formatAxis={percent} />
         </ReportCard>
         {hasTransfers && (
           <ReportCard
             title="Transfers"
-            about={`Money sent to your other accounts and brought back. Over this span, ${formatCents(Math.abs(putAway))} more was ${putAway >= 0 ? "sent than brought back" : "brought back than sent"}.`}
+            about={`Money sent to your other accounts and brought back, each account's counted once a pay period as the difference. Over this span, ${formatCents(Math.abs(putAway))} more was ${putAway >= 0 ? "sent than brought back" : "brought back than sent"}.`}
             table={seriesTable("Pay period", titles, transfers, money.format)}
           >
             <XYChart label="Transfers sent and brought back in each pay period" labels={labels} titles={titles} bars={{ series: transfers, mode: "grouped" }} {...money} />
@@ -594,7 +601,10 @@ function Reports({ report }: { report: Report }) {
         <ReportCard title="By bill" about="Every dollar out over the span, by the bill or transfer it was tied to.">
           <DonutChart label="Money out by bill" totalLabel="spent" slices={d.slices(d.bills, d.billOut)} format={formatCents} />
         </ReportCard>
-        <ReportCard title="Where income came from" about="Every dollar in over the span, by the income it was tied to.">
+        <ReportCard
+          title="Where income came from"
+          about="Every dollar in over the span, by the income it was tied to. A transfer counts where more came back from it than was sent in a pay period."
+        >
           <DonutChart label="Money in by source" totalLabel="came in" slices={d.slices(d.sources, d.sourceIn)} format={formatCents} />
         </ReportCard>
         <ReportCard title="Names most was spent under" about="Transactions with the same name, whatever its capitals, added together.">

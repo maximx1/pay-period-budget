@@ -111,6 +111,33 @@ describe("the report", () => {
     }
   });
 
+  it("counts a transfer's money sent and brought back within one period once, as the difference", async () => {
+    // P3 has only its paycheck. $300 to savings and $100 back is $200 sent.
+    await spend(ann, "To savings", "2026-01-28", 30_000, { billIncomeId: ids.savings });
+    await spend(ann, "From savings", "2026-02-01", 10_000, { kind: "income", billIncomeId: ids.savings });
+    // P4: more brought back than sent is money in.
+    await spend(ann, "To savings", "2026-02-11", 5_000, { billIncomeId: ids.savings });
+    await spend(ann, "From savings", "2026-02-12", 8_000, { kind: "income", billIncomeId: ids.savings });
+
+    const { periods } = await report(ann, "2026-01-27", "2026-02-23");
+    expect(periods.map(({ incomeCents, expenseCents, billOutCents, transferOutCents, transferInCents, count }) => ({
+      incomeCents,
+      expenseCents,
+      billOutCents,
+      transferOutCents,
+      transferInCents,
+      count,
+    }))).toEqual([
+      { incomeCents: 200_000, expenseCents: 20_000, billOutCents: 20_000, transferOutCents: 20_000, transferInCents: 0, count: 3 },
+      { incomeCents: 203_000, expenseCents: 0, billOutCents: 0, transferOutCents: 0, transferInCents: 3_000, count: 3 },
+    ]);
+    expect(periods[0]!.billsIncome).toContainEqual({ billIncomeId: ids.savings, outCents: 20_000, inCents: 0 });
+    expect(periods[1]!.billsIncome).toContainEqual({ billIncomeId: ids.savings, outCents: 0, inCents: 3_000 });
+    // Netting moves no money: each period still ends where the next begins.
+    expect(periods[0]!.endingCents).toBe(periods[1]!.startingCents);
+    expect(periods[1]!.endingCents - periods[1]!.startingCents).toBe(203_000);
+  });
+
   it("splits each period by category and by bill or income, and sets spending against its limits", async () => {
     const { periods, categories, billsIncome } = await report(ann, "2025-12-16", "2026-01-26");
     const sorted = <T extends { outCents: number; inCents: number }>(rows: T[]) =>

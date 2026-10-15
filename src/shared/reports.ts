@@ -6,7 +6,11 @@ import type { Transaction } from "./transactions.ts";
 
 /**
  * A report covers whole pay periods: every period that shares at least one day with
- * `from`..`to`. Money is added up over everything dated in them, paid or upcoming.
+ * `from`..`to`. Money is added up over everything dated in them, paid or upcoming, except
+ * that each transfer's money sent and brought back within one period counts once, as the
+ * difference, under the transfer's own category (see `netTransfers`). Limits are the
+ * exception to that: they count each transaction under its own category, as the home
+ * screen does.
  */
 export const reportQuerySchema = z
   .object({ from: localDateSchema, to: localDateSchema })
@@ -32,7 +36,10 @@ export type ReportPeriod = {
   expenseCents: number;
   /** The part of `expenseCents` tied to a bill, an income or a transfer: what was committed. */
   billOutCents: number;
-  /** Money sent to transfers (the owner's other accounts), and brought back from them. */
+  /**
+   * Money sent to transfers (the owner's other accounts), and brought back from them, each
+   * transfer netted within the period: $300 sent and $100 back is $200 sent and nothing back.
+   */
   transferOutCents: number;
   transferInCents: number;
   /** How many transactions. */

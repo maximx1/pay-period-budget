@@ -5,13 +5,21 @@ import { endedWithUpcoming, summaryFigures } from "./summaryFigures.ts";
 
 const tx = (amountCents: number, status: Transaction["status"], more: Partial<Transaction> = {}) =>
   ({ amountCents, status, categoryId: null, billIncomeId: null, ...more }) as Transaction;
-const figuresOf = (transactions: Transaction[]) => summaryFigures({ transactions } as PeriodView);
+const transfers = new Map([["savings", { categoryId: "saving" }]]);
+const figuresOf = (transactions: Transaction[]) => summaryFigures({ transactions } as PeriodView, transfers);
 
 describe("summaryFigures", () => {
   it("splits money in from money out, and paid from to come, each as a positive amount", () => {
     expect(
       figuresOf([tx(200_000, "paid"), tx(-5_000, "paid"), tx(-1_250, "paid"), tx(3_000, "upcoming"), tx(-90_000, "upcoming")]),
-    ).toMatchObject({ incomePaidCents: 200_000, incomeToComeCents: 3_000, expensesPaidCents: 6_250, expensesToComeCents: 90_000 });
+    ).toMatchObject({
+      incomePaidCents: 200_000,
+      incomeToComeCents: 3_000,
+      expensesPaidCents: 6_250,
+      expensesToComeCents: 90_000,
+      incomeCents: 203_000,
+      expenseCents: 96_250,
+    });
   });
 
   it("makes the Paid and Upcoming totals when netted", () => {
@@ -35,13 +43,34 @@ describe("summaryFigures", () => {
     ]);
   });
 
-  it("tells money out from a bill apart from money out added on its own", () => {
-    const figures = figuresOf([tx(-1_000, "paid", { billIncomeId: "rent" }), tx(-250, "upcoming"), tx(5_000, "paid", { billIncomeId: "pay" })]);
-    expect(figures).toMatchObject({ expensesFromBillsCents: 1_000, expensesSpontaneousCents: 250 });
+  it("tells money out to a bill, to a transfer and on its own apart", () => {
+    const figures = figuresOf([
+      tx(-1_000, "paid", { billIncomeId: "rent" }),
+      tx(-250, "upcoming"),
+      tx(-400, "paid", { billIncomeId: "savings" }),
+      tx(5_000, "paid", { billIncomeId: "pay" }),
+    ]);
+    expect(figures).toMatchObject({ expensesFromBillsCents: 1_000, expensesToTransfersCents: 400, expensesSpontaneousCents: 250 });
+  });
+
+  it("counts $300 sent to a transfer and $100 brought back as $200 sent, keeping the end balance", () => {
+    const transactions = [tx(200_000, "paid"), tx(-30_000, "paid", { billIncomeId: "savings" }), tx(10_000, "upcoming", { billIncomeId: "savings" })];
+    const figures = figuresOf(transactions);
+    expect(figures).toMatchObject({ incomeCents: 200_000, expenseCents: 20_000, expensesToTransfersCents: 20_000 });
+    expect([...figures.expensesByCategory]).toEqual([["saving", 20_000]]);
+    // The progress bar still sees each transaction.
+    expect(figures).toMatchObject({ incomePaidCents: 200_000, incomeToComeCents: 10_000, expensesPaidCents: 30_000 });
+    const net = transactions.reduce((sum, t) => sum + t.amountCents, 0);
+    expect(figures.incomeCents - figures.expenseCents).toBe(net);
+  });
+
+  it("counts more brought back from a transfer than sent as income", () => {
+    const figures = figuresOf([tx(-5_000, "paid", { billIncomeId: "savings" }), tx(8_000, "paid", { billIncomeId: "savings" })]);
+    expect(figures).toMatchObject({ incomeCents: 3_000, expenseCents: 0, expensesToTransfersCents: 0 });
   });
 
   it("is all zeros for an empty period", () => {
-    expect(figuresOf([])).toMatchObject({ incomePaidCents: 0, incomeToComeCents: 0, expensesPaidCents: 0, expensesToComeCents: 0 });
+    expect(figuresOf([])).toMatchObject({ incomePaidCents: 0, incomeToComeCents: 0, expensesPaidCents: 0, expensesToComeCents: 0, incomeCents: 0, expenseCents: 0 });
   });
 });
 

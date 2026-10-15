@@ -1,5 +1,6 @@
 import { entryKindOf } from "../../shared/billsIncome.ts";
 import { addDays, dateOf, diffDays, type LocalDate } from "../../shared/dates.ts";
+import { netTransfers } from "../../shared/flows.ts";
 import { occurrencesBetween } from "../../shared/recurrence.ts";
 import type { Report, ReportFlow, ReportPeriod, ReportQuery } from "../../shared/reports.ts";
 import { nominalPeriod, type ScheduleType } from "../../shared/schedule.ts";
@@ -60,7 +61,8 @@ export function createReportService(deps: { store: DataStore; periods: PeriodSer
       const covered = allPeriods.filter((period) => period.endDate >= from && period.startDate <= to);
       const categories = await store.categories.list(userId);
       const items = await store.billsIncome.list(userId);
-      const kindOf = new Map(items.map((item) => [item.id, item.kind]));
+      // Each transfer's money sent and brought back within a period counts once, as the difference.
+      const transfers = new Map(items.filter((item) => item.kind === "transfer").map((item) => [item.id, { categoryId: item.categoryId }]));
 
       const first = covered[0];
       const last = covered.at(-1);
@@ -81,10 +83,9 @@ export function createReportService(deps: { store: DataStore; periods: PeriodSer
         const byCategory = new Map<string | null, ReportFlow>();
         const byItem = new Map<string | null, ReportFlow>();
         const summary = { incomeCents: 0, expenseCents: 0, billOutCents: 0, transferOutCents: 0, transferInCents: 0 };
-        for (const { amountCents, categoryId, billIncomeId } of own) {
+        for (const { amountCents, categoryId, billIncomeId, transfer } of netTransfers(own, transfers)) {
           addFlow(byCategory, categoryId, amountCents);
           addFlow(byItem, billIncomeId, amountCents);
-          const transfer = billIncomeId !== null && kindOf.get(billIncomeId) === "transfer";
           if (amountCents < 0) {
             summary.expenseCents -= amountCents;
             if (billIncomeId !== null) summary.billOutCents -= amountCents;
@@ -106,11 +107,12 @@ export function createReportService(deps: { store: DataStore; periods: PeriodSer
           count: own.length,
           categories: [...byCategory].map(([categoryId, flow]) => ({ categoryId, ...flow })),
           billsIncome: [...byItem].map(([billIncomeId, flow]) => ({ billIncomeId, ...flow })),
+          // Against each transaction's own category, as the home screen counts a limit.
           limits: limits
             .filter((limit) => limit.periodId === period.id)
             .map(({ categoryId, limitCents }) => {
-              const flow = byCategory.get(categoryId) ?? { outCents: 0, inCents: 0 };
-              return { categoryId, limitCents, spentCents: Math.max(0, flow.outCents - flow.inCents) };
+              const net = own.filter((record) => record.categoryId === categoryId).reduce((sum, record) => sum + record.amountCents, 0);
+              return { categoryId, limitCents, spentCents: Math.max(0, -net) };
             }),
         };
       });
