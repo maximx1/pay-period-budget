@@ -65,7 +65,11 @@ function Balance({ label, cents, warning }: BalanceProps) {
   );
 }
 
-/** How much of the period's money out has been paid, as a bar with the amounts beside it. */
+/**
+ * How much of the period's money has been handled so far: income received and expenses
+ * paid, against everything in the period in both directions. Each counts by its size, so
+ * a paycheck still to come holds the bar back as much as a bill does.
+ */
 function PaidProgress({ paidCents, toComeCents }: { paidCents: number; toComeCents: number }) {
   const totalCents = paidCents + toComeCents;
   if (totalCents === 0) return null;
@@ -75,15 +79,15 @@ function PaidProgress({ paidCents, toComeCents }: { paidCents: number; toComeCen
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
         <p className="text-muted">
           <span className="font-semibold text-fg tabular-nums">{formatCents(paidCents)}</span> of{" "}
-          <span className="tabular-nums">{formatCents(totalCents)}</span> in expenses paid
+          <span className="tabular-nums">{formatCents(totalCents)}</span> handled
         </p>
         <p className="text-muted">
-          <span className="font-semibold text-fg tabular-nums">{formatCents(toComeCents)}</span> left to pay
+          <span className="font-semibold text-fg tabular-nums">{formatCents(toComeCents)}</span> still to come
         </p>
       </div>
       <div
         role="progressbar"
-        aria-label="Expenses paid"
+        aria-label="Money handled so far"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(share * 100)}
@@ -100,7 +104,7 @@ function PaidProgress({ paidCents, toComeCents }: { paidCents: number; toComeCen
  * plus everything paid, which is what the bank should show) and the one at the end of the
  * period once everything upcoming is paid too. Beside them: what the period started with,
  * all the money coming in and all the money going out, paid or not, so the three make the
- * end balance. Under them a bar of how much of the money out is paid, by amount. The caret
+ * end balance. Under them a bar of how much of the money, in and out, is handled. The caret
  * opens where the money out went, by category and by bills against spontaneous spending,
  * and what the Paid and Upcoming totals below are made of. A period that is over with
  * anything still upcoming turns the card yellow and its current balance red. A line appears
@@ -171,7 +175,10 @@ export function PeriodSummary({ view, today }: { view: PeriodView; today: LocalD
         <Stat label="Expenses" cents={expenseCents} />
       </dl>
 
-      <PaidProgress paidCents={figures.expensesPaidCents} toComeCents={figures.expensesToComeCents} />
+      <PaidProgress
+        paidCents={figures.incomePaidCents + figures.expensesPaidCents}
+        toComeCents={figures.incomeToComeCents + figures.expensesToComeCents}
+      />
 
       {period.seq < 0 && (
         <div className="flex items-start gap-x-2 border-t border-border pt-3 text-sm text-muted lg:col-span-2">
