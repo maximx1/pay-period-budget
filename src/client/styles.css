@@ -194,6 +194,20 @@ html:has(dialog[open]) [data-scroll-root] {
     }
   }
 
+  /* A screenshot being read: a line sweeps down it and back (ScanImportDialog). */
+  .scan-sweep {
+    translate: 0 -100%;
+    animation: scan-sweep 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes scan-sweep {
+    from {
+      top: 0%;
+    }
+    to {
+      top: 100%;
+    }
+  }
+
   /* A pay period reached by a swipe slides in from the side it was on, as the one before
      it slid out the other way (useSwipe). */
   .period-from-next {

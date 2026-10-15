@@ -15,12 +15,15 @@ import { reportRoutes } from "./routes/reports.ts";
 import { billsIncomeRoutes } from "./routes/billsIncome.ts";
 import { categoryRoutes } from "./routes/categories.ts";
 import { settingsRoutes } from "./routes/settings.ts";
-import { IMPORT_PATH, transactionRoutes } from "./routes/transactions.ts";
+import { MAX_SCAN_BYTES } from "../shared/scan.ts";
+import { createTesseractEngine, type OcrEngine } from "./lib/ocr.ts";
+import { IMPORT_PATH, SCAN_PATH, transactionRoutes } from "./routes/transactions.ts";
 import { createAuthService } from "./services/auth.ts";
 import { createImportService } from "./services/import.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
 import { createReportService } from "./services/reports.ts";
+import { createScanService } from "./services/scan.ts";
 import { createBillsIncomeService } from "./services/billsIncome.ts";
 import { createCategoryService } from "./services/categories.ts";
 import { addUsualLimits } from "./services/categoryLimits.ts";
@@ -32,9 +35,13 @@ export type AppDeps = {
   now?: () => Date;
   /** Directory holding the built client. When set, the API also serves the SPA. */
   staticDir?: string;
+  /** Reads screenshots. Tests pass a stand-in; by default tesseract.js, started on first use. */
+  ocr?: OcrEngine;
+  /** For calling the screenshot-reading model; tests pass a stand-in. */
+  fetch?: typeof fetch;
 };
 
-export function createApp({ store, config, now, staticDir }: AppDeps) {
+export function createApp({ store, config, now, staticDir, ocr = createTesseractEngine(), fetch }: AppDeps) {
   const auth = createAuthService({
     store,
     sessionTtlMs: config.sessionTtlMs,
@@ -57,6 +64,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   const billsIncome = createBillsIncomeService({ store, periods, now });
   const categories = createCategoryService({ store, periods, now });
   const reports = createReportService({ store, periods });
+  const scans = createScanService({ store, periods, ocr, model: config.scanModel, fetch });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -80,7 +88,11 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   };
   const usualLimit = bodyLimit({ maxSize: 100 * 1024, onError: tooLarge });
   const importLimit = bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge });
-  api.use((c, next) => (c.req.path === IMPORT_PATH ? importLimit : usualLimit)(c, next));
+  // A screenshot, and the few bytes of form data around it.
+  const scanLimit = bodyLimit({ maxSize: MAX_SCAN_BYTES + 64 * 1024, onError: tooLarge });
+  api.use((c, next) =>
+    (c.req.path === IMPORT_PATH ? importLimit : c.req.path === SCAN_PATH ? scanLimit : usualLimit)(c, next),
+  );
   // Healthy means able to serve: the process is up and the database answers.
   api.get("/health", async (c) => {
     await store.ping();
@@ -90,7 +102,7 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, authed }));
-  api.route("/transactions", transactionRoutes({ transactions, imports, authed }));
+  api.route("/transactions", transactionRoutes({ transactions, imports, scans, authed }));
   api.route("/bills-income", billsIncomeRoutes({ billsIncome, authed }));
   api.route("/categories", categoryRoutes({ categories, authed }));
   api.route("/reports", reportRoutes({ reports, authed }));
@@ -136,5 +148,5 @@ export function createApp({ store, config, now, staticDir }: AppDeps) {
     return c.json(new AppError(500, "internal", "Something went wrong").toBody(), 500);
   });
 
-  return { app, auth };
+  return { app, auth, ocr };
 }

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Docker Compose passes a setting left out of .env as an empty string.
+const blankIsUnset = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // API_PORT wins. PORT is honoured only in production, where the API is the one server;
@@ -14,7 +17,25 @@ const envSchema = z.object({
   COOKIE_SECURE: z.enum(["true", "false"]).optional(),
   ALLOW_REGISTRATION: z.enum(["true", "false"]).default("true"),
   ALLOW_API_TOKENS: z.enum(["true", "false"]).default("true"),
+  // An OpenAI-compatible model of the owner's own for reading screenshots (phase 21).
+  SCAN_MODEL_URL: blankIsUnset(z.url()),
+  SCAN_MODEL: blankIsUnset(z.string()),
+  SCAN_MODEL_KEY: blankIsUnset(z.string()),
+  SCAN_MODEL_ENABLED: z.enum(["true", "false"]).default("true"),
+  SCAN_MODEL_IMAGES: z.enum(["true", "false"]).default("false"),
+  SCAN_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(90),
 });
+
+/** A model the server sends screenshots' text (or the screenshots) to, in place of the built-in reader. */
+export type ScanModelConfig = {
+  /** Base address of an OpenAI-compatible API, e.g. http://localhost:11434/v1. */
+  url: string;
+  model: string;
+  apiKey: string | null;
+  /** Send the picture itself, for a model that can see; otherwise the text the built-in reader found. */
+  images: boolean;
+  timeoutMs: number;
+};
 
 export type AppConfig = {
   isProduction: boolean;
@@ -38,6 +59,12 @@ export type AppConfig = {
    * server), so off means no assistant can reach the budget. Tokens are kept while it is off.
    */
   allowApiTokens: boolean;
+  /**
+   * The owner's own model for reading screenshots, or null for the built-in reader alone.
+   * Null unless SCAN_MODEL_URL and SCAN_MODEL are set, and while SCAN_MODEL_ENABLED=false,
+   * which turns it off without losing the settings.
+   */
+  scanModel: ScanModelConfig | null;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -55,5 +82,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cookieSecure: parsed.COOKIE_SECURE ? parsed.COOKIE_SECURE === "true" : parsed.NODE_ENV === "production",
     allowRegistration: parsed.ALLOW_REGISTRATION === "true",
     allowApiTokens: parsed.ALLOW_API_TOKENS === "true",
+    scanModel:
+      parsed.SCAN_MODEL_URL && parsed.SCAN_MODEL && parsed.SCAN_MODEL_ENABLED === "true"
+        ? {
+            url: parsed.SCAN_MODEL_URL.replace(/\/+$/, ""),
+            model: parsed.SCAN_MODEL,
+            apiKey: parsed.SCAN_MODEL_KEY ?? null,
+            images: parsed.SCAN_MODEL_IMAGES === "true",
+            timeoutMs: parsed.SCAN_MODEL_TIMEOUT_SECONDS * 1000,
+          }
+        : null,
   };
 }

@@ -27,6 +27,16 @@ services:
       ALLOW_API_TOKENS: ${ALLOW_API_TOKENS:-true}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
       IDLE_TIMEOUT_MINUTES: ${IDLE_TIMEOUT_MINUTES:-10}
+      # Optional: a model of your own for reading screenshots (see docs/deploy.md).
+      SCAN_MODEL_URL: ${SCAN_MODEL_URL:-}
+      SCAN_MODEL: ${SCAN_MODEL:-}
+      SCAN_MODEL_KEY: ${SCAN_MODEL_KEY:-}
+      SCAN_MODEL_ENABLED: ${SCAN_MODEL_ENABLED:-true}
+      SCAN_MODEL_IMAGES: ${SCAN_MODEL_IMAGES:-false}
+      SCAN_MODEL_TIMEOUT_SECONDS: ${SCAN_MODEL_TIMEOUT_SECONDS:-90}
+    # Lets SCAN_MODEL_URL reach a model running on this machine as host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Only this machine can reach the port by default; a reverse proxy on the host does
       # the rest. Set APP_BIND=0.0.0.0 in .env to expose it to the network directly.

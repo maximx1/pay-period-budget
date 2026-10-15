@@ -27,7 +27,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   // The Android app carries its session in a header; a browser carries it in the cookie.
   const token = isNative ? getToken() : null;
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // FormData is an upload: the browser writes its own Content-Type, with the boundary.
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
@@ -36,7 +38,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       credentials: isNative ? "omit" : "include",
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, "network", "Can't reach the server. Check your connection and try again.");
@@ -80,6 +82,8 @@ export async function probeServer(baseUrl: string): Promise<"ok" | "unreachable"
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  /** Sends a form with files in it, such as a screenshot. */
+  upload: <T>(path: string, form: FormData) => request<T>("POST", path, form),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),

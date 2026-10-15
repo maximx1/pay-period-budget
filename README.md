@@ -71,6 +71,11 @@ project folder is read as well (see `.env.example`).
 | `ALLOW_API_TOKENS` | `true` | `false` turns assistant (MCP) access off: every API token is refused. Tokens are kept and work again when it is turned back on |
 | `SESSION_TTL_DAYS` | `30` | The longest a sign-in lasts without use; it is extended while in use |
 | `IDLE_TIMEOUT_MINUTES` | `10` | Minutes without activity before the web app signs out and the Android app locks. `0` turns both off |
+| `SCAN_MODEL_URL`, `SCAN_MODEL` | none | An OpenAI-compatible model of your own (e.g. `http://localhost:11434/v1`, `qwen2.5:7b`) that reads screenshots for "From screenshots" imports, in place of the built-in reader. See `docs/deploy.md` |
+| `SCAN_MODEL_KEY` | none | Sent to that model's API as a bearer token |
+| `SCAN_MODEL_ENABLED` | `true` | `false` stops using the model and keeps its settings |
+| `SCAN_MODEL_IMAGES` | `false` | `true` sends the picture itself, for a model that can see; otherwise it is given the text the built-in reader found |
+| `SCAN_MODEL_TIMEOUT_SECONDS` | `90` | How long to wait for the model before falling back on the built-in reader |
 
 ## Signing in from something other than the web app
 

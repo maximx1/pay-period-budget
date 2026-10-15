@@ -16,7 +16,7 @@ try {
 
 const config = loadConfig();
 const { db, close } = await openDatabase(config.databaseUrl);
-const { app, auth } = createApp({
+const { app, auth, ocr } = createApp({
   store: createSqliteStore(db),
   config,
   staticDir: config.isProduction && existsSync(STATIC_DIR) ? STATIC_DIR : undefined,
@@ -34,7 +34,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     server.close(() => {
       close();
-      process.exit(0);
+      void ocr.close().finally(() => process.exit(0));
     });
   });
 }

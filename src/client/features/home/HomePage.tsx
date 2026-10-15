@@ -21,6 +21,7 @@ import { GoToDateDialog } from "../periods/GoToDateDialog.tsx";
 import { PeriodHeader } from "../periods/PeriodHeader.tsx";
 import { PeriodSettingsDialog } from "../periods/PeriodSettingsDialog.tsx";
 import { PeriodSummary } from "../periods/PeriodSummary.tsx";
+import { ScanImportDialog } from "../scan/ScanImportDialog.tsx";
 import { SearchDialog, type SearchStart } from "../search/SearchDialog.tsx";
 import { TopBarAction } from "../shell/TopBar.tsx";
 import { type PeriodNavState, usePeriodNav } from "../periods/usePeriodNav.ts";
@@ -127,6 +128,8 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   // `start` is what the search opens already looking for, e.g. a transaction's name.
   const [transactionSearch, setTransactionSearch] = useState<{ open: boolean; start?: SearchStart }>({ open: false });
   const openTransactionSearch = (start?: SearchStart) => setTransactionSearch({ open: true, start });
+  // Screenshots picked in the add dialog's second tab, being read and reviewed.
+  const [scan, setScan] = useState<{ open: boolean; files: File[] }>({ open: false, files: [] });
 
   // One set of moves for the arrows and for swiping, so neither starts while the other is under way.
   const periodNav = usePeriodNav(view);
@@ -237,7 +240,12 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
           setDialog((current) => ({ ...current, open: false }));
           openTransactionSearch({ text: transaction.name });
         }}
+        onScan={(files) => {
+          setDialog((current) => ({ ...current, open: false }));
+          setScan({ open: true, files });
+        }}
       />
+      <ScanImportDialog open={scan.open} files={scan.files} onClose={() => setScan((current) => ({ ...current, open: false }))} />
       <SearchDialog
         open={transactionSearch.open}
         onClose={() => setTransactionSearch((current) => ({ ...current, open: false }))}

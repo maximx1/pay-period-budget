@@ -31,4 +31,27 @@ describe("loadConfig", () => {
     expect(loadConfig({ ALLOW_API_TOKENS: "false" }).allowApiTokens).toBe(false);
     expect(() => loadConfig({ ALLOW_API_TOKENS: "off" })).toThrow();
   });
+
+  it("uses a screenshot-reading model only with an address and a model, and not while turned off", () => {
+    const model = { SCAN_MODEL_URL: "http://localhost:11434/v1/", SCAN_MODEL: "reader-7b" };
+    expect(loadConfig({}).scanModel).toBeNull();
+    expect(loadConfig({ SCAN_MODEL_URL: model.SCAN_MODEL_URL }).scanModel).toBeNull();
+    expect(loadConfig(model).scanModel).toEqual({
+      url: "http://localhost:11434/v1",
+      model: "reader-7b",
+      apiKey: null,
+      images: false,
+      timeoutMs: 90_000,
+    });
+    expect(loadConfig({ ...model, SCAN_MODEL_KEY: "k", SCAN_MODEL_IMAGES: "true", SCAN_MODEL_TIMEOUT_SECONDS: "30" }).scanModel).toMatchObject({
+      apiKey: "k",
+      images: true,
+      timeoutMs: 30_000,
+    });
+    // Turned off, its settings stay where they are.
+    expect(loadConfig({ ...model, SCAN_MODEL_ENABLED: "false" }).scanModel).toBeNull();
+    // What Docker Compose passes for settings left out of .env.
+    expect(loadConfig({ SCAN_MODEL_URL: "", SCAN_MODEL: "", SCAN_MODEL_KEY: "" }).scanModel).toBeNull();
+    expect(() => loadConfig({ SCAN_MODEL_URL: "not a url" })).toThrow();
+  });
 });

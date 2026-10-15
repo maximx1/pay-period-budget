@@ -49,6 +49,7 @@ different app.
 | [18](phase-18-categories.md) | Categories: a transaction is filed under one, a bill or income passes its own on, and a category can have a limit for each pay period that the home screen warns about when it is passed | Done 2026-10-13. Not yet deployed; adds migration `0010`. Rebuild the MCP file and the Android app with it | n/a |
 | [19](phase-19-search.md) | Search across every transaction: by words in the name or note, by category, within dates; "find others like this" | Done 2026-10-13, built unattended on the owner's assumptions-allowed instruction. Not yet deployed | n/a |
 | [20](phase-20-reports.md) | Reports: twenty-five charts and tables over a span of pay periods, by bill, by category, over time and as shares | Done 2026-10-13, likewise. Not yet deployed. No chart library was added | n/a |
+| [21](phase-21-screenshot-import.md) | Importing from screenshots of a bank's list: read on the server with tesseract.js (or a model of the owner's own), reviewed in a dialog before importing | Done 2026-10-15. Not yet deployed. Adds `tesseract.js` and `@tesseract.js-data/eng` | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

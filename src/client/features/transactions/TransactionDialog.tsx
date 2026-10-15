@@ -24,6 +24,7 @@ import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import { billOrIncomeDetailPath, useBillsIncome } from "../billsIncome/api.ts";
 import { useCategories } from "../categories/api.ts";
+import { ScreenshotPicker } from "../scan/ScreenshotPicker.tsx";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
 const parseAmount = (text: string) => {
@@ -62,13 +63,36 @@ type TransactionDialogProps = {
   transaction?: Transaction;
   /** Asks for a search for other transactions like the one being edited. */
   onFindLike?: (transaction: Transaction) => void;
+  /** When adding: offers a second tab that picks screenshots to import from, and hands them here. */
+  onScan?: (files: File[]) => void;
 };
 
-export function TransactionDialog({ open, onClose, transaction, ...rest }: TransactionDialogProps) {
+const addTabs = [
+  { value: "type", label: "Type it in" },
+  { value: "screenshots", label: "From screenshots" },
+] as const;
+
+export function TransactionDialog({ open, onClose, transaction, onScan, ...rest }: TransactionDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title={transaction ? "Edit transaction" : "Add transaction"}>
-      <TransactionForm onClose={onClose} transaction={transaction} {...rest} />
+      {!transaction && onScan ? (
+        <AddTabs onScan={onScan} onClose={onClose} {...rest} />
+      ) : (
+        <TransactionForm onClose={onClose} transaction={transaction} {...rest} />
+      )}
     </Dialog>
+  );
+}
+
+function AddTabs({ onScan, ...rest }: Omit<TransactionDialogProps, "open" | "transaction" | "onScan"> & { onScan: (files: File[]) => void }) {
+  const [tab, setTab] = useState<(typeof addTabs)[number]["value"]>("type");
+  return (
+    <>
+      <div className="mb-4">
+        <SegmentedControl label="How to add it" hideLabel options={addTabs} value={tab} onChange={setTab} />
+      </div>
+      {tab === "type" ? <TransactionForm {...rest} /> : <ScreenshotPicker onPick={onScan} />}
+    </>
   );
 }
 

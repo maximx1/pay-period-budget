@@ -175,6 +175,38 @@ and run `docker compose up -d` again. Nothing is deleted: the tokens are still l
 Settings, which says they are turned off, and they work again when the line is set back to
 `true`. Signing in from the web app and the Android app is not affected.
 
+## Reading screenshots
+
+"Add transaction" has a second tab, **From screenshots**, that imports transactions from
+screenshots of a bank's list. The server reads them itself with tesseract.js: nothing is
+sent anywhere else, and nothing needs setting up. The first screenshot after a start takes
+a few seconds longer while the reader loads; it then stays loaded, using some 100 to 200 MB
+of memory.
+
+### With a model of your own
+
+If the built-in reader struggles with your bank's layout, a model you run yourself can work
+out the transactions instead, through any OpenAI-compatible API (Ollama, LM Studio,
+llama.cpp's server, vLLM). In `.env`:
+
+```
+SCAN_MODEL_URL=http://host.docker.internal:11434/v1
+SCAN_MODEL=qwen2.5:7b
+```
+
+and run `docker compose up -d` again. `host.docker.internal` is this machine as seen from
+inside the container; a model elsewhere on your network is reached by its own address.
+`SCAN_MODEL_KEY` is sent as a bearer token if the API wants one.
+
+By default the model is given the text the built-in reader found, laid out by position,
+which any chat model can work with. For a model that can see, `SCAN_MODEL_IMAGES=true`
+sends the picture itself. If the model fails or takes longer than
+`SCAN_MODEL_TIMEOUT_SECONDS` (90 by default), the built-in reader's rows are used and the
+review says so.
+
+To stop using it without losing the settings, set `SCAN_MODEL_ENABLED=false` and run
+`docker compose up -d`.
+
 ## How it heals itself
 
 | What goes wrong | What happens |

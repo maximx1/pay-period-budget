@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PeriodView } from "../../../shared/budget.ts";
 import type {
+  TransactionImportInput,
+  TransactionImportResponse,
   TransactionInput,
   TransactionPatch,
   TransactionResponse,
@@ -29,6 +31,18 @@ export function useCreateTransaction() {
   return useMutation({
     mutationFn: (input: TransactionInput) => api.post<TransactionResponse>("/api/transactions", input),
     onSuccess: useRefreshAfterChange(),
+  });
+}
+
+/**
+ * Many transactions at once. With `dryRun` it only reports what would happen (possible
+ * duplicates, the bill or income each probably belongs to) and refreshes nothing.
+ */
+export function useImportTransactions() {
+  const refresh = useRefreshAfterChange();
+  return useMutation({
+    mutationFn: (input: TransactionImportInput) => api.post<TransactionImportResponse>("/api/transactions/import", input),
+    onSuccess: (_result, input) => (input.dryRun ? undefined : refresh()),
   });
 }
 

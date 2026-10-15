@@ -11,19 +11,25 @@ import {
   type TransactionSearchResponse,
   transactionSearchSchema,
 } from "../../shared/transactions.ts";
+import { MAX_SCAN_BYTES, type ScanResponse } from "../../shared/scan.ts";
 import { type AppEnv, parseJson, parseQuery } from "../http.ts";
+import { AppError } from "../lib/errors.ts";
 import type { ImportService } from "../services/import.ts";
+import type { ScanService } from "../services/scan.ts";
 import type { TransactionService } from "../services/transactions.ts";
 
 /** Where many transactions arrive in one request; app.ts allows this path a larger body. */
 export const IMPORT_PATH = "/api/transactions/import";
+/** Where a screenshot is sent to be read; app.ts allows it a body the size of a picture. */
+export const SCAN_PATH = "/api/transactions/scan";
 
 export function transactionRoutes(deps: {
   transactions: TransactionService;
   imports: ImportService;
+  scans: ScanService;
   authed: MiddlewareHandler<AppEnv>;
 }) {
-  const { transactions, imports } = deps;
+  const { transactions, imports, scans } = deps;
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
 
@@ -40,6 +46,18 @@ export function transactionRoutes(deps: {
   routes.post("/", async (c) => {
     const input = await parseJson(c, transactionInputSchema);
     return c.json<TransactionResponse>(await transactions.create(c.var.user.id, input), 201);
+  });
+
+  // A screenshot of a bank's list, as multipart form data with the picture under "image".
+  // Reads it and reports the transactions it holds; saves nothing.
+  routes.post("/scan", async (c) => {
+    const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+    const image = body.image;
+    if (!(image instanceof File) || image.size === 0) {
+      throw new AppError(400, "validation", "Choose a screenshot", { image: "Choose a screenshot" });
+    }
+    if (image.size > MAX_SCAN_BYTES) throw new AppError(413, "validation", "That picture is too large. Keep it under 10 MB.");
+    return c.json<ScanResponse>(await scans.scan(c.var.user.id, new Uint8Array(await image.arrayBuffer())));
   });
 
   routes.post("/import", async (c) => {
