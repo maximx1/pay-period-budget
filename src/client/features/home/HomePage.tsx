@@ -13,6 +13,7 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
+import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 import { useSwipe } from "../../lib/useSwipe.ts";
 import { useBudget } from "../budget/api.ts";
 import { usePeriodView } from "../periods/api.ts";
@@ -101,7 +102,7 @@ export function HomePage() {
 
   return (
     <>
-      <PageHeader title="Home" />
+      <PageHeader title={APP_NAME} />
       {content}
     </>
   );

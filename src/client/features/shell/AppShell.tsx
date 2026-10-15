@@ -45,7 +45,7 @@ export function AppShell() {
       </Drawer>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar title={navItemForPath(pathname).label} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} />
+        <TopBar title={navItemForPath(pathname).title ?? navItemForPath(pathname).label} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} />
         <main
           ref={scrollRoot}
           data-scroll-root

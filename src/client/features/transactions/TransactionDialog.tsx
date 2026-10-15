@@ -1,7 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Search } from "lucide-react";
+import { ReceiptText, Search } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useNavigate } from "react-router";
 import { z } from "zod";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { atStartOfDay, dateOf, formatDateRange, formatDay, nowIn } from "../../../shared/dates.ts";
@@ -21,7 +22,7 @@ import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
-import { useBillsIncome } from "../billsIncome/api.ts";
+import { billOrIncomeDetailPath, useBillsIncome } from "../billsIncome/api.ts";
 import { useCategories } from "../categories/api.ts";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
@@ -127,6 +128,9 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
   const items = useBillsIncome();
   const [chosenId, chosenKind] = watch(["billIncomeId", "kind"]);
   const choices = (items.data ?? []).filter((item) => !item.archived || item.id === transaction?.billIncomeId);
+  // The bill or income this is saved against: the one its detail view opens for.
+  const linkedItem = items.data?.find((item) => item.id === transaction?.billIncomeId);
+  const navigate = useNavigate();
   const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
 
   const categories = useCategories();
@@ -334,6 +338,20 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         >
           <Search className="size-4" aria-hidden />
           Find others like this
+        </button>
+      )}
+
+      {linkedItem && (
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            void navigate(billOrIncomeDetailPath(linkedItem.id));
+          }}
+          className="-my-1 inline-flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <ReceiptText className="size-4" aria-hidden />
+          Open {linkedItem.name} in Bills &amp; Income
         </button>
       )}
 

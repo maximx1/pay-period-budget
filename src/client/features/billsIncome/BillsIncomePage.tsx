@@ -1,5 +1,6 @@
 import { Plus, ReceiptText, Search, SearchX } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import type { BillOrIncome } from "../../../shared/billsIncome.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -9,7 +10,7 @@ import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { useBudget } from "../budget/api.ts";
 import { useCategories } from "../categories/api.ts";
-import { useBillsIncome } from "./api.ts";
+import { DETAIL_PARAM, useBillsIncome } from "./api.ts";
 import { BillOrIncomeCard } from "./BillOrIncomeCard.tsx";
 import { BillOrIncomeDetailDialog } from "./BillOrIncomeDetailDialog.tsx";
 import { BillOrIncomeDialog } from "./BillOrIncomeDialog.tsx";
@@ -43,6 +44,23 @@ export function BillsIncomePage() {
   // `item` is kept after closing so the dialog doesn't change its title while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; item?: BillOrIncome }>({ open: false });
   const [detail, setDetail] = useState<{ open: boolean; item?: BillOrIncome }>({ open: false });
+
+  // Arriving with ?item=<id> (from one of its transactions) opens that item's detail view.
+  // The parameter is dropped once used, so closing the view leaves a plain page behind.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get(DETAIL_PARAM);
+  useEffect(() => {
+    if (!requested || !items.data) return;
+    const item = items.data.find((entry) => entry.id === requested);
+    if (item) setDetail({ open: true, item });
+    setSearchParams(
+      (params) => {
+        params.delete(DETAIL_PARAM);
+        return params;
+      },
+      { replace: true },
+    );
+  }, [requested, items.data, setSearchParams]);
 
   const addButton = (
     <Button onClick={() => setDialog({ open: true })}>
