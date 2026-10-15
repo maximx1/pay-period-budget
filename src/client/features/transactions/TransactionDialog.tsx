@@ -23,7 +23,7 @@ import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import { billOrIncomeDetailPath, useBillsIncome } from "../billsIncome/api.ts";
-import { useCategories } from "../categories/api.ts";
+import { useCategories, useCreateCategory } from "../categories/api.ts";
 import { ScreenshotPicker } from "../scan/ScreenshotPicker.tsx";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
 
@@ -31,6 +31,9 @@ const parseAmount = (text: string) => {
   const cents = parseMoneyInput(text);
   return cents !== null && cents > 0 && cents <= MAX_TRANSACTION_CENTS ? cents : null;
 };
+
+/** In the Category list: make a new category, named in a field that then appears. */
+const NEW_CATEGORY = "__new__";
 
 // The server's rules for the fields it shares with this form, plus the form's own shapes
 // for the amount (typed as text) and the optional extras.
@@ -42,8 +45,15 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   billIncomeId: z.string(),
   /** An upcoming entry of that bill or income which this pays toward; empty for none. */
   countsToward: z.string(),
-  /** The category it is filed under; empty for none. */
+  /** The category it is filed under; empty for none; NEW_CATEGORY for one named below. */
   categoryId: z.string(),
+  /** The name of a category made as this is saved. */
+  newCategory: z.string(),
+}).superRefine(({ categoryId, newCategory }, context) => {
+  if (categoryId !== NEW_CATEGORY) return;
+  const name = newCategory.trim();
+  if (!name) context.addIssue({ code: "custom", path: ["newCategory"], message: "Name the new category" });
+  else if (name.length > 40) context.addIssue({ code: "custom", path: ["newCategory"], message: "Keep the name under 40 characters" });
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -133,6 +143,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           billIncomeId: transaction.billIncomeId ?? "",
           countsToward: "",
           categoryId: transaction.categoryId ?? "",
+          newCategory: "",
         }
       : {
           name: "",
@@ -144,6 +155,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           billIncomeId: "",
           countsToward: "",
           categoryId: "",
+          newCategory: "",
         },
   });
 
@@ -158,9 +170,13 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
   const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
 
   const categories = useCategories();
+  const createCategory = useCreateCategory();
+  const chosenCategory = watch("categoryId");
+  // Shown once the list has loaded, even with no categories yet: one can be made from here.
   const categoryOptions = [
     { value: "", label: "None" },
     ...(categories.data ?? []).map((category) => ({ value: category.id, label: category.name })),
+    { value: NEW_CATEGORY, label: "New category…" },
   ];
 
   // What a new payment could be paying: the upcoming entries that bill or income added to
@@ -219,11 +235,24 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory }) => {
     setFormError(null);
     const amountCents = parseAmount(amount) ?? 0;
     const tiedTo = billIncomeId === "" ? null : billIncomeId;
-    const filedUnder = categoryId === "" ? null : categoryId;
+    let filedUnder = categoryId === "" ? null : categoryId;
+    if (categoryId === NEW_CATEGORY) {
+      try {
+        const { category } = await createCategory.mutateAsync({ name: newCategory.trim(), defaultLimitCents: null });
+        filedUnder = category.id;
+        // Made now, so a save that fails below doesn't make it twice when tried again.
+        setValue("categoryId", category.id);
+        setValue("newCategory", "");
+      } catch (error) {
+        if (error instanceof ApiError && error.fields?.name) setError("newCategory", { message: error.fields.name });
+        else setFormError(error instanceof ApiError ? error.message : "Couldn't make that category. Try again.");
+        return;
+      }
+    }
     try {
       finish(
         transaction
@@ -276,7 +305,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const saving = create.isPending || update.isPending;
+  const saving = create.isPending || update.isPending || createCategory.isPending;
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
@@ -333,12 +362,22 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         />
       )}
 
-      {categoryOptions.length > 1 && (
+      {categories.data && (
         <SelectField
           label="Category"
           options={categoryOptions}
           error={errors.categoryId?.message}
           {...register("categoryId")}
+        />
+      )}
+      {chosenCategory === NEW_CATEGORY && (
+        <TextField
+          label="New category name"
+          autoComplete="off"
+          maxLength={40}
+          hint="It's added to your categories when you save."
+          error={errors.newCategory?.message}
+          {...register("newCategory")}
         />
       )}
 
