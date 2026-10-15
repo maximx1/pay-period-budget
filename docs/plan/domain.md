@@ -241,7 +241,9 @@ and `occurrenceDate`, and for imported ones `importKey`.
 - Marking paid sets `paidAt`; marking upcoming clears it.
 - Display order within a section: `occursAt`, then `sortOrder`, then `createdAt`.
   `sortOrder` only matters between transactions with identical `occursAt` (phase 7 adds
-  manual reordering; until then it is 0).
+  manual reordering; until then it is 0). The API sends that order, oldest first; since
+  2026-10-15 the home screen shows each section newest first (`newestFirst`), keeping
+  rows at the same moment in their `sortOrder`.
 - Deleting is a hard delete.
 
 ### Linking to a bill or income

@@ -7,6 +7,7 @@ import { Card } from "../../components/ui/Card.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { cn } from "../../lib/cn.ts";
 import { useCategories } from "../categories/api.ts";
+import { newestFirst } from "./sectionOrder.ts";
 import { TransactionRow } from "./TransactionRow.tsx";
 
 type TransactionSectionProps = {
@@ -34,7 +35,7 @@ function groupByDay(transactions: Transaction[]): Array<[LocalDate, Transaction[
   return groups;
 }
 
-/** "Upcoming" or "Paid": a running total in the header and the rows grouped under their day. */
+/** "Upcoming" or "Paid": a running total in the header and the rows grouped under their day, newest first. */
 export function TransactionSection({
   title,
   transactions,
@@ -65,7 +66,7 @@ export function TransactionSection({
         <EmptyState {...empty} />
       ) : (
         <div className="pb-2">
-          {groupByDay(transactions).map(([day, items]) => {
+          {groupByDay(newestFirst(transactions)).map(([day, items]) => {
             // Order can only be chosen among rows at exactly the same date and time.
             const sameMoment = (occursAt: LocalDateTime) => items.filter((item) => item.occursAt === occursAt);
             const canReorder = items.some((item) => sameMoment(item.occursAt).length > 1);
