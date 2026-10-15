@@ -194,23 +194,24 @@ html:has(dialog[open]) [data-scroll-root] {
     }
   }
 
-  /* A pay period reached by a swipe comes in from the side it was on. */
+  /* A pay period reached by a swipe slides in from the side it was on, as the one before
+     it slid out the other way (useSwipe). */
   .period-from-next {
-    animation: period-from-next 0.15s ease-out;
+    animation: period-from-next 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .period-from-previous {
-    animation: period-from-previous 0.15s ease-out;
+    animation: period-from-previous 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   @keyframes period-from-next {
     from {
-      opacity: 0;
-      translate: 1.5rem 0;
+      opacity: 0.3;
+      translate: 40% 0;
     }
   }
   @keyframes period-from-previous {
     from {
-      opacity: 0;
-      translate: -1.5rem 0;
+      opacity: 0.3;
+      translate: -40% 0;
     }
   }
 }

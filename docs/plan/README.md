@@ -183,7 +183,11 @@ unless marked otherwise.
 3. **Two leftover figures, and the projected one carries forward.** *Leftover so far* is
    the starting amount plus paid transactions; *projected leftover* adds the unpaid ones.
    The home view shows them together ("$412.10 of $180.55 projected") alongside the paid
-   and upcoming totals. The next period starts from the projected figure; if that turns
+   and upcoming totals. Since 2026-10-14 they are two lines on screen, **Current balance**
+   (what the bank should show) and **Balance at end of period**, with a bar of how much
+   of the money out is paid (by amount) and, behind a caret, money out by category and
+   bills against spontaneous spending. A period that is over with anything still upcoming
+   turns the card yellow and its current balance red. The next period starts from the projected figure; if that turns
    out to disagree with the bank, that is the cue to go looking. Upcoming and Paid each
    show a placeholder with an icon when empty.
 4. **Income is nothing special.** It is a recurring item (or a one-off transaction) with a

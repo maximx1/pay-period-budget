@@ -36,7 +36,7 @@ function PeriodSkeleton() {
   return (
     <div role="status" aria-label="Loading period">
       <div className={`${block} mb-4 h-12 w-full sm:w-80`} />
-      <div className={`${block} mb-4 h-44 lg:h-28`} />
+      <div className={`${block} mb-4 h-80 lg:h-56`} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={`${block} h-56`} />
         <div className={`${block} h-56`} />
@@ -132,9 +132,11 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   // Like turning a page: a swipe toward the left brings the next period in from the right.
   // Swiping back never adds a period before the earliest; that stays a tap on the arrow.
   const swipe = useSwipe({
-    onLeft: () => void periodNav.goNext({ slide: true }),
-    onRight: () => void periodNav.goPrevious({ slide: true, existingOnly: true }),
+    onLeft: () => periodNav.goNext({ slide: true }),
+    onRight: () => periodNav.goPrevious({ slide: true, existingOnly: true }),
     enabled: !periodNav.busy,
+    canLeft: !periodNav.atHorizon,
+    canRight: Boolean(view.nav.prevId),
   });
   const arrivedAs = (useLocation().state as PeriodNavState | null)?.arrivedAs;
 
@@ -157,65 +159,68 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
 
   return (
     <>
-      {/* Fills the rest of the page column, so a swipe below a short period still counts.
-          Keyed by period, so the slide plays once per arrival and not when a transaction changes. */}
-      <div
-        key={view.period.id}
-        className={cn(
-          "flex-1 touch-pan-y touch-pinch-zoom",
-          arrivedAs === "next" && "period-from-next",
-          arrivedAs === "previous" && "period-from-previous",
-        )}
-        {...swipe}
-      >
-        <PeriodHeader
-          view={view}
-          periodNav={periodNav}
-          today={today}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenSearch={() => setSearchOpen(true)}
-          onOpenTransactionSearch={() => openTransactionSearch()}
-        />
-        {soughtDay && !view.transactions.some((transaction) => dateOf(transaction.occursAt) === soughtDay) && (
-          <p role="status" className="mb-4 text-sm text-muted">
-            Nothing on {formatDay(soughtDay)}.
-          </p>
-        )}
-        {overLimits.length > 0 && (
-          <div className="mb-4 flex flex-col gap-2">
-            {overLimits.map(({ categoryId, message }) => (
-              <Alert key={categoryId} tone="warning">
-                {message}
-              </Alert>
-            ))}
+      {/* Clips the period while it slides off the side, so the page never scrolls sideways. */}
+      <div className="flex flex-1 flex-col overflow-x-clip" style={{ overflowClipMargin: 8 }}>
+        {/* Fills the rest of the page column, so a swipe below a short period still counts.
+            Keyed by period, so the slide plays once per arrival and not when a transaction changes. */}
+        <div
+          key={view.period.id}
+          className={cn(
+            "flex-1 touch-pan-y touch-pinch-zoom",
+            arrivedAs === "next" && "period-from-next",
+            arrivedAs === "previous" && "period-from-previous",
+          )}
+          {...swipe}
+        >
+          <PeriodHeader
+            view={view}
+            periodNav={periodNav}
+            today={today}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSearch={() => setSearchOpen(true)}
+            onOpenTransactionSearch={() => openTransactionSearch()}
+          />
+          {soughtDay && !view.transactions.some((transaction) => dateOf(transaction.occursAt) === soughtDay) && (
+            <p role="status" className="mb-4 text-sm text-muted">
+              Nothing on {formatDay(soughtDay)}.
+            </p>
+          )}
+          {overLimits.length > 0 && (
+            <div className="mb-4 flex flex-col gap-2">
+              {overLimits.map(({ categoryId, message }) => (
+                <Alert key={categoryId} tone="warning">
+                  {message}
+                </Alert>
+              ))}
+            </div>
+          )}
+          <PeriodSummary view={view} today={today} />
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+            <TransactionSection
+              title="Upcoming"
+              transactions={view.transactions.filter((transaction) => transaction.status === "upcoming")}
+              totalCents={view.totals.upcomingCents}
+              empty={{
+                icon: CalendarClock,
+                title: "Nothing upcoming",
+                description: "Add a transaction with the + button.",
+              }}
+              onToggle={toggle}
+              onReorder={reorder}
+              onEdit={(transaction) => setDialog({ open: true, transaction })}
+              highlightDay={soughtDay}
+            />
+            <TransactionSection
+              title="Paid"
+              transactions={view.transactions.filter((transaction) => transaction.status === "paid")}
+              totalCents={view.totals.paidCents}
+              empty={{ icon: CircleCheck, title: "Nothing paid yet", description: "Items you mark as paid move here." }}
+              onToggle={toggle}
+              onReorder={reorder}
+              onEdit={(transaction) => setDialog({ open: true, transaction })}
+              highlightDay={soughtDay}
+            />
           </div>
-        )}
-        <PeriodSummary view={view} />
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-          <TransactionSection
-            title="Upcoming"
-            transactions={view.transactions.filter((transaction) => transaction.status === "upcoming")}
-            totalCents={view.totals.upcomingCents}
-            empty={{
-              icon: CalendarClock,
-              title: "Nothing upcoming",
-              description: "Add a transaction with the + button.",
-            }}
-            onToggle={toggle}
-            onReorder={reorder}
-            onEdit={(transaction) => setDialog({ open: true, transaction })}
-            highlightDay={soughtDay}
-          />
-          <TransactionSection
-            title="Paid"
-            transactions={view.transactions.filter((transaction) => transaction.status === "paid")}
-            totalCents={view.totals.paidCents}
-            empty={{ icon: CircleCheck, title: "Nothing paid yet", description: "Items you mark as paid move here." }}
-            onToggle={toggle}
-            onReorder={reorder}
-            onEdit={(transaction) => setDialog({ open: true, transaction })}
-            highlightDay={soughtDay}
-          />
         </div>
       </div>
 

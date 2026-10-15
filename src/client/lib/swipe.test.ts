@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { swipeDirection, type SwipeDirection, type SwipePoint } from "./swipe.ts";
+import { dragOffset, swipeDirection, type SwipeDirection, type SwipePoint } from "./swipe.ts";
 
 const WIDTH = 360;
 const at = (x: number, y: number): SwipePoint => ({ x, y });
@@ -30,5 +30,20 @@ describe("swipeDirection", () => {
   it("measures the edges against the width it is given", () => {
     expect(swipeDirection(at(350, 400), at(100, 400), 1280)).toBe("left");
     expect(swipeDirection(at(1270, 400), at(900, 400), 1280)).toBeNull();
+  });
+});
+
+describe("dragOffset", () => {
+  const both = { canLeft: true, canRight: true };
+  it.each<[string, SwipePoint, SwipePoint, { canLeft: boolean; canRight: boolean }, number]>([
+    ["follows a sideways drag toward the left", at(300, 400), at(200, 404), both, -100],
+    ["follows a sideways drag toward the right", at(100, 400), at(180, 398), both, 80],
+    ["stays put for a small slip", at(200, 400), at(193, 400), both, 0],
+    ["stays put while the finger scrolls", at(200, 500), at(230, 300), both, 0],
+    ["resists toward a side with nothing there", at(300, 400), at(200, 400), { canLeft: false, canRight: true }, -20],
+    ["still follows the other way", at(100, 400), at(200, 400), { canLeft: false, canRight: true }, 100],
+    ["leaves a touch at the screen's edge alone", at(10, 400), at(200, 400), both, 0],
+  ])("%s", (_, start, current, can, expected) => {
+    expect(dragOffset(start, current, WIDTH, can)).toBe(expected);
   });
 });

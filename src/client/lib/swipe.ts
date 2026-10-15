@@ -26,3 +26,27 @@ export function swipeDirection(start: SwipePoint, end: SwipePoint, viewportWidth
   if (Math.abs(dx) <= SWIPE_FLATNESS * Math.abs(dy)) return null;
   return dx < 0 ? "left" : "right";
 }
+
+/** How far a finger moves before the page starts to follow it, in CSS pixels. */
+export const DRAG_START = 8;
+/** How much of the finger's movement the page follows where there is nothing to swipe to. */
+export const DRAG_RESISTANCE = 0.2;
+
+/**
+ * How far sideways the page should sit under a finger that has moved from `start` to
+ * `current`, in CSS pixels: 0 until the movement is clearly sideways, then the finger's own
+ * distance, or a fifth of it toward a side with nothing there (`canLeft`, `canRight`).
+ */
+export function dragOffset(
+  start: SwipePoint,
+  current: SwipePoint,
+  viewportWidth: number,
+  { canLeft, canRight }: { canLeft: boolean; canRight: boolean },
+): number {
+  if (start.x < SWIPE_EDGE_GUARD || start.x > viewportWidth - SWIPE_EDGE_GUARD) return 0;
+  const dx = current.x - start.x;
+  const dy = current.y - start.y;
+  if (Math.abs(dx) < DRAG_START || Math.abs(dx) <= SWIPE_FLATNESS * Math.abs(dy)) return 0;
+  const allowed = dx < 0 ? canLeft : canRight;
+  return allowed ? dx : dx * DRAG_RESISTANCE;
+}

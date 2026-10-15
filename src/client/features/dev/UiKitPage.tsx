@@ -1,9 +1,10 @@
 // Development-only reference page at /dev/ui: every shared primitive in one place, for
 // checking them at different widths and in both colour schemes. Not part of the production build.
-import { Inbox, Pencil, Plus, Trash2 } from "lucide-react";
+import { Inbox, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { BarList } from "../../components/charts/BarList.tsx";
 import { DonutChart } from "../../components/charts/DonutChart.tsx";
+import { SegmentedBar } from "../../components/charts/SegmentedBar.tsx";
 import { compactCents, NEUTRAL_COLOR, SERIES_COLORS } from "../../components/charts/palette.ts";
 import { XYChart } from "../../components/charts/XYChart.tsx";
 import { formatCents } from "../../../shared/money.ts";
@@ -14,6 +15,7 @@ import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Fab } from "../../components/ui/Fab.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.tsx";
 import { SelectField } from "../../components/ui/SelectField.tsx";
@@ -125,6 +127,15 @@ export function UiKitPage() {
             <p className="font-semibold">Card</p>
             <p className="mt-1 text-sm text-muted">Default padding, surface background, border.</p>
           </Card>
+          <Card tone="warning">
+            <p className="flex items-center gap-1.5 font-semibold">
+              Warning card
+              <InfoTip label="What is this?" icon={<TriangleAlert className="size-4 text-warning" aria-hidden />}>
+                An InfoTip: tap it, or hover with a mouse. Tapping elsewhere or Escape closes it.
+              </InfoTip>
+            </p>
+            <p className="mt-1 text-sm text-muted">tone="warning", for something about the card that needs looking at.</p>
+          </Card>
           <Card padding="none" className="md:col-span-1 xl:col-span-2">
             <EmptyState
               icon={Inbox}
@@ -161,6 +172,19 @@ export function UiKitPage() {
               totalLabel="spent"
               format={formatCents}
               slices={SERIES_COLORS.map((color, index) => ({ name: `Series ${index + 1}`, color, value: (9 - index) * 12_345 }))}
+            />
+          </Card>
+          <Card>
+            <SegmentedBar
+              title="Example segmented bar"
+              summary="$1,339.70"
+              format={formatCents}
+              segments={[
+                { name: "Groceries", value: 52_000, color: SERIES_COLORS[0] },
+                { name: "Bills", value: 41_800, color: SERIES_COLORS[1] },
+                { name: "Fun", value: 21_000, color: SERIES_COLORS[2] },
+                { name: "Uncategorised", value: 19_170, color: NEUTRAL_COLOR },
+              ]}
             />
           </Card>
           <Card>
