@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
+import { IGNORED_IN_SEARCH, searchKey } from "../../../shared/transactions.ts";
 import type { Db } from "../../db/client.ts";
 import { deletedImportKeys, transactions } from "../../db/schema.ts";
 import type { TransactionRepo, TransactionSearch } from "../types.ts";
@@ -17,17 +18,27 @@ function inRange(userId: string, startDate: LocalDate, endDate: LocalDate) {
   );
 }
 
+/** A text column as searchKey() would have it, or only lower-cased when `ignoring` is false. */
+function searchable(column: SQL, ignoring: boolean): SQL {
+  const lowered = sql`lower(${column})`;
+  return ignoring ? IGNORED_IN_SEARCH.reduce((text, ignored) => sql`replace(${text}, ${ignored}, '')`, lowered) : lowered;
+}
+
 /** The conditions a search puts on a user's transactions. */
 function matching(userId: string, { text, from, to, categoryId }: TransactionSearch) {
+  // Spaces and punctuation are left out of both sides, unless they are all that was typed.
+  const key = text === undefined ? undefined : searchKey(text);
+  const ignoring = key !== "";
+  const typed = ignoring ? key : text?.toLowerCase();
   // The text is matched literally: its own % and _ are not wildcards.
-  const pattern = text === undefined ? undefined : `%${text.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+  const pattern = typed === undefined ? undefined : `%${typed.replace(/[\\%_]/g, "\\$&")}%`;
   return and(
     eq(transactions.userId, userId),
     pattern === undefined
       ? undefined
       : or(
-          sql`lower(${transactions.name}) like ${pattern} escape '\\'`,
-          sql`lower(coalesce(${transactions.note}, '')) like ${pattern} escape '\\'`,
+          sql`${searchable(sql`${transactions.name}`, ignoring)} like ${pattern} escape '\\'`,
+          sql`${searchable(sql`coalesce(${transactions.note}, '')`, ignoring)} like ${pattern} escape '\\'`,
         ),
     from === undefined ? undefined : gte(transactions.occursAt, atStartOfDay(from)),
     to === undefined ? undefined : lt(transactions.occursAt, atStartOfDay(addDays(to, 1))),

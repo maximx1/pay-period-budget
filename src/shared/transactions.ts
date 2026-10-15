@@ -119,8 +119,25 @@ export const NO_CATEGORY = "none";
 export const NOTHING_TO_SEARCH_MESSAGE = "Enter something to search for, or choose a category or dates";
 
 /**
+ * Left out of both sides when a search compares text, so "walmart" finds "Wal-Mart" and
+ * "kroger 512" finds "KROGER #512". The database does the same with nested replace()s,
+ * which is why this is a short fixed list rather than a pattern.
+ */
+export const IGNORED_IN_SEARCH = [" ", "-", ".", ",", "'", "’", "*", "#", "&", "/", "_", "(", ")", ":", "!", '"', "+"];
+
+/**
+ * What a search compares: lower-cased, without the characters above. Empty when the text
+ * is nothing but those characters; the search then matches the text as typed instead.
+ */
+export function searchKey(text: string): string {
+  let key = text.toLowerCase();
+  for (const ignored of IGNORED_IN_SEARCH) key = key.replaceAll(ignored, "");
+  return key;
+}
+
+/**
  * Finds transactions across every pay period. `q` matches any part of the name or the
- * note, whatever its capitals. Everything given must match; at least one thing must be given.
+ * note, whatever its capitals, spaces and punctuation (see IGNORED_IN_SEARCH). Everything given must match; at least one thing must be given.
  */
 export const transactionSearchSchema = z
   .object({

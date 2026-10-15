@@ -558,7 +558,7 @@ DELETE /api/periods/:id/limits/:categoryId   → PeriodView; 404 if the period h
 GET    /api/transactions?from=&to=     dated within the range, both ends included, at most 366 days → { transactions }; creates nothing
 GET    /api/transactions/search?q=&from=&to=&categoryId=&limit=&before=
                                        any period, newest first → { transactions, nextCursor, totals: { count, outCents, inCents } }.
-                                       q is part of the name or note, whatever its capitals; categoryId "none" is filed under nothing;
+                                       q is part of the name or note, whatever its capitals, spaces and punctuation; categoryId "none" is filed under nothing;
                                        at least one of q, from, to, categoryId. Creates nothing
 POST   /api/transactions               may carry billIncomeId and countsToward (see "Linking to a bill or income"), and categoryId
 PATCH  /api/transactions/:id           may carry billIncomeId; null unties. And categoryId; null unfiles

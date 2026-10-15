@@ -81,6 +81,25 @@ describe("searching transactions", () => {
     expect(await names(ann, { q: "k_oger" })).toEqual([]);
   });
 
+  it("leaves spaces and punctuation out of both sides, so differently written names still match", async () => {
+    await add(ann, "WAL-MART SUPERCENTER", "2026-01-06");
+    await add(ann, "Walmart.com", "2026-01-07");
+    await add(ann, "Groceries", "2026-01-08", { note: "wal mart run" });
+    await add(ann, "Walgreens", "2026-01-09");
+
+    const walmarts = ["Groceries", "Walmart.com", "WAL-MART SUPERCENTER"];
+    expect(await names(ann, { q: "walmart" })).toEqual(walmarts);
+    expect(await names(ann, { q: "Wal-Mart" })).toEqual(walmarts);
+    expect(await names(ann, { q: "wal mart" })).toEqual(walmarts);
+    expect((await search(ann, { q: "walmart" })).totals.count).toBe(3);
+    expect(await names(ann, { q: "kroger 512" })).toEqual(["Kroger #512"]);
+    expect(await names(bob, { q: "bobs" })).toEqual(["Kroger (Bob's)"]);
+    // Only what is typed has to be there: the letters still have to come in order.
+    expect(await names(ann, { q: "martwal" })).toEqual([]);
+    // Punctuation alone is matched as typed.
+    expect(await names(ann, { q: "#" })).toEqual(["Kroger #512"]);
+  });
+
   it("can be limited to a span of days, either end of which may be left open", async () => {
     expect(await names(ann, { q: "kroger", from: "2026-01-05", to: "2026-01-14" })).toEqual(["KROGER fuel", "Coffee"]);
     expect(await names(ann, { q: "kroger", from: "2026-01-14" })).toEqual(["kroger refund", "KROGER fuel"]);

@@ -27,6 +27,16 @@ Applied as sensible defaults; say so to overrule any of them.
 
 1. **The search looks in the name and the note.** Any part of either, whatever its
    capitals. What is typed is taken literally: `%` and `_` are not wildcards.
+   **Changed 2026-10-14** at the owner's request ("walmart" did not find "wal-mart"):
+   spaces and common punctuation (`IGNORED_IN_SEARCH` in `shared/transactions.ts`) are
+   left out of both sides, so "walmart", "wal mart" and "Wal-Mart" all find
+   "WAL-MART #12" and "Walmart.com". Text that is nothing but those characters is matched
+   as typed. Typos are not forgiven: "walmrat" finds nothing. The database strips the
+   characters with nested `replace()`s on every search rather than keeping a stored
+   copy. Timed on 2026-10-14 against a plain search: 10 ms instead of 1 ms over 2,000
+   transactions, 50 ms instead of 4 ms over 10,000, and a search runs two such queries.
+   The demo account adds about 575 a year. If it ever feels slow, store the stripped name
+   and note in their own columns, filled on write and backfilled by a migration.
 2. **Nothing is searched until Search is pressed** (or Enter), as asked. Arriving from
    "Find others like this" runs it at once.
 3. **"Like transactions" means the same name.** "Find others like this" searches for the

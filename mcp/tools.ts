@@ -326,7 +326,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       title: "Search transactions",
       description:
         "Finds transactions in any pay period, newest first, with how many matched and what they add up to. " +
-        "`q` matches any part of the name or the note, whatever its capitals. Give at least one of q, categoryId, from " +
+        "`q` matches any part of the name or the note, whatever its capitals, ignoring spaces and punctuation on both sides (\"walmart\" finds \"WAL-MART #12\"). Give at least one of q, categoryId, from " +
         `and to; everything given must match. Up to ${MAX_SEARCH_PAGE} per call; pass the cursor it gives as \`before\` for older ones. ` +
         "Unlike list_transactions there is no limit on the span of dates.",
       inputSchema: {
