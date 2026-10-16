@@ -18,8 +18,21 @@ describe("spanFor", () => {
     ["just the first period on its first day", "6", "2026-01-01", { from: "2026-01-01", to: "2026-01-14" }],
     ["the latest period when today is past them all", "3", "2026-06-01", { from: "2026-01-29", to: "2026-03-11" }],
     ["the first period when today is before them all", "3", "2025-06-01", { from: "2026-01-01", to: "2026-01-14" }],
+    ["year to date: January 1st through the current period", "ytd", "2026-02-20", { from: "2026-01-01", to: "2026-02-25" }],
+    ["year to date on New Year's Day", "ytd", "2026-01-01", { from: "2026-01-01", to: "2026-01-14" }],
+    ["year to date past every period into a new year: the latest one", "ytd", "2027-01-05", { from: "2026-02-26", to: "2026-03-11" }],
   ] as const)("%s", (_case, choice, today, expected) => {
     expect(spanFor(choice, periods, today)).toEqual(expected);
+  });
+
+  it("starts year to date on January 1st even inside a period that began in December, which the report counts whole", () => {
+    const straddling = [
+      { id: "d0", startDate: "2025-12-15", endDate: "2025-12-28" },
+      { id: "d1", startDate: "2025-12-29", endDate: "2026-01-11" },
+      { id: "d2", startDate: "2026-01-12", endDate: "2026-01-25" },
+    ];
+    expect(spanFor("ytd", straddling, "2026-01-05")).toEqual({ from: "2026-01-01", to: "2026-01-11" });
+    expect(spanFor("ytd", straddling, "2026-01-20")).toEqual({ from: "2026-01-01", to: "2026-01-25" });
   });
 
   it("has no dates of its own for a custom span, or with no periods", () => {

@@ -10,14 +10,17 @@ export const SPAN_CHOICES = [
   { value: "6", label: "Last 6 pay periods" },
   { value: "12", label: "Last 12 pay periods" },
   { value: "26", label: "Last 26 pay periods" },
+  { value: "ytd", label: "Year to date" },
   { value: "all", label: "Everything so far" },
   { value: "custom", label: "Between two dates" },
 ] as const;
 export type SpanChoice = (typeof SPAN_CHOICES)[number]["value"];
 
 /**
- * The dates a choice stands for: so many pay periods ending with the current one, or all
- * of them up to it. Null for "custom" (the dates are typed) and when there are no periods.
+ * The dates a choice stands for: so many pay periods ending with the current one, all of
+ * them up to it, or January 1st of today's year up to it. A report counts every period that
+ * shares a day with its dates, so year to date includes the whole of a period that began in
+ * December. Null for "custom" (the dates are typed) and when there are no periods.
  */
 export function spanFor(
   choice: SpanChoice,
@@ -29,6 +32,12 @@ export function spanFor(
   let last = periods.findIndex((period) => period.startDate <= today && today <= period.endDate);
   if (last === -1) last = periods.findLastIndex((period) => period.startDate <= today);
   if (last === -1) last = 0;
+  if (choice === "ytd") {
+    // Past every period into a new year, that is just the latest one.
+    const january1 = `${today.slice(0, 4)}-01-01`;
+    const from = periods[last]!.endDate < january1 ? periods[last]!.startDate : january1;
+    return { from, to: periods[last]!.endDate };
+  }
   const first = choice === "all" ? 0 : Math.max(0, last - Number(choice) + 1);
   return { from: periods[first]!.startDate, to: periods[last]!.endDate };
 }
