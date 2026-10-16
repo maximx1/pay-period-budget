@@ -164,6 +164,13 @@ Applied as sensible defaults; say so to overrule any of them.
   is already Expense. Choosing a bill or an income still sets Type to match.
 - While a transfer is chosen, the line under the list reads "Money going to Taxes
   savings." or "Money coming back from Taxes savings.", following Type.
+- **Changed 2026-10-15** at the owner's request: Type is **Expense / Income / Transfer**.
+  Transfer swaps the bill list for a **Transfer** list (only transfers, plus "New
+  transfer…", which names one that is made, with no schedule, when the transaction is
+  saved) and a **Which way** choice, "Sent to it" or "Came back". It is still saved as an
+  expense or income tied to the transfer; nothing changed on the server. Editing a
+  transaction tied to a transfer opens on Transfer. Switching Type between a transfer and
+  anything else lets go of what was chosen.
 
 **Assistant and import**
 

@@ -22,7 +22,7 @@ import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
-import { billOrIncomeDetailPath, useBillsIncome } from "../billsIncome/api.ts";
+import { billOrIncomeDetailPath, useBillsIncome, useCreateBillOrIncome } from "../billsIncome/api.ts";
 import { useCategories, useCreateCategory } from "../categories/api.ts";
 import { ScreenshotPicker } from "../scan/ScreenshotPicker.tsx";
 import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
@@ -34,6 +34,8 @@ const parseAmount = (text: string) => {
 
 /** In the Category list: make a new category, named in a field that then appears. */
 const NEW_CATEGORY = "__new__";
+/** In the Transfer list: make a new transfer, likewise. */
+const NEW_TRANSFER = "__new_transfer__";
 
 // The server's rules for the fields it shares with this form, plus the form's own shapes
 // for the amount (typed as text) and the optional extras.
@@ -49,17 +51,29 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   categoryId: z.string(),
   /** The name of a category made as this is saved. */
   newCategory: z.string(),
-}).superRefine(({ categoryId, newCategory }, context) => {
-  if (categoryId !== NEW_CATEGORY) return;
-  const name = newCategory.trim();
-  if (!name) context.addIssue({ code: "custom", path: ["newCategory"], message: "Name the new category" });
-  else if (name.length > 40) context.addIssue({ code: "custom", path: ["newCategory"], message: "Keep the name under 40 characters" });
+  /** The name of a transfer made as this is saved. */
+  newTransfer: z.string(),
+}).superRefine(({ categoryId, newCategory, billIncomeId, newTransfer }, context) => {
+  const named = (value: string, field: "newCategory" | "newTransfer", what: string, max: number) => {
+    const name = value.trim();
+    if (!name) context.addIssue({ code: "custom", path: [field], message: `Name the new ${what}` });
+    else if (name.length > max) context.addIssue({ code: "custom", path: [field], message: `Keep the name under ${max} characters` });
+  };
+  if (categoryId === NEW_CATEGORY) named(newCategory, "newCategory", "category", 40);
+  if (billIncomeId === NEW_TRANSFER) named(newTransfer, "newTransfer", "transfer", 80);
 });
 type FormValues = z.infer<typeof formSchema>;
 
-const kindOptions = [
+// A transfer is not a third way for money to move: it is money sent to, or brought back
+// from, one of the owner's other accounts, saved as an expense or income tied to that transfer.
+const typeOptions = [
   { value: "expense", label: "Expense" },
   { value: "income", label: "Income" },
+  { value: "transfer", label: "Transfer" },
+] as const;
+const directionOptions = [
+  { value: "expense", label: "Sent to it" },
+  { value: "income", label: "Came back" },
 ] as const;
 
 type TransactionDialogProps = {
@@ -144,6 +158,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           countsToward: "",
           categoryId: transaction.categoryId ?? "",
           newCategory: "",
+          newTransfer: "",
         }
       : {
           name: "",
@@ -156,6 +171,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           countsToward: "",
           categoryId: "",
           newCategory: "",
+          newTransfer: "",
         },
   });
 
@@ -167,7 +183,29 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
   // The bill or income this is saved against: the one its detail view opens for.
   const linkedItem = items.data?.find((item) => item.id === transaction?.billIncomeId);
   const navigate = useNavigate();
-  const itemOptions = [{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))];
+  const createTransfer = useCreateBillOrIncome();
+  // Whether Type says Transfer. Until it is touched, it follows what this is tied to.
+  const [typeChosen, setTypeChosen] = useState<"transfer" | "other" | null>(null);
+  const tiedToTransfer = choices.find((choice) => choice.id === chosenId)?.kind === "transfer";
+  const transferMode = typeChosen === null ? tiedToTransfer || chosenId === NEW_TRANSFER : typeChosen === "transfer";
+  const billChoices = choices.filter((item) => item.kind !== "transfer");
+  const transferChoices = choices.filter((item) => item.kind === "transfer");
+  const itemOptions = [{ value: "", label: "None" }, ...billChoices.map((item) => ({ value: item.id, label: item.name }))];
+  const transferOptions = [
+    { value: "", label: "Choose one" },
+    ...transferChoices.map((item) => ({ value: item.id, label: item.name })),
+    { value: NEW_TRANSFER, label: "New transfer…" },
+  ];
+  /** Type changed: a bill can't stay chosen under Transfer, nor a transfer under Expense or Income. */
+  function chooseType(type: (typeof typeOptions)[number]["value"]) {
+    setTypeChosen(type === "transfer" ? "transfer" : "other");
+    if (type !== "transfer") setValue("kind", type);
+    const keep = type === "transfer" ? tiedToTransfer || chosenId === NEW_TRANSFER : !tiedToTransfer && chosenId !== NEW_TRANSFER;
+    if (!keep) {
+      setValue("billIncomeId", "");
+      setValue("countsToward", "");
+    }
+  }
 
   const categories = useCategories();
   const createCategory = useCreateCategory();
@@ -235,10 +273,37 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer }) => {
     setFormError(null);
+    if (transferMode && billIncomeId === "") {
+      setError("billIncomeId", { message: "Choose the account it moved between, or make a new one" });
+      return;
+    }
     const amountCents = parseAmount(amount) ?? 0;
-    const tiedTo = billIncomeId === "" ? null : billIncomeId;
+    let tiedTo = billIncomeId === "" ? null : billIncomeId;
+    if (billIncomeId === NEW_TRANSFER) {
+      try {
+        const { item } = await createTransfer.mutateAsync({
+          name: newTransfer.trim(),
+          description: "",
+          kind: "transfer",
+          openingCents: 0,
+          defaultAmountCents: 0,
+          recurrenceUnit: "none",
+          recurrenceInterval: 1,
+          endDate: null,
+          categoryId: null,
+        });
+        tiedTo = item.id;
+        // Made now, so a save that fails below doesn't make it twice when tried again.
+        setValue("billIncomeId", item.id);
+        setValue("newTransfer", "");
+      } catch (error) {
+        if (error instanceof ApiError && error.fields?.name) setError("newTransfer", { message: error.fields.name });
+        else setFormError(error instanceof ApiError ? error.message : "Couldn't make that transfer. Try again.");
+        return;
+      }
+    }
     let filedUnder = categoryId === "" ? null : categoryId;
     if (categoryId === NEW_CATEGORY) {
       try {
@@ -305,7 +370,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const saving = create.isPending || update.isPending || createCategory.isPending;
+  const saving = create.isPending || update.isPending || createCategory.isPending || createTransfer.isPending;
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
@@ -313,7 +378,8 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
 
       <TextField label="Name" autoComplete="off" data-autofocus error={errors.name?.message} {...register("name")} />
 
-      <div className="grid grid-cols-2 items-start gap-3">
+      {/* Three types need the width: side by side only from sm. */}
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
         <TextField
           label="Amount"
           inputMode="decimal"
@@ -326,10 +392,43 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           control={control}
           name="kind"
           render={({ field }) => (
-            <SegmentedControl label="Type" options={kindOptions} value={field.value} onChange={field.onChange} />
+            <SegmentedControl label="Type" options={typeOptions} value={transferMode ? "transfer" : field.value} onChange={chooseType} />
           )}
         />
       </div>
+
+      {transferMode && (
+        <>
+          <SelectField
+            label="Transfer"
+            options={transferOptions}
+            hint={chosenId === "" || chosenId === NEW_TRANSFER ? "Another account of your own: savings, joint, a loan." : transferHint}
+            error={errors.billIncomeId?.message}
+            {...itemField}
+            onChange={(event) => {
+              void itemField.onChange(event);
+              choose(event.target.value);
+            }}
+          />
+          {chosenId === NEW_TRANSFER && (
+            <TextField
+              label="New transfer name"
+              autoComplete="off"
+              maxLength={80}
+              hint="It's added to Bills & Income as a transfer when you save."
+              error={errors.newTransfer?.message}
+              {...register("newTransfer")}
+            />
+          )}
+          <Controller
+            control={control}
+            name="kind"
+            render={({ field }) => (
+              <SegmentedControl label="Which way" options={directionOptions} value={field.value} onChange={field.onChange} />
+            )}
+          />
+        </>
+      )}
 
       <TextField
         label="Date and time"
@@ -338,11 +437,11 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         {...register("occursAt")}
       />
 
-      {choices.length > 0 && (
+      {!transferMode && billChoices.length > 0 && (
         <SelectField
           label="Bill or income"
           options={itemOptions}
-          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : transferHint}
+          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : undefined}
           error={errors.billIncomeId?.message}
           {...itemField}
           onChange={(event) => {
