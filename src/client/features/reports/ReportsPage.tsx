@@ -8,6 +8,7 @@ import { BarList, type BarRow } from "../../components/charts/BarList.tsx";
 import { DataTable, type TableData } from "../../components/charts/DataTable.tsx";
 import { DonutChart, type Slice } from "../../components/charts/DonutChart.tsx";
 import { compactCents, SERIES_COLORS } from "../../components/charts/palette.ts";
+import { SankeyChart } from "../../components/charts/SankeyChart.tsx";
 import { type ChartSeries, XYChart } from "../../components/charts/XYChart.tsx";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -21,7 +22,7 @@ import { useBudget } from "../budget/api.ts";
 import { usePeriodList } from "../periods/api.ts";
 import { SearchDialog, type SearchStart } from "../search/SearchDialog.tsx";
 import { useReport } from "./api.ts";
-import { addTo, mean, NONE, rankSeries, SPAN_CHOICES, type SpanChoice, spanFor } from "./derive.ts";
+import { addTo, cashFlow, mean, NONE, rankSeries, SPAN_CHOICES, type SpanChoice, spanFor } from "./derive.ts";
 
 const [BLUE, ORANGE, AQUA] = SERIES_COLORS;
 const RED = SERIES_COLORS[7];
@@ -36,14 +37,16 @@ type ReportCardProps = {
   table?: TableData;
   /** A choice that belongs to this report alone. */
   controls?: ReactNode;
+  /** Takes the whole width of the section on wide screens. */
+  wide?: boolean;
   children: ReactNode;
 };
 
 /** One report: what it is, the drawing, and the numbers behind it for anyone who would rather read them. */
-function ReportCard({ title, about, table, controls, children }: ReportCardProps) {
+function ReportCard({ title, about, table, controls, wide, children }: ReportCardProps) {
   const [asTable, setAsTable] = useState(false);
   return (
-    <Card className="flex min-w-0 flex-col gap-3">
+    <Card className={`flex min-w-0 flex-col gap-3 ${wide ? "xl:col-span-2" : ""}`}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-fg">{title}</h3>
@@ -240,11 +243,23 @@ function Reports({ report }: { report: Report }) {
 
     const income = sum(periods.map((period) => period.incomeCents));
     const expenses = sum(periods.map((period) => period.expenseCents));
-    return { labels, titles, categoryName, item, categoryOut, billOut, sourceIn, categories, bills, sources, stack, slices, income, expenses };
+    const flow = cashFlow(sourceIn, sources, categoryOut, categories);
+    return { labels, titles, categoryName, item, categoryOut, billOut, sourceIn, categories, bills, sources, stack, slices, income, expenses, flow };
   }, [report, periods]);
 
   const { labels, titles } = d;
   const money = { format: (value: number) => formatCents(value), formatAxis: compactCents };
+
+  // ---- where it came from and where it went
+  const flowShare = (value: number) => (d.flow && d.flow.total.value > 0 ? percent((value / d.flow.total.value) * 100) : "");
+  const flowTable: TableData | undefined = d.flow ? {
+    head: ["", "Name", "Amount", "Share"],
+    rows: [
+      ...d.flow.sources.filter((node) => node.value > 0).map((node) => ["In", node.name, formatCents(node.value), flowShare(node.value)]),
+      ["Total", d.flow.total.name, formatCents(d.flow.total.value), "100%"],
+      ...d.flow.uses.filter((node) => node.value > 0).map((node) => ["Out", node.name, formatCents(node.value), flowShare(node.value)]),
+    ],
+  } : undefined;
 
   // ---- period by period
   const inOut: ChartSeries[] = [
@@ -468,6 +483,20 @@ function Reports({ report }: { report: Report }) {
                 Find them
               </Button>
             )}
+          </ReportCard>
+        )}
+        {d.flow && (
+          <ReportCard
+            wide
+            title="Where the money went"
+            about="Money in by where it came from, flowing out by category, over the whole span. Kept is income less spending."
+            table={flowTable}
+          >
+            <SankeyChart
+              data={d.flow}
+              format={formatCents}
+              label={`Cash flow: ${formatCents(d.flow.total.value)} in, by where it came from and by category spent.`}
+            />
           </ReportCard>
         )}
       </Section>

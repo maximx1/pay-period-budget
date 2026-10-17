@@ -82,3 +82,49 @@ export function addTo<K>(totals: Map<K, number>, key: K, amount: number): void {
 /** The mean in whole cents; 0 of nothing. */
 export const mean = (values: readonly number[]) =>
   values.length === 0 ? 0 : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+
+export const KEPT = "kept";
+export const FROM_LEFTOVER = "from-leftover";
+/** The income side of the cash-flow chart, and what was kept, are drawn in the app's own colour. */
+export const INCOME_COLOR = "var(--color-primary)";
+
+export type FlowNode = { key: string; name: string; color: string; value: number };
+export type CashFlow = {
+  /** Where the money came from, largest first. */
+  sources: FlowNode[];
+  /** Everything that came in, which is everything that went out or was kept. */
+  total: { name: string; value: number };
+  /** Where it went: what was kept first, then by category, largest first. */
+  uses: FlowNode[];
+};
+
+/**
+ * Money in by where it came from, against money out by category, over a span. The two sides
+ * always balance: income beyond spending is "Kept", and spending beyond income was paid
+ * from what was left over before, which joins the sources. Null with no money either way.
+ */
+export function cashFlow(
+  sourceIn: ReadonlyMap<string | null, number>,
+  sources: ReturnType<typeof rankSeries>,
+  categoryOut: ReadonlyMap<string | null, number>,
+  categories: ReturnType<typeof rankSeries>,
+): CashFlow | null {
+  const nodes = (totals: ReadonlyMap<string | null, number>, ranked: ReturnType<typeof rankSeries>) =>
+    ranked.series.map(({ key, name, color }) => {
+      let value = 0;
+      for (const [id, cents] of totals) if (ranked.keyOf(id) === key) value += cents;
+      return { key, name, color, value };
+    });
+  const income = nodes(sourceIn, sources).map((node) => ({ ...node, color: INCOME_COLOR }));
+  const spent = nodes(categoryOut, categories);
+  const inTotal = income.reduce((total, node) => total + node.value, 0);
+  const outTotal = spent.reduce((total, node) => total + node.value, 0);
+  if (inTotal === 0 && outTotal === 0) return null;
+
+  const kept = inTotal - outTotal;
+  return {
+    sources: kept < 0 ? [...income, { key: FROM_LEFTOVER, name: "From leftover", color: NEUTRAL_COLOR, value: -kept }] : income,
+    total: { name: kept < 0 ? "Income and leftover" : "Income", value: Math.max(inTotal, outTotal) },
+    uses: kept > 0 ? [{ key: KEPT, name: "Kept", color: INCOME_COLOR, value: kept }, ...spent] : spent,
+  };
+}
