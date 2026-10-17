@@ -44,6 +44,21 @@ export const categoryPatchSchema = z
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type CategoryPatch = z.output<typeof categoryPatchSchema>;
 
+/**
+ * Moves everything filed under a category, every transaction (past ones too) and every bill
+ * or income, to another. The other category keeps its own limits. With `deleteAfter`, the
+ * emptied category is then deleted with its limits, which makes the move a merge.
+ */
+export const categoryMoveSchema = z.object({
+  toCategoryId: z.string("Choose a category").min(1, "Choose a category").max(100),
+  deleteAfter: z.boolean().default(false),
+});
+export type CategoryMove = z.output<typeof categoryMoveSchema>;
+export const SAME_CATEGORY_MESSAGE = "Choose a different category";
+
+/** How many of each were moved, and whether the category they came from is gone. */
+export type CategoryMoveResponse = { transactions: number; billsIncome: number; deleted: boolean };
+
 export type Category = {
   id: string;
   name: string;

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PeriodView } from "../../shared/budget.ts";
+import type { BillOrIncome } from "../../shared/billsIncome.ts";
 import type { Category } from "../../shared/categories.ts";
 import type { Transaction, TransactionImportResponse, TransactionResponse } from "../../shared/transactions.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
@@ -244,5 +245,118 @@ describe("filing a transaction under a category", () => {
       ["Petrol", car.id],
     ]);
     expect(await startingAmounts(ann)).toEqual(before);
+  });
+});
+
+describe("moving everything under a category to another", () => {
+  const addBill = async (client: Client, name: string, categoryId: string): Promise<BillOrIncome> => {
+    const response = await client.post("/api/bills-income", {
+      name,
+      kind: "expense",
+      defaultAmountCents: 50_000,
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      firstDueDate: "2025-12-25",
+      categoryId,
+    });
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
+    return (await response.json()).item;
+  };
+  const billsIncome = async (client: Client): Promise<BillOrIncome[]> =>
+    (await (await client.get("/api/bills-income")).json()).items;
+  const setLimit = async (client: Client, categoryId: string, limitCents: number) => {
+    const { period } = await current(client);
+    expect((await client.put(`/api/periods/${period.id}/limits/${categoryId}`, { limitCents })).status).toBe(200);
+  };
+  const limitsNow = async (client: Client) =>
+    (await current(client)).categoryLimits.map(({ categoryId, limitCents }) => [categoryId, limitCents]);
+  const categoryOf = async (client: Client) =>
+    Object.fromEntries((await listed(client, "2025-12-16", "2026-02-23")).map((tx) => [tx.name, tx.categoryId]));
+
+  it("moves every transaction, past ones too, and every bill or income, and keeps the emptied category", async () => {
+    const food = await addCategory(ann, { name: "Food" });
+    const groceries = await addCategory(ann, { name: "Groceries" });
+    const car = await addCategory(ann, { name: "Car" });
+    await create(ann, spend("2025-12-20", { name: "Old Kroger", categoryId: groceries.id }));
+    await create(ann, spend("2026-01-20", { name: "Kroger", categoryId: groceries.id }));
+    await create(ann, spend("2026-01-21", { name: "Petrol", categoryId: car.id }));
+    await create(ann, spend("2026-01-22", { name: "Loose" }));
+    const box = await addBill(ann, "Veg box", groceries.id);
+    const insurance = await addBill(ann, "Insurance", car.id);
+    const fromBox = (await listed(ann, "2025-12-16", "2026-02-23")).filter((tx) => tx.billIncomeId === box.id).length;
+    expect(fromBox).toBeGreaterThan(0);
+    const before = await startingAmounts(ann);
+
+    const response = await ann.post(`/api/categories/${groceries.id}/move`, { toCategoryId: food.id });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ transactions: 2 + fromBox, billsIncome: 1, deleted: false });
+
+    expect(await categoryOf(ann)).toMatchObject({ "Old Kroger": food.id, Kroger: food.id, Petrol: car.id, Loose: null });
+    expect(Object.fromEntries((await billsIncome(ann)).map((item) => [item.id, item.categoryId]))).toEqual({
+      [box.id]: food.id,
+      [insurance.id]: car.id,
+    });
+    expect((await listCategories(ann)).map(({ name }) => name)).toEqual(["Car", "Food", "Groceries"]);
+    expect(await startingAmounts(ann)).toEqual(before);
+
+    // An empty category moves nothing, and that is no error.
+    const again = await ann.post(`/api/categories/${groceries.id}/move`, { toCategoryId: food.id });
+    expect(await again.json()).toEqual({ transactions: 0, billsIncome: 0, deleted: false });
+  });
+
+  it("merges when asked: deletes the emptied category and its limits, and the other keeps its own", async () => {
+    const food = await addCategory(ann, { name: "Food" });
+    const groceries = await addCategory(ann, { name: "Groceries" });
+    const takeaway = await addCategory(ann, { name: "Takeaway" });
+    await setLimit(ann, food.id, 30_000);
+    await setLimit(ann, groceries.id, 20_000);
+    await setLimit(ann, takeaway.id, 5_000);
+    await create(ann, spend("2026-01-20", { name: "Kroger", categoryId: groceries.id }));
+
+    const response = await ann.post(`/api/categories/${groceries.id}/move`, { toCategoryId: food.id, deleteAfter: true });
+    expect(await response.json()).toEqual({ transactions: 1, billsIncome: 0, deleted: true });
+
+    expect((await listCategories(ann)).map(({ name }) => name)).toEqual(["Food", "Takeaway"]);
+    expect(await categoryOf(ann)).toMatchObject({ Kroger: food.id });
+    expect(await limitsNow(ann)).toEqual([
+      [food.id, 30_000],
+      [takeaway.id, 5_000],
+    ]);
+    // Its spending now counts against the limit of the category it went to.
+    expect((await current(ann)).categoryLimits.find((limit) => limit.categoryId === food.id)?.spentCents).toBe(4_000);
+  });
+
+  it("refuses the same category, one that doesn't exist and someone else's, and moves nothing", async () => {
+    const groceries = await addCategory(ann, { name: "Groceries" });
+    const bobs = await addCategory(bob, { name: "Food" });
+    await create(ann, spend("2026-01-20", { name: "Kroger", categoryId: groceries.id }));
+
+    const same = await ann.post(`/api/categories/${groceries.id}/move`, { toCategoryId: groceries.id, deleteAfter: true });
+    expect(same.status).toBe(400);
+    expect(await fieldsOf(same)).toEqual({ toCategoryId: "Choose a different category" });
+    for (const toCategoryId of ["no-such-category", bobs.id]) {
+      const response = await ann.post(`/api/categories/${groceries.id}/move`, { toCategoryId, deleteAfter: true });
+      expect(response.status).toBe(400);
+      expect(await fieldsOf(response)).toEqual({ toCategoryId: "No such category" });
+    }
+    expect(await fieldsOf(await ann.post(`/api/categories/${groceries.id}/move`, {}))).toHaveProperty("toCategoryId");
+
+    expect(await categoryOf(ann)).toMatchObject({ Kroger: groceries.id });
+    expect((await listCategories(ann)).map(({ name }) => name)).toEqual(["Groceries"]);
+  });
+
+  it("keeps one user's categories out of another's reach", async () => {
+    const groceries = await addCategory(ann, { name: "Groceries" });
+    const anns = await addCategory(ann, { name: "Food" });
+    const bobs = await addCategory(bob, { name: "Food" });
+    await create(ann, spend("2026-01-20", { name: "Kroger", categoryId: groceries.id }));
+
+    // Bob can't empty Ann's category into his own, or into another of hers.
+    for (const toCategoryId of [bobs.id, anns.id]) {
+      expect((await bob.post(`/api/categories/${groceries.id}/move`, { toCategoryId, deleteAfter: true })).status).toBe(404);
+    }
+    expect(await categoryOf(ann)).toMatchObject({ Kroger: groceries.id });
+    expect((await listCategories(ann)).length).toBe(2);
+    expect((await t.client().post(`/api/categories/${groceries.id}/move`, { toCategoryId: anns.id })).status).toBe(401);
   });
 });

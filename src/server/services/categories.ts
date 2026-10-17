@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import {
   type Category,
   type CategoryInput,
+  type CategoryMove,
+  type CategoryMoveResponse,
   type CategoryPatch,
   DUPLICATE_CATEGORY_MESSAGE,
+  SAME_CATEGORY_MESSAGE,
 } from "../../shared/categories.ts";
 import { AppError } from "../lib/errors.ts";
 import type { CategoryRecord, DataStore, Repos } from "../repos/types.ts";
+import { NO_SUCH_CATEGORY } from "./billIncomeLinks.ts";
 import { applyUsualLimit } from "./categoryLimits.ts";
 import type { PeriodService } from "./periods.ts";
 
@@ -67,6 +71,24 @@ export function createCategoryService(deps: { store: DataStore; periods: PeriodS
         // Without this, only periods generated from now on get the new amount.
         if (patch.applyToPeriods) await applyUsualLimit(repos, after, await periods.today(repos, userId), updatedAt);
         return toCategory(after);
+      });
+    },
+
+    /** See `categoryMoveSchema`. All of it happens, or none of it. */
+    move(userId: string, id: string, { toCategoryId, deleteAfter }: CategoryMove): Promise<CategoryMoveResponse> {
+      return store.transaction(async (repos) => {
+        if (!(await repos.categories.findById(userId, id))) throw notFound();
+        if (toCategoryId === id) {
+          throw new AppError(400, "validation", "Some fields need attention", { toCategoryId: SAME_CATEGORY_MESSAGE });
+        }
+        if (!(await repos.categories.findById(userId, toCategoryId))) {
+          throw new AppError(400, "validation", "Some fields need attention", { toCategoryId: NO_SUCH_CATEGORY });
+        }
+        const movedAt = now();
+        const transactions = await repos.transactions.moveCategory(userId, id, toCategoryId, movedAt);
+        const billsIncome = await repos.billsIncome.moveCategory(userId, id, toCategoryId, movedAt);
+        if (deleteAfter) await repos.categories.delete(userId, id);
+        return { transactions, billsIncome, deleted: deleteAfter };
       });
     },
 

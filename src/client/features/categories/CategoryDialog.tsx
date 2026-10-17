@@ -7,11 +7,14 @@ import { centsToInput } from "../../../shared/money.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
+import { SelectField } from "../../components/ui/SelectField.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
+import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { applyApiError } from "../auth/formErrors.ts";
-import { useCreateCategory, useDeleteCategory, useUpdateCategory } from "./api.ts";
+import { useCategories, useCreateCategory, useDeleteCategory, useMoveCategory, useUpdateCategory } from "./api.ts";
 import { parseLimit } from "./limitInput.ts";
+import { moveMessage } from "./moveMessage.ts";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Enter a name").max(40, "Keep the name under 40 characters"),
@@ -42,8 +45,16 @@ function CategoryForm({ onClose, category }: Omit<CategoryDialogProps, "open">) 
   const create = useCreateCategory();
   const update = useUpdateCategory();
   const remove = useDeleteCategory();
+  const move = useMoveCategory();
+  const toast = useToast();
   const [formError, setFormError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Deleting and moving each open a panel of their own in place of the dialog's buttons.
+  const [panel, setPanel] = useState<"delete" | "move" | null>(null);
+  // Where what is filed under this category goes; "" is nowhere (no category).
+  const [target, setTarget] = useState("");
+  const [deleteAfter, setDeleteAfter] = useState(false);
+  const others = (useCategories().data ?? []).filter((other) => other.id !== category?.id);
+  const targetName = others.find((other) => other.id === target)?.name;
 
   const {
     register,
@@ -90,17 +101,46 @@ function CategoryForm({ onClose, category }: Omit<CategoryDialogProps, "open">) 
     }
   });
 
+  function open(next: "delete" | "move" | null) {
+    setFormError(null);
+    setTarget("");
+    setDeleteAfter(false);
+    setPanel(next);
+  }
+
+  /** Deletes the category; with a target chosen, moves what is filed under it there first. */
   async function deleteCategory() {
     if (!category) return;
     setFormError(null);
     try {
-      await remove.mutateAsync(category.id);
+      if (target && targetName) {
+        const result = await move.mutateAsync({ id: category.id, move: { toCategoryId: target, deleteAfter: true } });
+        toast(moveMessage(result, category.name, targetName));
+      } else {
+        await remove.mutateAsync(category.id);
+      }
       onClose();
     } catch (error) {
       setFormError(error instanceof ApiError ? error.message : "Couldn't delete that. Try again.");
-      setConfirmingDelete(false);
     }
   }
+
+  async function moveEverything() {
+    if (!category || !target || !targetName) return;
+    setFormError(null);
+    try {
+      const result = await move.mutateAsync({ id: category.id, move: { toCategoryId: target, deleteAfter } });
+      toast(moveMessage(result, category.name, targetName));
+      onClose();
+    } catch (error) {
+      setFormError(error instanceof ApiError ? error.message : "Couldn't move that. Try again.");
+    }
+  }
+
+  const targetOptions = (none: string) => [
+    { value: "", label: none },
+    ...others.map((other) => ({ value: other.id, label: other.name })),
+  ];
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
@@ -142,26 +182,86 @@ function CategoryForm({ onClose, category }: Omit<CategoryDialogProps, "open">) 
         </label>
       )}
 
-      {confirmingDelete ? (
+      {panel === "delete" ? (
         <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-3">
           <p className="text-sm font-medium text-fg">
-            Delete {category?.name}? Its transactions and its bills and income stay, with no category. Its limits are
-            removed from every pay period.
+            Delete {category?.name}? Its limits are removed from every pay period.
+          </p>
+          {others.length > 0 && (
+            <SelectField
+              label="Move what's filed under it to"
+              options={targetOptions("No category")}
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+            />
+          )}
+          <p className="text-sm text-muted">
+            {targetName
+              ? `Its transactions, in every pay period, and its bills and income go to ${targetName}, which keeps its own limits.`
+              : "Its transactions and its bills and income stay, with no category."}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={remove.isPending}>
+            <Button variant="ghost" onClick={() => open(null)} disabled={remove.isPending || move.isPending}>
               Keep it
             </Button>
-            <Button variant="danger" onClick={deleteCategory} loading={remove.isPending}>
-              Delete
+            <Button variant="danger" onClick={deleteCategory} loading={remove.isPending || move.isPending}>
+              {targetName ? "Move and delete" : "Delete"}
+            </Button>
+          </div>
+        </div>
+      ) : panel === "move" ? (
+        <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-3">
+          <p className="text-sm font-medium text-fg">Move everything filed under {category?.name} to another category</p>
+          <SelectField
+            label="Move to"
+            options={targetOptions("Choose a category")}
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+          />
+          <p className="text-sm text-muted">
+            Its transactions, in every pay period including ones that are over, and its bills and income go there.
+            Limits don't move: {targetName ?? "the category you choose"} keeps its own.
+          </p>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-fg">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 shrink-0 accent-primary"
+              checked={deleteAfter}
+              onChange={(event) => setDeleteAfter(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Delete {category?.name} afterwards</span>
+              <span className="block text-muted">Its limits are removed from every pay period.</span>
+            </span>
+          </label>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={() => open(null)} disabled={move.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant={deleteAfter ? "danger" : "primary"}
+              onClick={moveEverything}
+              disabled={!targetName}
+              loading={move.isPending}
+            >
+              {deleteAfter ? "Move and delete" : "Move"}
             </Button>
           </div>
         </div>
       ) : (
         <DialogActions>
           {category && (
-            <Button variant="ghost" className="text-danger sm:mr-auto" onClick={() => setConfirmingDelete(true)}>
+            <Button
+              variant="ghost"
+              className={`text-danger ${others.length === 0 ? "sm:mr-auto" : ""}`}
+              onClick={() => open("delete")}
+            >
               Delete
+            </Button>
+          )}
+          {category && others.length > 0 && (
+            <Button variant="ghost" className="sm:mr-auto" onClick={() => open("move")}>
+              Move everything…
             </Button>
           )}
           <Button variant="ghost" onClick={onClose}>

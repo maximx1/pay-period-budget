@@ -1,8 +1,10 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import {
   type CategoryListResponse,
+  type CategoryMoveResponse,
   type CategoryResponse,
   categoryInputSchema,
+  categoryMoveSchema,
   categoryPatchSchema,
 } from "../../shared/categories.ts";
 import { type AppEnv, parseJson } from "../http.ts";
@@ -23,6 +25,11 @@ export function categoryRoutes(deps: { categories: CategoryService; authed: Midd
   routes.patch("/:id", async (c) => {
     const patch = await parseJson(c, categoryPatchSchema);
     return c.json<CategoryResponse>({ category: await categories.update(c.var.user.id, c.req.param("id"), patch) });
+  });
+
+  routes.post("/:id/move", async (c) => {
+    const move = await parseJson(c, categoryMoveSchema);
+    return c.json<CategoryMoveResponse>(await categories.move(c.var.user.id, c.req.param("id"), move));
   });
 
   routes.delete("/:id", async (c) => {

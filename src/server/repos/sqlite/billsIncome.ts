@@ -31,5 +31,13 @@ export function createBillsIncomeRepo(db: Db): BillsIncomeRepo {
     async delete(userId, id) {
       await db.delete(billsIncome).where(owned(userId, id));
     },
+    async moveCategory(userId, fromCategoryId, toCategoryId, now) {
+      const moved = await db
+        .update(billsIncome)
+        .set({ categoryId: toCategoryId, updatedAt: now })
+        .where(and(eq(billsIncome.userId, userId), eq(billsIncome.categoryId, fromCategoryId)))
+        .returning({ id: billsIncome.id });
+      return moved.length;
+    },
   };
 }

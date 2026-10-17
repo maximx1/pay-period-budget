@@ -10,6 +10,8 @@ import {
   categoryInputSchema,
   categoryLimitSchema,
   type CategoryListResponse,
+  type CategoryMoveResponse,
+  categoryMoveSchema,
   categoryPatchSchema,
   type CategoryResponse,
 } from "../src/shared/categories.ts";
@@ -692,11 +694,37 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
     }),
 
     define({
+      name: "move_category",
+      title: "Move everything under a category to another",
+      description:
+        "Files every transaction under one category, in every pay period including ones that are over, and every " +
+        "bill or income, under another category instead. Neither category's limits move: the one receiving keeps its " +
+        "own. With deleteAfter, the emptied category is then deleted with its limits, which merges the two. It all " +
+        "happens or none of it does. There is no undo; ask the owner before using it.",
+      inputSchema: {
+        id: z.string().min(1).describe(`${CATEGORY_ID_RULE} The one everything moves out of.`),
+        toCategoryId: categoryMoveSchema.shape.toCategoryId.describe(`${CATEGORY_ID_RULE} The one everything moves into.`),
+        deleteAfter: z.boolean().optional().describe("True also deletes the emptied category and its limits."),
+      },
+      readOnly: false,
+      destructive: true,
+      async run({ id, toCategoryId, deleteAfter = false }) {
+        const moved = await api.post<CategoryMoveResponse>(`/api/categories/${encodeURIComponent(id)}/move`, {
+          toCategoryId,
+          deleteAfter,
+        });
+        const counts = `${plural(moved.transactions, "transaction")} and ${plural(moved.billsIncome, "bill or income", "bills and income")}`;
+        return `Moved ${counts} from category ${id} to category ${toCategoryId}.${moved.deleted ? ` Deleted category ${id}.` : ""}`;
+      },
+    }),
+
+    define({
       name: "delete_category",
       title: "Delete a category",
       description:
         "Deletes a category for good. Its transactions and its bills and income stay, filed under nothing, and its " +
-        "limits are removed from every pay period. There is no undo.",
+        "limits are removed from every pay period. There is no undo. To keep them filed, use move_category with " +
+        "deleteAfter instead.",
       inputSchema: { id: z.string().min(1).describe(CATEGORY_ID_RULE) },
       readOnly: false,
       destructive: true,

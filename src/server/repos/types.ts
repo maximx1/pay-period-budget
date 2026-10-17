@@ -257,6 +257,8 @@ export interface TransactionRepo {
    * none). Returns how many were filed differently before.
    */
   setCategoryForBillOrIncome(userId: string, billIncomeId: string, categoryId: string | null, now: Date): Promise<number>;
+  /** Files every transaction under one category under another instead. Returns how many moved. */
+  moveCategory(userId: string, fromCategoryId: string, toCategoryId: string, now: Date): Promise<number>;
   /** What a search matches, newest first, at most `limit`. With `before`, only those older than that position. */
   search(
     userId: string,
@@ -301,6 +303,8 @@ export interface BillsIncomeRepo {
   update(userId: string, id: string, patch: BillOrIncomeRecordPatch, now: Date): Promise<void>;
   /** Transactions it generated stay, with their link to it cleared. */
   delete(userId: string, id: string): Promise<void>;
+  /** Files every item under one category under another instead. Returns how many moved. */
+  moveCategory(userId: string, fromCategoryId: string, toCategoryId: string, now: Date): Promise<number>;
 }
 
 export type CategoryRecord = {

@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CategoryInput, CategoryListResponse, CategoryPatch, CategoryResponse } from "../../../shared/categories.ts";
+import type {
+  CategoryInput,
+  CategoryListResponse,
+  CategoryMove,
+  CategoryMoveResponse,
+  CategoryPatch,
+  CategoryResponse,
+} from "../../../shared/categories.ts";
 import { api } from "../../lib/api.ts";
 import { billsIncomeKeys } from "../billsIncome/api.ts";
 import { periodKeys } from "../periods/api.ts";
@@ -17,8 +24,8 @@ export function useCategories() {
   });
 }
 
-// A category's name and limits show in every period, and deleting one unfiles transactions
-// and bills, so each change refreshes those too.
+// A category's name and limits show in every period, and deleting or moving one refiles
+// transactions and bills, so each change refreshes those too.
 function useRefresh() {
   const queryClient = useQueryClient();
   return () =>
@@ -47,6 +54,15 @@ export function useUpdateCategory() {
 export function useDeleteCategory() {
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/api/categories/${id}`),
+    onSuccess: useRefresh(),
+  });
+}
+
+/** Moves everything filed under a category to another, and deletes it afterwards if asked. */
+export function useMoveCategory() {
+  return useMutation({
+    mutationFn: ({ id, move }: { id: string; move: CategoryMove }) =>
+      api.post<CategoryMoveResponse>(`/api/categories/${id}/move`, move),
     onSuccess: useRefresh(),
   });
 }

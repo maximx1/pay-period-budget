@@ -252,6 +252,14 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         .returning({ id: transactions.id });
       return changed.length;
     },
+    async moveCategory(userId, fromCategoryId, toCategoryId, now) {
+      const moved = await db
+        .update(transactions)
+        .set({ categoryId: toCategoryId, updatedAt: now })
+        .where(and(eq(transactions.userId, userId), eq(transactions.categoryId, fromCategoryId)))
+        .returning({ id: transactions.id });
+      return moved.length;
+    },
     async update(userId, id, patch, now) {
       await db
         .update(transactions)

@@ -538,6 +538,23 @@ describe("categories and limits", () => {
     await expect(call("delete_category", { id })).rejects.toThrow("No such category");
   });
 
+  it("moves everything under a category to another, and merges them when asked", async () => {
+    const groceries = idIn(await call("create_category", { name: "Groceries" }));
+    const food = idIn(await call("create_category", { name: "Food" }));
+    await call("create_transaction", row("2026-01-14", { categoryId: groceries }));
+    await call("create_transaction", row("2026-01-15", { categoryId: groceries }));
+
+    expect(await call("move_category", { id: groceries, toCategoryId: food })).toBe(
+      `Moved 2 transactions and 0 bills and income from category ${groceries} to category ${food}.`,
+    );
+    expect(await call("move_category", { id: groceries, toCategoryId: food, deleteAfter: true })).toBe(
+      `Moved 0 transactions and 0 bills and income from category ${groceries} to category ${food}. Deleted category ${groceries}.`,
+    );
+    expect(await call("list_categories")).toMatch(/^1 category:\n- Food /);
+    const refused = await call("move_category", { id: food, toCategoryId: food }).catch((caught: unknown) => caught);
+    expect(failureText(refused)).toContain("- toCategoryId: Choose a different category");
+  });
+
   it("files transactions, and reports a period that has gone over its limit", async () => {
     const id = idIn(await call("create_category", { name: "Groceries", defaultLimitCents: 20_000, applyToPeriods: true }));
 
@@ -882,6 +899,7 @@ describe("over the protocol", () => {
       ["list_categories", true, false],
       ["create_category", false, false],
       ["update_category", false, false],
+      ["move_category", false, true],
       ["delete_category", false, true],
       ["set_period_limit", false, false],
       ["remove_period_limit", false, false],
