@@ -54,4 +54,23 @@ describe("loadConfig", () => {
     expect(loadConfig({ SCAN_MODEL_URL: "", SCAN_MODEL: "", SCAN_MODEL_KEY: "" }).scanModel).toBeNull();
     expect(() => loadConfig({ SCAN_MODEL_URL: "not a url" })).toThrow();
   });
+
+  it("asks a model for advice only when turned on, taking the scan model's settings for any of its own left out", () => {
+    const scan = { SCAN_MODEL_URL: "http://localhost:11434/v1/", SCAN_MODEL: "reader-7b", SCAN_MODEL_KEY: "k" };
+    expect(loadConfig(scan).adviceModel).toBeNull();
+    expect(loadConfig({ ADVICE_ENABLED: "true" }).adviceModel).toBeNull();
+    expect(loadConfig({ ...scan, ADVICE_ENABLED: "true" }).adviceModel).toEqual({
+      url: "http://localhost:11434/v1",
+      model: "reader-7b",
+      apiKey: "k",
+      timeoutMs: 60_000,
+    });
+    // Its own settings win, and the scan model can be off while advice is on, or the reverse.
+    const own = { ADVICE_MODEL_URL: "https://api.example.com/v1", ADVICE_MODEL: "big", ADVICE_MODEL_KEY: "a", ADVICE_MODEL_TIMEOUT_SECONDS: "20" };
+    const both = loadConfig({ ...scan, ...own, ADVICE_ENABLED: "true", SCAN_MODEL_ENABLED: "false" });
+    expect(both.adviceModel).toEqual({ url: "https://api.example.com/v1", model: "big", apiKey: "a", timeoutMs: 20_000 });
+    expect(both.scanModel).toBeNull();
+    expect(loadConfig({ ...scan, ...own }).scanModel).not.toBeNull();
+    expect(loadConfig({ ADVICE_ENABLED: "true", ADVICE_MODEL_URL: "", ADVICE_MODEL: "" }).adviceModel).toBeNull();
+  });
 });

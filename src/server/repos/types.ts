@@ -84,6 +84,8 @@ export interface ApiTokenRepo {
 export type SettingsRecord = {
   userId: string;
   timezone: string;
+  advicePersona: string | null;
+  advicePersonaCustom: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -91,6 +93,8 @@ export type SettingsRecord = {
 export interface SettingsRepo {
   get(userId: string): Promise<SettingsRecord | null>;
   upsert(userId: string, values: { timezone: string }, now: Date): Promise<void>;
+  /** Changes the voice Advice answers in. Returns false when the user has no settings yet. */
+  setAdvicePersona(userId: string, persona: { persona: string; custom: string | null }, now: Date): Promise<boolean>;
 }
 
 export type ScheduleRecord = {

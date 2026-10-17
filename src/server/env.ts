@@ -24,17 +24,28 @@ const envSchema = z.object({
   SCAN_MODEL_ENABLED: z.enum(["true", "false"]).default("true"),
   SCAN_MODEL_IMAGES: z.enum(["true", "false"]).default("false"),
   SCAN_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(90),
+  // The Advice page (phase 22): off unless asked for. Each ADVICE_MODEL_* left out takes the
+  // SCAN_MODEL_* one, so one model can serve both, and each can be switched off by itself.
+  ADVICE_ENABLED: z.enum(["true", "false"]).default("false"),
+  ADVICE_MODEL_URL: blankIsUnset(z.url()),
+  ADVICE_MODEL: blankIsUnset(z.string()),
+  ADVICE_MODEL_KEY: blankIsUnset(z.string()),
+  ADVICE_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(60),
 });
 
-/** A model the server sends screenshots' text (or the screenshots) to, in place of the built-in reader. */
-export type ScanModelConfig = {
+/** Where an OpenAI-compatible model is, and how long to wait for it. */
+export type ModelConfig = {
   /** Base address of an OpenAI-compatible API, e.g. http://localhost:11434/v1. */
   url: string;
   model: string;
   apiKey: string | null;
+  timeoutMs: number;
+};
+
+/** A model the server sends screenshots' text (or the screenshots) to, in place of the built-in reader. */
+export type ScanModelConfig = ModelConfig & {
   /** Send the picture itself, for a model that can see; otherwise the text the built-in reader found. */
   images: boolean;
-  timeoutMs: number;
 };
 
 export type AppConfig = {
@@ -65,6 +76,11 @@ export type AppConfig = {
    * which turns it off without losing the settings.
    */
   scanModel: ScanModelConfig | null;
+  /**
+   * The model the Advice page asks, or null when the page is off. Null unless
+   * ADVICE_ENABLED=true and a model address and name are set, its own or the scan model's.
+   */
+  adviceModel: ModelConfig | null;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -92,5 +108,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
             timeoutMs: parsed.SCAN_MODEL_TIMEOUT_SECONDS * 1000,
           }
         : null,
+    adviceModel: adviceModelOf(parsed),
+  };
+}
+
+function adviceModelOf(parsed: z.output<typeof envSchema>): ModelConfig | null {
+  if (parsed.ADVICE_ENABLED !== "true") return null;
+  const url = parsed.ADVICE_MODEL_URL ?? parsed.SCAN_MODEL_URL;
+  const model = parsed.ADVICE_MODEL ?? parsed.SCAN_MODEL;
+  if (!url || !model) return null;
+  return {
+    url: url.replace(/\/+$/, ""),
+    model,
+    apiKey: parsed.ADVICE_MODEL_KEY ?? parsed.SCAN_MODEL_KEY ?? null,
+    timeoutMs: parsed.ADVICE_MODEL_TIMEOUT_SECONDS * 1000,
   };
 }

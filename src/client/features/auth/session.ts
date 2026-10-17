@@ -58,6 +58,11 @@ export function useApiTokensEnabled(): boolean | undefined {
   return config.isError ? true : undefined;
 }
 
+/** Whether this server has the Advice page turned on with a model to ask. False until known. */
+export function useAdviceEnabled(): boolean {
+  return useAuthConfig().data?.adviceEnabled ?? false;
+}
+
 /**
  * Minutes without use after which the app closes itself: 0 for never, undefined until the
  * server has answered. If it cannot be asked, the usual ten minutes apply.

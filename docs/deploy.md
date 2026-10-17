@@ -207,6 +207,34 @@ review says so.
 To stop using it without losing the settings, set `SCAN_MODEL_ENABLED=false` and run
 `docker compose up -d`.
 
+## Advice
+
+An **Advice** section can be added to the side panel: a set list of questions ("Will I
+make it to payday?", "What should I cut first?", ...), each answered in a few lines by a
+model, from figures the server works out from your budget. It is off unless turned on. In
+`.env`:
+
+```
+ADVICE_ENABLED=true
+ADVICE_MODEL_URL=https://api.openai.com/v1
+ADVICE_MODEL=gpt-4o-mini
+ADVICE_MODEL_KEY=sk-...
+```
+
+and run `docker compose up -d` again. Any OpenAI-compatible API works, including the
+local ones above. Each `ADVICE_MODEL_*` left out takes the matching `SCAN_MODEL_*`, so one
+model can do both jobs. The two are switched separately: screenshots can use the built-in
+reader (`SCAN_MODEL_ENABLED=false`) while Advice uses the model, or the other way round.
+
+Answering a question sends that budget's figures to the model: amounts, dates, and the
+names of transactions, bills and categories. With a hosted model such as OpenAI's, that
+leaves this machine; with one you run yourself, it does not.
+
+An answer that takes longer than `ADVICE_MODEL_TIMEOUT_SECONDS` (60 by default) is given
+up on and the page says so. Each account can ask 30 questions an hour. The voice the
+answers come in is chosen per account under Settings. Advice is not offered to an
+assistant through the MCP server: an assistant can read the budget itself.
+
 ## How it heals itself
 
 | What goes wrong | What happens |

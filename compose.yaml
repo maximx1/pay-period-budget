@@ -34,6 +34,11 @@ services:
       SCAN_MODEL_ENABLED: ${SCAN_MODEL_ENABLED:-true}
       SCAN_MODEL_IMAGES: ${SCAN_MODEL_IMAGES:-false}
       SCAN_MODEL_TIMEOUT_SECONDS: ${SCAN_MODEL_TIMEOUT_SECONDS:-90}
+      ADVICE_ENABLED: ${ADVICE_ENABLED:-false}
+      ADVICE_MODEL_URL: ${ADVICE_MODEL_URL:-}
+      ADVICE_MODEL: ${ADVICE_MODEL:-}
+      ADVICE_MODEL_KEY: ${ADVICE_MODEL_KEY:-}
+      ADVICE_MODEL_TIMEOUT_SECONDS: ${ADVICE_MODEL_TIMEOUT_SECONDS:-60}
     # Lets SCAN_MODEL_URL reach a model running on this machine as host.docker.internal.
     extra_hosts:
       - "host.docker.internal:host-gateway"

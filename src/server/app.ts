@@ -15,6 +15,7 @@ import { reportRoutes } from "./routes/reports.ts";
 import { billsIncomeRoutes } from "./routes/billsIncome.ts";
 import { categoryRoutes } from "./routes/categories.ts";
 import { settingsRoutes } from "./routes/settings.ts";
+import { adviceRoutes } from "./routes/advice.ts";
 import { MAX_SCAN_BYTES } from "../shared/scan.ts";
 import { createTesseractEngine, type OcrEngine } from "./lib/ocr.ts";
 import { IMPORT_PATH, SCAN_PATH, transactionRoutes } from "./routes/transactions.ts";
@@ -24,6 +25,7 @@ import { materializeAllInPeriod } from "./services/materialize.ts";
 import { createPeriodService } from "./services/periods.ts";
 import { createReportService } from "./services/reports.ts";
 import { createScanService } from "./services/scan.ts";
+import { createAdviceService } from "./services/advice.ts";
 import { createBillsIncomeService } from "./services/billsIncome.ts";
 import { createCategoryService } from "./services/categories.ts";
 import { addUsualLimits } from "./services/categoryLimits.ts";
@@ -37,7 +39,7 @@ export type AppDeps = {
   staticDir?: string;
   /** Reads screenshots. Tests pass a stand-in; by default tesseract.js, started on first use. */
   ocr?: OcrEngine;
-  /** For calling the screenshot-reading model; tests pass a stand-in. */
+  /** For calling the screenshot-reading and advice models; tests pass a stand-in. */
   fetch?: typeof fetch;
 };
 
@@ -65,6 +67,7 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   const categories = createCategoryService({ store, periods, now });
   const reports = createReportService({ store, periods });
   const scans = createScanService({ store, periods, ocr, model: config.scanModel, fetch });
+  const advice = createAdviceService({ store, periods, reports, billsIncome, model: config.adviceModel, fetch, now });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -107,6 +110,7 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   api.route("/categories", categoryRoutes({ categories, authed }));
   api.route("/reports", reportRoutes({ reports, authed }));
   api.route("/settings", settingsRoutes({ periods, authed }));
+  api.route("/advice", adviceRoutes({ advice, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });

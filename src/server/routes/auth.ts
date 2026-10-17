@@ -63,6 +63,7 @@ export function authRoutes(deps: { auth: AuthService; config: AppConfig; now?: (
       registrationOpen: config.allowRegistration,
       idleTimeoutMinutes: config.idleTimeoutMs / MINUTE,
       apiTokensEnabled: config.allowApiTokens,
+      adviceEnabled: config.adviceModel !== null,
     }),
   );
 

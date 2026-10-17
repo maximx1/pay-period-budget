@@ -1,7 +1,7 @@
 import { LogOut } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { cn } from "../../lib/cn.ts";
-import { useCurrentUser, useLogout } from "../auth/session.ts";
+import { useAdviceEnabled, useCurrentUser, useLogout } from "../auth/session.ts";
 import { navItemForPath, navItems } from "./navItems.ts";
 
 const rowClass =
@@ -13,6 +13,8 @@ export function SidePanel({ onNavigate }: { onNavigate?: () => void }) {
   const user = useCurrentUser();
   const logout = useLogout();
   const active = navItemForPath(useLocation().pathname);
+  const adviceEnabled = useAdviceEnabled();
+  const shown = navItems.filter((item) => !item.advice || adviceEnabled);
 
   return (
     <div className="flex h-full w-full flex-col pl-[env(safe-area-inset-left)]">
@@ -31,7 +33,7 @@ export function SidePanel({ onNavigate }: { onNavigate?: () => void }) {
 
       <nav aria-label="Main" className="flex-1 overflow-y-auto p-3">
         <ul className="flex flex-col gap-1">
-          {navItems.map((item) => {
+          {shown.map((item) => {
             const isActive = item === active;
             return (
               <li key={item.to}>

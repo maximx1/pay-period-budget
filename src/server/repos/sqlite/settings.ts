@@ -15,5 +15,13 @@ export function createSettingsRepo(db: Db): SettingsRepo {
         .values({ userId, ...values, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({ target: userSettings.userId, set: { ...values, updatedAt: now } });
     },
+    async setAdvicePersona(userId, { persona, custom }, now) {
+      const changed = await db
+        .update(userSettings)
+        .set({ advicePersona: persona, advicePersonaCustom: custom, updatedAt: now })
+        .where(eq(userSettings.userId, userId))
+        .returning({ userId: userSettings.userId });
+      return changed.length > 0;
+    },
   };
 }

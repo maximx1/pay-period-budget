@@ -77,6 +77,8 @@ export type AuthConfigResponse = {
   idleTimeoutMinutes: number;
   /** False when the server refuses every API token, and with them any assistant. */
   apiTokensEnabled: boolean;
+  /** The Advice page is turned on and has a model to ask. */
+  adviceEnabled: boolean;
 };
 
 /** What a request carrying an API token is told, and one that tries to create one, when the server has them turned off. */

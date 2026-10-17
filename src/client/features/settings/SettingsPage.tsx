@@ -1,6 +1,7 @@
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { useCurrentUser } from "../auth/session.ts";
 import { isNative } from "../../lib/platform.ts";
+import { AdviceSection } from "./AdviceSection.tsx";
 import { ApiTokensSection } from "./ApiTokensSection.tsx";
 import { AppLockSection } from "./AppLockSection.tsx";
 import { AppearanceSection } from "./AppearanceSection.tsx";
@@ -24,6 +25,7 @@ export function SettingsPage() {
         </SettingsSection>
         <BudgetSection />
         <AppearanceSection />
+        <AdviceSection />
         {isNative && <AppLockSection />}
         <PasswordSection />
         <DevicesSection />

@@ -83,6 +83,10 @@ export const userSettings = sqliteTable("user_settings", {
     .references(() => users.id, { onDelete: "cascade" }),
   /** IANA zone the budget lives in; decides what "today" is, wherever the device is. */
   timezone: text("timezone").notNull(),
+  /** The voice Advice answers in: an id from ADVICE_PERSONAS. Null is the plain one. */
+  advicePersona: text("advice_persona"),
+  /** With advicePersona "custom", who to answer as, in the owner's words. */
+  advicePersonaCustom: text("advice_persona_custom"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });

@@ -7,6 +7,8 @@ export type ApiErrorCode =
   | "not_found"
   | "conflict"
   | "rate_limited"
+  /** Something the server relies on, such as the advice model, did not come through. */
+  | "unavailable"
   | "internal";
 
 export type ApiErrorBody = {

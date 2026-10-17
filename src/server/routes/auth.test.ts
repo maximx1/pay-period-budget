@@ -279,6 +279,7 @@ describe("a browser left idle", () => {
       registrationOpen: true,
       idleTimeoutMinutes: 10,
       apiTokensEnabled: true,
+      adviceEnabled: false,
     });
     // Off, as in every other test here: nothing times out and the client is told so.
     expect((await (await t.client().get("/api/auth/config")).json()).idleTimeoutMinutes).toBe(0);

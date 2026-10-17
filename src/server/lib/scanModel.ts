@@ -1,6 +1,7 @@
 import type { LocalDate } from "../../shared/dates.ts";
 import { modelAnswerSchema, parseDate, type ScannedRow } from "../../shared/scan.ts";
 import type { ScanModelConfig } from "../env.ts";
+import { chatCompletion } from "./chatModel.ts";
 
 const INSTRUCTIONS = `You read transactions out of a screenshot of a bank's transaction list.
 Answer with JSON only, no other text, in exactly this shape:
@@ -40,29 +41,17 @@ export async function readWithModel(config: ScanModelConfig, input: Input, fetch
       ]
     : `Today is ${input.today}. Text recognition found these lines in the screenshot, top to bottom, with " | " where a wide gap separates columns:\n\n${input.layout}`;
 
-  let response: Response;
-  try {
-    response = await fetchImpl(`${config.url}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(config.apiKey && { Authorization: `Bearer ${config.apiKey}` }) },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0,
-        messages: [
-          { role: "system", content: INSTRUCTIONS },
-          { role: "user", content: ask },
-        ],
-      }),
-      signal: AbortSignal.timeout(config.timeoutMs),
-    });
-  } catch (error) {
-    throw new Error(error instanceof Error && error.name === "TimeoutError" ? "it took too long to answer" : "it could not be reached");
-  }
-  if (!response.ok) throw new Error(`it answered with an error (${response.status})`);
-
-  const body = (await response.json().catch(() => null)) as { choices?: Array<{ message?: { content?: unknown } }> } | null;
-  const content = body?.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("its answer was not in the expected form");
+  const content = await chatCompletion(
+    config,
+    {
+      temperature: 0,
+      messages: [
+        { role: "system", content: INSTRUCTIONS },
+        { role: "user", content: ask },
+      ],
+    },
+    fetchImpl,
+  );
   const parsed = modelAnswerSchema.safeParse(jsonIn(content));
   if (!parsed.success) throw new Error("its answer was not in the expected form");
 
