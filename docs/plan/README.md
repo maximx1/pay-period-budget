@@ -50,6 +50,9 @@ different app.
 | [19](phase-19-search.md) | Search across every transaction: by words in the name or note, by category, within dates; "find others like this" | Done 2026-10-13, built unattended on the owner's assumptions-allowed instruction. Not yet deployed | n/a |
 | [20](phase-20-reports.md) | Reports: twenty-five charts and tables over a span of pay periods, by bill, by category, over time and as shares | Done 2026-10-13, likewise. Not yet deployed. No chart library was added | n/a |
 | [21](phase-21-screenshot-import.md) | Importing from screenshots of a bank's list: read on the server with tesseract.js (or a model of the owner's own), reviewed in a dialog before importing | Done 2026-10-15. Not yet deployed. Adds `tesseract.js` and `@tesseract.js-data/eng` | n/a |
+| [22](phase-22-advice.md) | Advice: an optional side-panel section of set questions, each answered in a few lines by an OpenAI-compatible model from figures the server works out; a voice chosen per account | Built 2026-10-16, off by default (`ADVICE_ENABLED`). Not yet tried with a real model. Adds migration `0011` | n/a |
+| [23](phase-23-category-move.md) | Moving everything under a category to another, optionally deleting it after (a merge); Delete can send its items somewhere | Built 2026-10-16. Not yet deployed. Rebuild the MCP file with it | n/a |
+| [24](phase-24-report-additions.md) | Reports: "Year to date" span, and a cash-flow (Sankey) chart of where the money came from and went | Year to date on `main` 2026-10-16; the chart built 2026-10-16. Neither deployed | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

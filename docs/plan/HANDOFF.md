@@ -9,7 +9,53 @@ Kick-off prompt for the next session:
 > Read CLAUDE.md and docs/plan/HANDOFF.md, then tell me where things stand and what you
 > need from me before starting.
 
-## Where things stand
+## Latest: 2026-10-16 (read this before the older notes below)
+
+That day's session ran on the owner's Linux machine (Manjaro). Its old local folder was
+an unrelated Create Next App scaffold, kept as `pay-period-budget.tar.gz` beside the
+project, and was replaced with a fresh clone. `gh` is installed and signed in there.
+
+**Where the code is**
+
+| Where | What |
+| --- | --- |
+| `main` (pushed) | Up to "Year to date on the Reports page" (ca3feb0) |
+| `categories/move-and-merge` (pushed, **not merged**) | Three features on top of `main`, one commit each, plus this handoff: [23](phase-23-category-move.md) moving and merging categories, [24](phase-24-report-additions.md) the cash-flow chart, [22](phase-22-advice.md) Advice. `npm run check`: 1072 tests in 54 files |
+
+To pick it up on another computer: `git fetch` then `git switch categories/move-and-merge`,
+`npm ci`, `npm run check`. To ship it, merge into `main` (`git switch main && git merge
+categories/move-and-merge && git push`).
+
+**What is waiting, in order**
+
+1. **Review and merge** the branch. Nothing on it has been seen by the owner in a browser
+   except through this session's descriptions.
+2. **Try Advice with a real model** before relying on it. It is off unless
+   `ADVICE_ENABLED=true`; locally, e.g. `ADVICE_ENABLED=true ADVICE_MODEL_URL=...
+   ADVICE_MODEL=... ADVICE_MODEL_KEY=... npm run dev`. Only a stand-in model has answered so far.
+   Tune `ADVICE_INSTRUCTIONS` (`src/server/services/advice.ts`) or a question's `focus`
+   (`src/shared/advice.ts`) if answers ramble or misread a figure.
+3. **Deploy** (`docs/deploy.md`, "Updating": `deploy/backup.sh`, `git pull`,
+   `docker compose up -d --build`). Adds migration `0011` (two nullable columns on
+   `user_settings`), applied on start. To have Advice there, add the `ADVICE_*` lines to
+   the server's `.env`. The owner has a deployed app (mentioned 2026-10-16); which commit it
+   runs was not checked.
+4. **Rebuild the MCP file** (`npm run build:mcp`) for the new `move_category` tool.
+5. **Rebuild the Android app on the Mac** (`npm run build:android`, then install from
+   Android Studio). It carries its own copy of the client, so Year to date, the cash-flow
+   chart, the move dialog and Advice reach the phone only that way.
+
+**Not verified** (details in each phase file): the cash-flow chart's hover and its 360px
+width; the toast after moving a category; Advice with any real model. Advice answers are
+not kept once the page is left.
+
+**Recorded for later** in `backlog.md`: debts with balances and interest rates and "how
+much should I pay on each", then balances over time and "where are my biggest concerns".
+
+**Local leftovers on the Linux machine** (gitignored, harmless): `data/app.db` holds the
+"demo" account from `npm run db:seed-demo`, with its Advice voice set to Oscar.
+
+## Where things stand (2026-10-10, with updates through phase 21)
 
 - Repository: `github.com/maximx1/pay-period-budget` (public), branch `main`.
 - `npm run check` passes: 593 tests, 25 files. `npm run build` is clean.
@@ -39,6 +85,9 @@ Kick-off prompt for the next session:
 | 19 Search | Done 2026-10-13, **not yet deployed**. Built overnight with nobody to ask: the owner said to make assumptions and back out what he does not like. They are listed in `phase-19-search.md` |
 | 20 Reports | Done 2026-10-13, **not yet deployed**; same instruction, assumptions in `phase-20-reports.md`. The dev database has a second account, "demo", made by `npm run db:seed-demo` to have something to chart; `-- --remove` deletes it |
 | 21 Screenshot import | Done 2026-10-15, **not yet deployed**. "From screenshots" in the add dialog: the server reads the pictures with tesseract.js (two new runtime packages), the owner reviews what was found, and the import dry run marks duplicates and guesses the bill. Optionally an OpenAI-compatible model of his own (`SCAN_MODEL_*`). What was checked is at the end of `phase-21-screenshot-import.md` |
+| 22 Advice | Built 2026-10-16 on a branch, off by default. See the latest notes above and `phase-22-advice.md` |
+| 23 Category move and merge | Built 2026-10-16 on a branch. `phase-23-category-move.md` |
+| 24 Year to date, cash-flow chart | Year to date on `main`; the chart on a branch. `phase-24-report-additions.md` |
 | Docker packaging and deploy guide | Written, **never built or run** (see "Not yet verified") |
 | Backlog (`backlog.md`) | Accounts feature, Google sign-in, passkeys, more schedules, forgot-password, iOS |
 
