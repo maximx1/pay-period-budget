@@ -197,8 +197,8 @@ function CategoryForm({ onClose, category }: Omit<CategoryDialogProps, "open">) 
           )}
           <p className="text-sm text-muted">
             {targetName
-              ? `Its transactions, in every pay period, and its bills and income go to ${targetName}, which keeps its own limits.`
-              : "Its transactions and its bills and income stay, with no category."}
+              ? `Its transactions, in every pay period, and its recurring items go to ${targetName}, which keeps its own limits.`
+              : "Its transactions and its recurring items stay, with no category."}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="ghost" onClick={() => open(null)} disabled={remove.isPending || move.isPending}>
@@ -219,7 +219,7 @@ function CategoryForm({ onClose, category }: Omit<CategoryDialogProps, "open">) 
             onChange={(event) => setTarget(event.target.value)}
           />
           <p className="text-sm text-muted">
-            Its transactions, in every pay period including ones that are over, and its bills and income go there.
+            Its transactions, in every pay period including ones that are over, and its recurring items go there.
             Limits don't move: {targetName ?? "the category you choose"} keeps its own.
           </p>
           <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-fg">

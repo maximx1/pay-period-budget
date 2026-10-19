@@ -138,11 +138,12 @@ android/      Capacitor's Android project. Generated once, then edited by hand; 
 - The Android build needs a JDK 21. Gradle 8.14 (what Capacitor 8 ships) fails on Java 25
   with "Unsupported class file major version 69".
 
-- Bills and income, scheduled or not, are called exactly that, on screen ("Bills & Income")
-  and in the code: the table is `bills_income`, the API `/api/bills-income`, the folder
-  `features/billsIncome`, one of them a `BillOrIncome`, and a transaction points at one
-  with `billIncomeId`. (Until 2026-10-12 they were "recurring items"; `recurrenceUnit` and
-  `recurrenceInterval` keep their names because they describe the schedule.) A third kind,
+- Bills and income, scheduled or not, are called exactly that in the code: the table is
+  `bills_income`, the API `/api/bills-income`, the folder `features/billsIncome`, one of them a `BillOrIncome`, and a transaction points at one
+  with `billIncomeId`. On screen they are "Recurring" and one of them a "recurring item"
+  (decision 15); keep the two apart and do not rename the code to match. (Until 2026-10-12
+  the code said "recurring items" too; `recurrenceUnit` and `recurrenceInterval` keep their
+  names because they describe the schedule.) A third kind,
   `transfer`, is another account of the owner's own (savings, joint, a loan) with money
   going both ways; ask "which way does its own entry go" with `entryKindOf`, never by
   comparing `kind` to `"income"`. Never name

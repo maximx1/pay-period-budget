@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ReceiptText, Search } from "lucide-react";
+import { Repeat, Search } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
@@ -415,7 +415,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
               label="New transfer name"
               autoComplete="off"
               maxLength={80}
-              hint="It's added to Bills & Income as a transfer when you save."
+              hint="It's added to Recurring as a transfer when you save."
               error={errors.newTransfer?.message}
               {...register("newTransfer")}
             />
@@ -439,9 +439,9 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
 
       {!transferMode && billChoices.length > 0 && (
         <SelectField
-          label="Bill or income"
+          label="Recurring item"
           options={itemOptions}
-          hint={chosenId === "" ? "Optional. Groups this with one of your bills or incomes." : undefined}
+          hint={chosenId === "" ? "Optional. Groups this with one of your recurring items." : undefined}
           error={errors.billIncomeId?.message}
           {...itemField}
           onChange={(event) => {
@@ -512,8 +512,8 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           }}
           className="-my-1 inline-flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          <ReceiptText className="size-4" aria-hidden />
-          Open {linkedItem.name} in Bills &amp; Income
+          <Repeat className="size-4" aria-hidden />
+          Open {linkedItem.name} in Recurring
         </button>
       )}
 

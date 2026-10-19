@@ -18,7 +18,7 @@ export const billsIncomeKeys = {
   transactions: ["bills-income", "transactions"] as const,
 };
 
-/** The query parameter that opens an item's detail view on the Bills & Income page. */
+/** The query parameter that opens an item's detail view on the Recurring page. */
 export const DETAIL_PARAM = "item";
 /** Where to go to see one bill or income's detail view, e.g. from one of its transactions. */
 export const billOrIncomeDetailPath = (id: string) => `/bills-income?${DETAIL_PARAM}=${encodeURIComponent(id)}`;

@@ -164,7 +164,7 @@ export function BillOrIncomeDialog({ open, onClose, item, timezone }: BillOrInco
     <Dialog
       open={open}
       onClose={onClose}
-      title={item ? editTitles[item.kind] : "Add a bill or income"}
+      title={item ? editTitles[item.kind] : "Add a recurring item"}
     >
       <BillOrIncomeForm onClose={onClose} item={item} timezone={timezone} />
     </Dialog>

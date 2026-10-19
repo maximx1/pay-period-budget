@@ -76,7 +76,7 @@ much should I pay on each", then balances over time and "where are my biggest co
 | 10 Projections tab | **Dropped 2026-10-12** by the owner ("a half thought idea"); reports come later, see `backlog.md` |
 | 11 API tokens, bulk import, MCP server | Done 2026-10-11: tokens on the server and in Settings, transactions by date range, bulk import, the MCP server, instructions in `README.md`, history up to five years back. **Not yet deployed.** The MCP server has not been registered with a real assistant or run against the deployed server; decisions are at the top of the phase file |
 | 12 Idle timeout and face unlock | Built 2026-10-12. Web half checked in a browser; **the Android half has never run**. The phase file ends with what to try on a phone |
-| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) 13.4 (the import suggests the item a row belongs to), 13.5 (MCP tools), 13.6 (choosing the item in the transaction dialog) and 13.7 (the detail view) done 2026-10-12: the phase is complete, **not yet deployed**. These are "Bills & Income" on screen and, since the rename on 2026-10-12, in the code too |
+| 13 Transactions tied to a recurring item | 13.1 (linking and part payments in the API), 13.2 (items with no schedule) 13.3 (an item's transactions) 13.4 (the import suggests the item a row belongs to), 13.5 (MCP tools), 13.6 (choosing the item in the transaction dialog) and 13.7 (the detail view) done 2026-10-12: the phase is complete, **not yet deployed**. These are bills and income in the code since the rename on 2026-10-12, and "Recurring" on screen again since 2026-10-18 (decision 15) |
 | 14 Schedule switch and filter | Done 2026-10-12, **not yet deployed**. "On a schedule" / "As it happens" is a switch at the top of the dialog and a filter on the page. Rebuild the MCP file (`npm run build:mcp`) with it |
 | 15 Transfers | Done 2026-10-12, **not yet deployed**; adds migration `0009`. A third kind of bill or income, "Transfer", for another account of the owner's own (savings, joint, a loan): money both ways and a worked-out balance. The home card shows Income and Expenses instead of a net Paid. The owner confirmed the word "Transfer". Rebuild the MCP file with it |
 | 16 Swipe between periods | Built 2026-10-12. **Never swiped with a real finger**: checked in a browser with simulated touches. The phase file ends with what to try on a phone |
@@ -259,9 +259,9 @@ Be straight with the owner about these until they have been exercised.
 - **Decisions:** make a recommendation, apply the sensible default, and list what was
   decided so it can be overruled. Ask only when a choice is expensive to reverse.
 - **Reports:** say plainly what was verified and how, and what was not.
-- **Names:** bills and income are called that everywhere: "Bills & Income" on screen,
-  `bills_income` / `BillOrIncome` / `/api/bills-income` in the code (decision 13 in
-  `README.md`). Plan files written before 2026-10-12 say *recurring items*. *Accounts* is reserved for a
+- **Names:** bills and income are "Recurring" on screen (one of them a "recurring item",
+  decision 15 in `README.md`) and `bills_income` / `BillOrIncome` / `/api/bills-income`
+  in the code (decision 13). Plan files written before 2026-10-12 say *recurring items*. *Accounts* is reserved for a
   future feature (savings accounts, payees). See decision 11 in `README.md`.
 - **Scope:** folders beside this project are unrelated. Leave them alone.
 

@@ -1,4 +1,4 @@
-import { ChartColumn, House, type LucideIcon, MessageSquareText, ReceiptText, Settings, Tags } from "lucide-react";
+import { ChartColumn, House, type LucideIcon, MessageSquareText, Repeat, Settings, Tags } from "lucide-react";
 import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 
 /**
@@ -9,7 +9,7 @@ export type NavItem = { to: string; label: string; icon: LucideIcon; title?: str
 
 export const navItems: readonly NavItem[] = [
   { to: "/", label: "Home", icon: House, title: APP_NAME },
-  { to: "/bills-income", label: "Bills & Income", icon: ReceiptText },
+  { to: "/bills-income", label: "Recurring", icon: Repeat },
   { to: "/categories", label: "Categories", icon: Tags },
   { to: "/reports", label: "Reports", icon: ChartColumn },
   { to: "/advice", label: "Advice", icon: MessageSquareText, advice: true },

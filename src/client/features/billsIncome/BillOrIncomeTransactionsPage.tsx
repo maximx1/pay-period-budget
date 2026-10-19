@@ -18,7 +18,7 @@ const backLink = (
     className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
   >
     <ArrowLeft className="size-4" aria-hidden />
-    Bills & Income
+    Recurring
   </Link>
 );
 
@@ -55,7 +55,7 @@ export function BillOrIncomeTransactionsPage() {
   } else if (items.isSuccess && !item) {
     content = (
       <Card>
-        <EmptyState icon={SearchX} title="No such bill or income" description="It may have been deleted." action={backLink} />
+        <EmptyState icon={SearchX} title="No such recurring item" description="It may have been deleted." action={backLink} />
       </Card>
     );
   } else if (items.isError || list.isError) {
@@ -113,7 +113,7 @@ export function BillOrIncomeTransactionsPage() {
 
   return (
     <>
-      <PageHeader title={item?.name ?? "Bills & Income"} subtitle={subtitle} actions={backLink} />
+      <PageHeader title={item?.name ?? "Recurring"} subtitle={subtitle} actions={backLink} />
       {content}
     </>
   );

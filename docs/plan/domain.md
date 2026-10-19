@@ -16,8 +16,8 @@ say what to build; this file says what must always be true.
   it. Income is not special: it is one whose amount is positive. A third kind, a
   **transfer**, is another account of the user's own that money is moved to and may come
   back from (savings, a joint account, a HELOC or other loan); only a transfer has a
-  balance, and it is worked out, not stored. On screen the page is "Bills & Income"; in the code the table is
-  `bills_income` and one of them is a `BillOrIncome`. (They were called *recurring items*
+  balance, and it is worked out, not stored. On screen the page is "Recurring" and one of them a "recurring item" (decision 15); in the code the table is
+  `bills_income` and one of them is a `BillOrIncome`. (They were called *recurring items* in the code
   until 2026-10-12, which older plan files still say. The word **account** is reserved
   for a future feature: the places money lives or goes, such as a savings account or a
   person you pay. See `backlog.md`.)
@@ -457,7 +457,7 @@ It is a one-time calculation. Afterwards the transaction is independent:
 ### Archiving
 
 A bill or income is **archived** when `endDate` is before today. Archived items are hidden
-from the Bills & Income page unless "show archived" is on, and produce no further occurrences.
+from the Recurring page unless "show archived" is on, and produce no further occurrences.
 "End this" sets `endDate` to today and offers to delete the upcoming transactions it
 generated that are dated after today. Transactions tied to it by hand are left alone.
 

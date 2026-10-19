@@ -12,7 +12,7 @@ export type BillsIncomeFilters = {
   showArchived: boolean;
 };
 
-/** Whether the Bills & Income page shows this item under the filters chosen. They all have to agree. */
+/** Whether the Recurring page shows this item under the filters chosen. They all have to agree. */
 export function matchesFilters(
   item: Pick<BillOrIncome, "name" | "description" | "kind" | "recurrenceUnit" | "archived">,
   { search, kind, schedule, showArchived }: BillsIncomeFilters,

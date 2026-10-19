@@ -223,7 +223,7 @@ unless marked otherwise.
     starting amount: adding old transactions changes what the *earlier* period started
     with, never a balance from the first period onward. See "Periods before the budget
     began" in `domain.md`.
-13. **They are bills and income, on screen and in the code** (decided 2026-10-12). Once
+13. **They are bills and income in the code** (decided 2026-10-12; on screen, see decision 15). Once
     one of them could have no schedule, "recurring" was wrong. The page is "Bills &
     Income". The code uses the same words wherever an "&" cannot go: the table
     `bills_income`, the column `transactions.bill_income_id`, the API `/api/bills-income`,
@@ -240,3 +240,12 @@ unless marked otherwise.
     `transfer` in the code. It is still never called an *account* (decision 11): that
     feature, if it is built, takes these items as its first rows. See "Transfers" in
     `domain.md` and `phase-15-transfers.md`.
+15. **On screen they are "Recurring" again; the code keeps bills and income** (decided
+    2026-10-18). The owner preferred the shorter word. The nav item and the page are
+    "Recurring", one of them is a "recurring item" ("Add recurring item", the "Recurring
+    item" field in the transaction dialog), and the nav icon is the repeat arrows. The kinds
+    are still Bill, Income and Transfer. Only the wording changed: the table, the API, the
+    types, the folder, the `/bills-income` route and the MCP tools keep the names in
+    decision 13, and so do the server's error messages and the MCP server's text, which an
+    assistant reads. Some recurring items have no schedule; the page subtitle ("on a
+    schedule or as it happens") says so.

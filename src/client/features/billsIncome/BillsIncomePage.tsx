@@ -1,4 +1,4 @@
-import { Plus, ReceiptText, Search, SearchX } from "lucide-react";
+import { Plus, Repeat, Search, SearchX } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import type { BillOrIncome } from "../../../shared/billsIncome.ts";
@@ -31,7 +31,7 @@ const scheduleFilters = [
 
 const gridClass = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
-/** Bills and income, as a filterable grid of cards. */
+/** Bills and income ("Recurring" on screen), as a filterable grid of cards. */
 export function BillsIncomePage() {
   const items = useBillsIncome();
   const budget = useBudget();
@@ -65,14 +65,14 @@ export function BillsIncomePage() {
   const addButton = (
     <Button onClick={() => setDialog({ open: true })}>
       <Plus className="size-4" aria-hidden />
-      Add bill or income
+      Add recurring item
     </Button>
   );
 
   let content: ReactNode;
   if (items.isPending) {
     content = (
-      <div className={gridClass} role="status" aria-label="Loading bills and income">
+      <div className={gridClass} role="status" aria-label="Loading recurring items">
         {[0, 1, 2].map((n) => (
           <div key={n} className="h-36 animate-pulse rounded-2xl bg-surface-2" />
         ))}
@@ -81,7 +81,7 @@ export function BillsIncomePage() {
   } else if (items.isError) {
     content = (
       <div className="flex flex-col items-start gap-3">
-        <Alert>Couldn't load your bills and income.</Alert>
+        <Alert>Couldn't load your recurring items.</Alert>
         <Button variant="secondary" onClick={() => items.refetch()}>
           Try again
         </Button>
@@ -91,8 +91,8 @@ export function BillsIncomePage() {
     content = (
       <Card>
         <EmptyState
-          icon={ReceiptText}
-          title="No bills or income yet"
+          icon={Repeat}
+          title="No recurring items yet"
           description="Add a bill or a paycheck on a schedule and it shows up in every period it falls in. Or add one as it happens, to gather payments that come when they come. A transfer is for money you move to another account of yours, and back."
           action={addButton}
         />
@@ -112,7 +112,7 @@ export function BillsIncomePage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search"
-              aria-label="Search bills and income"
+              aria-label="Search recurring items"
               className="min-h-11 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-base text-fg placeholder:text-muted focus:outline-2 focus:outline-offset-1 focus:outline-ring"
             />
           </div>
@@ -152,7 +152,7 @@ export function BillsIncomePage() {
 
   return (
     <>
-      <PageHeader title="Bills & Income" subtitle="What you pay and what you're paid, on a schedule or as it happens." actions={items.data?.length ? addButton : undefined} />
+      <PageHeader title="Recurring" subtitle="What you pay and what you're paid, on a schedule or as it happens." actions={items.data?.length ? addButton : undefined} />
       {content}
       <BillOrIncomeDialog
         open={dialog.open}

@@ -415,7 +415,7 @@ function Reports({ report }: { report: Report }) {
 
   // ---- bills
   const yearly: TableData = {
-    head: ["Bill or income", "Type", "A year, as scheduled", "In this span", "Each pay period"],
+    head: ["Recurring item", "Type", "A year, as scheduled", "In this span", "Each pay period"],
     rows: report.billsIncome
       .map((entry) => {
         const inSpan = entry.kind === "income" ? (d.sourceIn.get(entry.id) ?? 0) : (d.billOut.get(entry.id) ?? 0);
@@ -528,12 +528,12 @@ function Reports({ report }: { report: Report }) {
         </ReportCard>
         {chosenItem && (
           <ReportCard
-            title="One bill or income over time"
+            title="One recurring item over time"
             about="What went to it, or came from it, in each pay period. A change in a bill's price shows as a step."
             table={{ head: ["Pay period", chosenItem.name], rows: titles.map((title, i) => [title, formatCents(itemValues[i]!)]) }}
             controls={
               <SelectField
-                label="Bill or income"
+                label="Recurring item"
                 options={itemChoices.map((entry) => ({ value: entry.id, label: entry.name }))}
                 value={chosenItem.id}
                 onChange={(event) => setBillId(event.target.value)}
@@ -684,8 +684,8 @@ function Reports({ report }: { report: Report }) {
       </Section>
 
       <Section title="Bills and what is coming">
-        <ReportCard title="What each bill costs a year" about="Each bill or income at its usual amount over the next twelve months, beside what it actually came to in this span.">
-          <DataTable {...yearly} empty="No bills or income yet." />
+        <ReportCard title="What each bill costs a year" about="Each recurring item at its usual amount over the next twelve months, beside what it actually came to in this span.">
+          <DataTable {...yearly} empty="No recurring items yet." />
         </ReportCard>
         {ahead.some((series) => series.values.some((value) => value)) && (
           <ReportCard

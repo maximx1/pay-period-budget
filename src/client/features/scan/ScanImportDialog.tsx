@@ -330,7 +330,7 @@ function DraftRow({ draft, onChange }: { draft: Draft; onChange: (change: Partia
           <SegmentedControl label="Type" options={kindOptions} value={draft.kind} onChange={(kind) => onChange({ kind })} />
           {choices.length > 0 && (
             <SelectField
-              label="Bill or income"
+              label="Recurring item"
               options={[{ value: "", label: "None" }, ...choices.map((item) => ({ value: item.id, label: item.name }))]}
               value={draft.billIncomeId}
               onChange={(event) => onChange({ billIncomeId: event.target.value })}

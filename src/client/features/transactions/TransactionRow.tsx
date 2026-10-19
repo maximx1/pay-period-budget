@@ -58,9 +58,9 @@ export function TransactionRow({ transaction, categoryName, onToggle, onEdit, re
             {transaction.billIncomeId &&
               // Added by a bill's or income's schedule, or tied to one by hand.
               (transaction.occurrenceDate ? (
-                <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="Scheduled bill or income" />
+                <Repeat className="size-3.5 shrink-0 text-muted" role="img" aria-label="Scheduled recurring item" />
               ) : (
-                <Tag className="size-3.5 shrink-0 text-muted" role="img" aria-label="Tied to a bill or income" />
+                <Tag className="size-3.5 shrink-0 text-muted" role="img" aria-label="Tied to a recurring item" />
               ))}
           </span>
           {details && <span className="block truncate text-sm text-muted">{details}</span>}
