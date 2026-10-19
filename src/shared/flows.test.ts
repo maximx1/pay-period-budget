@@ -6,24 +6,43 @@ const tx = (amountCents: number, billIncomeId: string | null = null, categoryId:
   billIncomeId,
   categoryId,
 });
-const transfers = new Map([
-  ["savings", { categoryId: "saving" }],
-  ["joint", { categoryId: null }],
-]);
+const transfers = new Set(["savings", "joint", "share4", "share5"]);
 const amounts = (source: FlowSource[]) =>
   netTransfers(source, transfers).map(({ amountCents, billIncomeId, categoryId, transfer }) => [amountCents, billIncomeId, categoryId, transfer]);
 
 describe("netTransfers", () => {
   it.each<[string, FlowSource[], unknown[][]]>([
-    ["$300 sent and $100 brought back is $200 sent", [tx(-30_000, "savings"), tx(10_000, "savings")], [[-20_000, "savings", "saving", true]]],
+    [
+      "$300 sent and $100 brought back is $200 sent",
+      [tx(-30_000, "savings", "saving"), tx(10_000, "savings", "saving")],
+      [[-20_000, "savings", "saving", true]],
+    ],
     ["more brought back than sent is money in", [tx(-5_000, "joint"), tx(8_000, "joint")], [[3_000, "joint", null, true]]],
     ["sent and brought back alike comes to nothing", [tx(-5_000, "joint"), tx(5_000, "joint")], []],
     [
-      "each transfer is netted by itself, under its own category whatever its transactions say",
-      [tx(-1_000, "savings", "food"), tx(-2_000, "joint"), tx(500, "savings")],
+      "each transfer is netted by itself, under its transactions' own category",
+      [tx(-1_000, "savings", "saving"), tx(-2_000, "joint"), tx(500, "savings", "saving")],
       [
         [-500, "savings", "saving", true],
         [-2_000, "joint", null, true],
+      ],
+    ],
+    [
+      "money under different categories nets apart, one entry for each",
+      [tx(-1_000, "savings", "saving"), tx(-300, "savings", "food"), tx(400, "savings")],
+      [
+        [-1_000, "savings", "saving", true],
+        [-300, "savings", "food", true],
+        [400, "savings", null, true],
+      ],
+    ],
+    [
+      // Transfers with no category of their own, their payments filed under Savings by hand.
+      "payments filed by hand keep their category",
+      [tx(-3_000, "share4", "saving"), tx(-10_000, "share5", "saving")],
+      [
+        [-3_000, "share4", "saving", true],
+        [-10_000, "share5", "saving", true],
       ],
     ],
     [

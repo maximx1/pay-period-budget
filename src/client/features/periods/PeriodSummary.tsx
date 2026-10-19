@@ -122,9 +122,7 @@ export function PeriodSummary({ view, today }: { view: PeriodView; today: LocalD
 
   const categories = useCategories();
   const billsIncome = useBillsIncome();
-  const transfers = new Map(
-    billsIncome.data?.filter((item) => item.kind === "transfer").map((item) => [item.id, { categoryId: item.categoryId }]),
-  );
+  const transfers = new Set(billsIncome.data?.filter((item) => item.kind === "transfer").map((item) => item.id));
   const figures = summaryFigures(view, transfers);
   const { incomeCents, expenseCents } = figures;
   const unresolved = endedWithUpcoming(view, today);

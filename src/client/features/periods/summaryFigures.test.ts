@@ -5,7 +5,7 @@ import { endedWithUpcoming, summaryFigures } from "./summaryFigures.ts";
 
 const tx = (amountCents: number, status: Transaction["status"], more: Partial<Transaction> = {}) =>
   ({ amountCents, status, categoryId: null, billIncomeId: null, ...more }) as Transaction;
-const transfers = new Map([["savings", { categoryId: "saving" }]]);
+const transfers = new Set(["savings", "share"]);
 const figuresOf = (transactions: Transaction[]) => summaryFigures({ transactions } as PeriodView, transfers);
 
 describe("summaryFigures", () => {
@@ -54,7 +54,11 @@ describe("summaryFigures", () => {
   });
 
   it("counts $300 sent to a transfer and $100 brought back as $200 sent, keeping the end balance", () => {
-    const transactions = [tx(200_000, "paid"), tx(-30_000, "paid", { billIncomeId: "savings" }), tx(10_000, "upcoming", { billIncomeId: "savings" })];
+    const transactions = [
+      tx(200_000, "paid"),
+      tx(-30_000, "paid", { billIncomeId: "savings", categoryId: "saving" }),
+      tx(10_000, "upcoming", { billIncomeId: "savings", categoryId: "saving" }),
+    ];
     const figures = figuresOf(transactions);
     expect(figures).toMatchObject({ incomeCents: 200_000, expenseCents: 20_000, expensesToTransfersCents: 20_000 });
     expect([...figures.expensesByCategory]).toEqual([["saving", 20_000]]);
@@ -62,6 +66,16 @@ describe("summaryFigures", () => {
     expect(figures).toMatchObject({ incomePaidCents: 200_000, incomeToComeCents: 10_000, expensesPaidCents: 30_000 });
     const net = transactions.reduce((sum, t) => sum + t.amountCents, 0);
     expect(figures.incomeCents - figures.expenseCents).toBe(net);
+  });
+
+  it("files money sent to a transfer under each transaction's own category, as the list shows it", () => {
+    // Transfers with no category; their payments filed under Savings by hand.
+    const figures = figuresOf([
+      tx(-3_000, "paid", { billIncomeId: "savings", categoryId: "saving" }),
+      tx(-10_000, "paid", { billIncomeId: "share", categoryId: "saving" }),
+      tx(-2_350, "paid", { billIncomeId: "share", categoryId: "saving" }),
+    ]);
+    expect([...figures.expensesByCategory]).toEqual([["saving", 15_350]]);
   });
 
   it("counts more brought back from a transfer than sent as income", () => {

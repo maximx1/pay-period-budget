@@ -19,7 +19,7 @@ export type SummaryFigures = {
    */
   incomeCents: number;
   expenseCents: number;
-  /** Money out by category id; null for what is filed under none. A transfer counts under its own category. */
+  /** Money out by category id; null for what is filed under none. Each transaction counts under its own category. */
   expensesByCategory: Map<string | null, number>;
   /** Money out tied to a bill, money sent to transfers, and money out tied to neither. */
   expensesFromBillsCents: number;
@@ -29,10 +29,9 @@ export type SummaryFigures = {
 
 /**
  * The figures the summary card shows and draws. The direction is the amount's sign.
- * `transfers` holds each transfer's id with its category; until it has loaded, transfers
- * count like bills.
+ * `transfers` holds each transfer's id; until it has loaded, transfers count like bills.
  */
-export function summaryFigures(view: PeriodView, transfers: ReadonlyMap<string, { categoryId: string | null }>): SummaryFigures {
+export function summaryFigures(view: PeriodView, transfers: ReadonlySet<string>): SummaryFigures {
   const figures: SummaryFigures = {
     incomePaidCents: 0,
     incomeToComeCents: 0,

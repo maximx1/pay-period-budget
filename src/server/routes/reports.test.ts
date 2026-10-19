@@ -138,6 +138,16 @@ describe("the report", () => {
     expect(periods[1]!.endingCents - periods[1]!.startingCents).toBe(203_000);
   });
 
+  it("files money sent to a transfer under the transactions' own category, not the transfer's", async () => {
+    // The Savings transfer has no category; P3's payments to it were filed under Fun by hand.
+    await spend(ann, "To savings", "2026-01-28", 3_000, { billIncomeId: ids.savings, categoryId: ids.fun });
+    await spend(ann, "To savings", "2026-01-29", 10_000, { billIncomeId: ids.savings, categoryId: ids.fun });
+
+    const [period] = (await report(ann, "2026-01-27", "2026-02-09")).periods;
+    expect(period!.categories).toContainEqual({ categoryId: ids.fun, outCents: 13_000, inCents: 0 });
+    expect(period!.categories.find((flow) => flow.categoryId === null)).toEqual({ categoryId: null, outCents: 0, inCents: 200_000 });
+  });
+
   it("splits each period by category and by bill or income, and sets spending against its limits", async () => {
     const { periods, categories, billsIncome } = await report(ann, "2025-12-16", "2026-01-26");
     const sorted = <T extends { outCents: number; inCents: number }>(rows: T[]) =>

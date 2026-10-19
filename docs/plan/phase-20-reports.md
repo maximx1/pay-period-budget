@@ -40,12 +40,14 @@ Applied as sensible defaults; say so to overrule any of them.
 4. **Transfers count as money out and money in**, like everything else, and also have a
    report of their own. **Changed 2026-10-14** at the owner's request: within one pay
    period each transfer counts once, as the difference between what was sent to it and
-   what came back ($300 sent and $100 back is $200 sent), under the transfer's own
-   category. `netTransfers` in `shared/flows.ts` does it for the reports and for the home
+   what came back ($300 sent and $100 back is $200 sent). `netTransfers` in `shared/flows.ts` does it for the reports and for the home
    card's Income, Expenses and bars alike. The transactions are untouched, and so are the
    limits, the spending pace, names and largest payments, which go transaction by
    transaction. "Committed and everything else" and "Shares of income" now show Bills and
-   Transfers apart.
+   Transfers apart. **Changed 2026-10-18**: the net counts under its transactions' own
+   category, one net per category, not under the transfer's. Payments filed under Savings by
+   hand, tied to a transfer with no category, showed as "Uncategorised" on the home card
+   while the list said Savings.
 5. **Colour follows the thing.** The seven categories (or bills) with the most money in the
    span each get a colour, largest first; the rest are "Other"; "Uncategorised" and "Not
    tied to a bill" are grey. The same category is the same colour in every chart on the

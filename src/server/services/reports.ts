@@ -62,7 +62,7 @@ export function createReportService(deps: { store: DataStore; periods: PeriodSer
       const categories = await store.categories.list(userId);
       const items = await store.billsIncome.list(userId);
       // Each transfer's money sent and brought back within a period counts once, as the difference.
-      const transfers = new Map(items.filter((item) => item.kind === "transfer").map((item) => [item.id, { categoryId: item.categoryId }]));
+      const transfers = new Set(items.filter((item) => item.kind === "transfer").map((item) => item.id));
 
       const first = covered[0];
       const last = covered.at(-1);
