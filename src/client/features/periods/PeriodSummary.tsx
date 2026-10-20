@@ -243,8 +243,8 @@ export function PeriodSummary({ view, today }: { view: PeriodView; today: LocalD
           />
           {transfers.size > 0 && (
             <p className="text-sm text-muted">
-              A transfer counts once here, as what was sent less what came back this period. Its transactions below
-              stay as they are.
+              Money moved both ways with the same transfer is netted in Income, Expenses and these bars: send $400 to
+              savings and bring $100 back, and they count $300 sent. Both transactions are still listed below.
             </p>
           )}
           <p className="text-sm text-muted">
