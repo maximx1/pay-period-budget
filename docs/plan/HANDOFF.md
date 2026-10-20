@@ -9,30 +9,6 @@ Kick-off prompt for the next session:
 > Read CLAUDE.md and docs/plan/HANDOFF.md, then tell me where things stand and what you
 > need from me before starting.
 
-## 2026-10-20: due dates (phase 25)
-
-Pushed to `main`: a recurring bill or transfer can
-have a due date (every n weeks, months or years) apart from its schedule, and the pay period
-a due date falls in warns when nothing tied to it is set to pay it by then. Adds migration
-`0012`. The assumptions the owner has not yet confirmed are listed in
-[phase-25-due-dates.md](phase-25-due-dates.md). Rebuild the MCP file and the Android app to
-carry it.
-
-Also that day: a search box and a category filter above a period's
-Upcoming and Paid (`features/transactions/periodFilter.ts`; it matches name, note,
-category and amount, and while it is on the section totals follow what is shown and Reorder
-is hidden), and dialogs on a phone now stop short of the status bar, which had covered the
-search dialog's close button in the Android app. That fix is checked in a browser only, where
-the inset is 0. The phone's inset is 68px; the X there has not been tapped yet. The transfer
-note under the period breakdown was also reworded.
-
-The owner's Pixel 9 Pro has this build, installed from the Mac over Wireless debugging
-(`adb pair` with the *pairing* port from "Pair device with pairing code", not the port on
-the main screen; `adb mdns services` lists both; then `adb connect` and `adb install -r`).
-The Mac's debug key signed the copy already on it, so updates keep its sign-in. The deployed
-server still runs older code: the client must keep working when a field it expects (such as
-`dueNotices`) is missing, or the phone's home screen crashes, which the first install did.
-
 ## Latest: 2026-10-16 (read this before the older notes below)
 
 That day's session ran on the owner's Linux machine (Manjaro). Its old local folder was

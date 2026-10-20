@@ -51,3 +51,16 @@ day. The rules are in "Due dates" in `domain.md`; decision 16 in `README.md`.
 - Dark mode at 375px and the dialog at 360px; the Android app (not rebuilt).
 - No "add a payment" button on the warning. It would open the transaction dialog tied to
   the item and dated on the due date; the dialog takes no such starting values yet.
+
+## Notes for later
+
+- **The phone app can be newer than the server.** It carries its own copy of the client,
+  so a field the client expects may be missing. The first build of this phase called
+  `.map` on a missing `dueNotices` and crashed the home screen against the older deployed
+  server. The client now treats missing due-date fields as empty; keep doing that for new
+  fields.
+- **Installing on the phone over Wi-Fi** (Wireless debugging): `adb pair` with the address
+  from "Pair device with pairing code" (that popup's port, not the one on the main screen;
+  `adb mdns services` lists both), then `adb connect` to the main screen's address and
+  `adb install -r android/app/build/outputs/apk/debug/app-debug.apk`. The copy on the
+  owner's phone was signed with the Mac's debug key, so an update keeps its sign-in.
