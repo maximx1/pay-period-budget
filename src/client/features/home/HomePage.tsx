@@ -1,8 +1,10 @@
-import { CalendarClock, CalendarX, CircleCheck, Plus, Search } from "lucide-react";
+import { CalendarClock, CalendarX, CircleCheck, Plus, Search, SearchX } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { overLimitMessage } from "../../../shared/categories.ts";
+import { dueNoticeMessage } from "../../../shared/dueDates.ts";
 import { dateOf, formatDay, isLocalDate, type LocalDate, todayIn } from "../../../shared/dates.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -16,6 +18,7 @@ import { cn } from "../../lib/cn.ts";
 import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 import { useSwipe } from "../../lib/useSwipe.ts";
 import { useBudget } from "../budget/api.ts";
+import { useCategories } from "../categories/api.ts";
 import { usePeriodView } from "../periods/api.ts";
 import { GoToDateDialog } from "../periods/GoToDateDialog.tsx";
 import { PeriodHeader } from "../periods/PeriodHeader.tsx";
@@ -28,10 +31,14 @@ import { type PeriodNavState, usePeriodNav } from "../periods/usePeriodNav.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
 import { useReorderTransactions, useSetTransactionStatus } from "../transactions/api.ts";
 import { mergeOrder } from "../transactions/optimistic.ts";
+import { PeriodFilterBar } from "../transactions/PeriodFilterBar.tsx";
+import { isFiltering, matchesPeriodFilter, NO_FILTER, type PeriodFilter } from "../transactions/periodFilter.ts";
 import { TransactionDialog } from "../transactions/TransactionDialog.tsx";
 import { TransactionSection } from "../transactions/TransactionSection.tsx";
 
 const block = "animate-pulse rounded-2xl bg-surface-2";
+
+type TransactionSectionEmpty = { icon: LucideIcon; title: string; description: string };
 
 /** Stands in for the header and summary while a period loads, at about their real heights. */
 function PeriodSkeleton() {
@@ -128,6 +135,9 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   // `start` is what the search opens already looking for, e.g. a transaction's name.
   const [transactionSearch, setTransactionSearch] = useState<{ open: boolean; start?: SearchStart }>({ open: false });
   const openTransactionSearch = (start?: SearchStart) => setTransactionSearch({ open: true, start });
+  // Narrows Upcoming and Paid. Kept when moving to another period, to look for the same thing there.
+  const [filter, setFilter] = useState<PeriodFilter>(NO_FILTER);
+  const categories = useCategories();
   // Screenshots picked in the add dialog's second tab, being read and reviewed.
   const [scan, setScan] = useState<{ open: boolean; files: File[] }>({ open: false, files: [] });
 
@@ -154,6 +164,32 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
     const message = overLimitMessage(limit);
     return message ? [{ categoryId: limit.categoryId, message }] : [];
   });
+
+  // And one for each day a bill is due that nothing is set to pay by then. A server older
+  // than the app (the phone carries its own copy) sends none.
+  const dueNotices = (view.dueNotices ?? []).map((notice) => ({
+    key: `${notice.billIncomeId}:${notice.dueDate}`,
+    message: dueNoticeMessage(notice, today),
+  }));
+
+  const filtering = isFiltering(filter);
+  const categoryNames = new Map(categories.data?.map((category) => [category.id, category.name]));
+  /** One section's rows as shown, with what to say about them. */
+  const section = (status: Transaction["status"], totalCents: number, empty: TransactionSectionEmpty) => {
+    const all = view.transactions.filter((transaction) => transaction.status === status);
+    if (!filtering) return { transactions: all, totalCents, empty };
+    const shown = all.filter((transaction) =>
+      matchesPeriodFilter(transaction, filter, transaction.categoryId ? categoryNames.get(transaction.categoryId) : undefined),
+    );
+    return {
+      transactions: shown,
+      // The total follows what is shown: "how much went to Kroger this period".
+      totalCents: shown.reduce((sum, transaction) => sum + transaction.amountCents, 0),
+      empty: { icon: SearchX, title: "Nothing matches", description: "Try other words, or another category." },
+      totalCount: all.length,
+      reorderable: false,
+    };
+  };
 
   // A section reorders only its own rows; the other section's rows at the same moment keep their places.
   const reorder = (occursAt: string, sectionOrder: string[]) => {
@@ -189,8 +225,13 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
               Nothing on {formatDay(soughtDay)}.
             </p>
           )}
-          {overLimits.length > 0 && (
+          {(overLimits.length > 0 || dueNotices.length > 0) && (
             <div className="mb-4 flex flex-col gap-2">
+              {dueNotices.map(({ key, message }) => (
+                <Alert key={key} tone="warning">
+                  {message}
+                </Alert>
+              ))}
               {overLimits.map(({ categoryId, message }) => (
                 <Alert key={categoryId} tone="warning">
                   {message}
@@ -199,16 +240,17 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
             </div>
           )}
           <PeriodSummary view={view} today={today} />
+          {(view.transactions.length > 0 || filtering) && (
+            <PeriodFilterBar filter={filter} onChange={setFilter} categories={categories.data ?? []} />
+          )}
           <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
             <TransactionSection
               title="Upcoming"
-              transactions={view.transactions.filter((transaction) => transaction.status === "upcoming")}
-              totalCents={view.totals.upcomingCents}
-              empty={{
+              {...section("upcoming", view.totals.upcomingCents, {
                 icon: CalendarClock,
                 title: "Nothing upcoming",
                 description: "Add a transaction with the + button.",
-              }}
+              })}
               onToggle={toggle}
               onReorder={reorder}
               onEdit={(transaction) => setDialog({ open: true, transaction })}
@@ -216,9 +258,11 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
             />
             <TransactionSection
               title="Paid"
-              transactions={view.transactions.filter((transaction) => transaction.status === "paid")}
-              totalCents={view.totals.paidCents}
-              empty={{ icon: CircleCheck, title: "Nothing paid yet", description: "Items you mark as paid move here." }}
+              {...section("paid", view.totals.paidCents, {
+                icon: CircleCheck,
+                title: "Nothing paid yet",
+                description: "Items you mark as paid move here.",
+              })}
               onToggle={toggle}
               onReorder={reorder}
               onEdit={(transaction) => setDialog({ open: true, transaction })}

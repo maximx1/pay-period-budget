@@ -209,6 +209,14 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         )
         .orderBy(asc(transactions.occursAt));
     },
+    async listForBillsIncomeInRange(userId, billIncomeIds, from, to) {
+      if (billIncomeIds.length === 0) return [];
+      return db
+        .select()
+        .from(transactions)
+        .where(and(inRange(userId, from, to), inArray(transactions.billIncomeId, billIncomeIds)))
+        .orderBy(asc(transactions.occursAt), asc(transactions.id));
+    },
     async search(userId, criteria, { limit, before }) {
       return db
         .select()

@@ -6,13 +6,16 @@ import { z } from "zod";
 import { localDateSchema } from "../../../shared/budget.ts";
 import { isLocalDate, todayIn } from "../../../shared/dates.ts";
 import { centsToInput, parseMoneyInput } from "../../../shared/money.ts";
+import { describeDue, DUE_UNITS, type DueUnit } from "../../../shared/dueDates.ts";
 import { describeRecurrence, RECURRENCE_UNITS, type RecurrenceUnit } from "../../../shared/recurrence.ts";
 import {
   BILL_OR_INCOME_KINDS,
+  canHaveDueDate,
   END_BEFORE_START_MESSAGE,
   MAX_OPENING_CENTS,
   MAX_RECURRENCE_INTERVAL,
   type BillOrIncomeInput,
+  type BillOrIncomeKind,
   type BillOrIncome,
   type BillOrIncomePreview,
 } from "../../../shared/billsIncome.ts";
@@ -69,6 +72,11 @@ const formSchema = z
     description: z.string().max(2000, "Keep the description under 2,000 characters"),
     /** The category its entries are filed under; empty for none. */
     categoryId: z.string(),
+    /** Whether to warn when nothing is set to pay it by its due date. Ignored for an income. */
+    hasDue: z.boolean(),
+    dueDate: z.string(),
+    dueUnit: z.enum(DUE_UNITS),
+    dueInterval: z.string(),
   })
   // Something with no schedule need not have a usual amount; anything that repeats must.
   .refine(
@@ -79,8 +87,18 @@ const formSchema = z
   .refine(
     (values) => values.recurrenceUnit === "none" || values.endDate === "" || values.endDate >= values.firstDueDate,
     { path: ["endDate"], message: END_BEFORE_START_MESSAGE },
-  );
+  )
+  .refine((values) => !tracksDue(values) || isLocalDate(values.dueDate), { path: ["dueDate"], message: "Enter a valid date" })
+  .refine((values) => !tracksDue(values) || parseInterval(values.dueInterval) !== null, {
+    path: ["dueInterval"],
+    message: `1 to ${MAX_RECURRENCE_INTERVAL}`,
+  });
 type FormValues = z.infer<typeof formSchema>;
+
+/** A due date is asked for only on something paid out, and only once the box is ticked. */
+function tracksDue(values: { hasDue: boolean; kind: BillOrIncomeKind }): boolean {
+  return values.hasDue && canHaveDueDate(values.kind);
+}
 
 const toInput = (values: FormValues): BillOrIncomeInput => {
   const noSchedule = values.recurrenceUnit === "none";
@@ -99,6 +117,9 @@ const toInput = (values: FormValues): BillOrIncomeInput => {
     endDate: noSchedule || values.endDate === "" ? null : values.endDate,
     description: values.description.trim(),
     categoryId: values.categoryId === "" ? null : values.categoryId,
+    dueDate: tracksDue(values) ? values.dueDate : null,
+    dueUnit: values.dueUnit,
+    dueInterval: parseInterval(values.dueInterval) ?? 1,
   };
 };
 
@@ -117,6 +138,12 @@ const whenOptions = [
 ] as const;
 
 // Read as a sentence beside "Every 1": "Every 1 months".
+const dueUnitOptions = [
+  { value: "month", label: "months" },
+  { value: "week", label: "weeks" },
+  { value: "year", label: "years" },
+];
+
 const unitOptions = [
   { value: "month", label: "months" },
   { value: "week", label: "weeks" },
@@ -215,6 +242,11 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           endDate: item.endDate ?? "",
           description: item.description,
           categoryId: item.categoryId ?? "",
+          // A server older than the app sends none of these.
+          hasDue: item.dueDate != null,
+          dueDate: item.dueDate ?? "",
+          dueUnit: item.dueUnit ?? "month",
+          dueInterval: String(item.dueInterval ?? 1),
         }
       : {
           name: "",
@@ -227,6 +259,10 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
           endDate: "",
           description: "",
           categoryId: "",
+          hasDue: false,
+          dueDate: "",
+          dueUnit: "month",
+          dueInterval: "1",
         },
   });
 
@@ -240,6 +276,24 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   const categoryChanged = item !== undefined && values.categoryId !== (item.categoryId ?? "");
   // Neither has a number of weeks or months to ask for.
   const noInterval = everyPeriod || noSchedule;
+
+  const showDue = canHaveDueDate(values.kind);
+  const dueInterval = parseInterval(values.dueInterval);
+  const dueText =
+    values.hasDue && dueInterval !== null && isLocalDate(values.dueDate)
+      ? describeDue({ unit: values.dueUnit, interval: dueInterval, date: values.dueDate, endDate: null })
+      : null;
+
+  /** Ticking the box starts from the item's own schedule, which is usually when it is due too. */
+  function chooseDue(checked: boolean) {
+    setValue("hasDue", checked, { shouldDirty: true });
+    if (!checked || values.dueDate !== "") return;
+    const ownUnit = values.recurrenceUnit;
+    const repeats = ownUnit === "week" || ownUnit === "month" || ownUnit === "year";
+    setValue("dueDate", repeats && isLocalDate(values.firstDueDate) ? values.firstDueDate : today);
+    setValue("dueUnit", repeats ? (ownUnit satisfies DueUnit) : "month");
+    setValue("dueInterval", repeats ? values.recurrenceInterval : "1");
+  }
 
   function chooseWhen(when: (typeof whenOptions)[number]["value"]) {
     if (when === "none" && !noSchedule) setScheduledUnit(values.recurrenceUnit);
@@ -290,7 +344,16 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
         setError("opening", { message: error.fields.openingCents });
       }
       setFormError(
-        applyApiError(error, setError, ["name", "recurrenceInterval", "firstDueDate", "endDate", "description", "categoryId"]),
+        applyApiError(error, setError, [
+          "name",
+          "recurrenceInterval",
+          "firstDueDate",
+          "endDate",
+          "description",
+          "categoryId",
+          "dueDate",
+          "dueInterval",
+        ]),
       );
     }
   });
@@ -385,12 +448,49 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
       {!noSchedule && (
         <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
           <TextField
-            label="First due date"
+            label="First date"
             type="date"
             error={errors.firstDueDate?.message}
             {...register("firstDueDate")}
           />
           <TextField label="Ends (optional)" type="date" error={errors.endDate?.message} {...register("endDate")} />
+        </div>
+      )}
+
+      {showDue && (
+        <div>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 shrink-0 accent-primary"
+              checked={values.hasDue}
+              onChange={(event) => chooseDue(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Track a due date</span>
+              <span className="block text-muted">
+                The pay period it falls in warns you when nothing tied to this is set to pay it by then.
+              </span>
+            </span>
+          </label>
+          {values.hasDue && (
+            <div className="mt-2">
+              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)]">
+                <TextField label="Due date" type="date" error={errors.dueDate?.message} {...register("dueDate")} />
+                <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-3 sm:contents">
+                  <TextField
+                    label="Every"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    error={errors.dueInterval?.message}
+                    {...register("dueInterval")}
+                  />
+                  <SelectField label="Repeats" options={dueUnitOptions} {...register("dueUnit")} />
+                </div>
+              </div>
+              {dueText && <p className="mt-1.5 text-sm text-muted">{dueText}</p>}
+            </div>
+          )}
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PeriodCategoryLimit } from "./categories.ts";
 import { isLocalDate, type LocalDate } from "./dates.ts";
+import type { DueNotice } from "./dueDates.ts";
 import { SCHEDULE_TYPES, type ScheduleType } from "./schedule.ts";
 import type { Transaction } from "./transactions.ts";
 
@@ -78,6 +79,8 @@ export type PeriodView = {
   transactions: Transaction[];
   /** This period's limits, by category name, with what has been spent against each. */
   categoryLimits: PeriodCategoryLimit[];
+  /** Days in this period a bill or transfer is due with nothing set to pay it by then, by date. */
+  dueNotices: DueNotice[];
   nav: {
     prevId: string | null;
     /** With no previous period: whether one may be added before this one (as far back as MAX_HISTORY_YEARS). */

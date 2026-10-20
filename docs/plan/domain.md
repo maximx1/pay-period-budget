@@ -372,7 +372,8 @@ effect on starting amounts as creating them one at a time.
 
 Fields: `id`, `userId`, `name`, `description`, `kind` (`expense` | `income` | `transfer`),
 `openingCents` (signed; non-zero only for a transfer), `defaultAmountCents` (positive; 0 only with no schedule), `recurrenceUnit` (`week` | `month` | `year` | `period` | `none`),
-`recurrenceInterval` (≥ 1), `firstDueDate`, `endDate` (nullable).
+`recurrenceInterval` (≥ 1), `firstDueDate`, `endDate` (nullable), and a due date:
+`dueDate` (nullable), `dueUnit` (`week` | `month` | `year`), `dueInterval` (≥ 1).
 
 ### Recurrence
 
@@ -422,6 +423,33 @@ the budget; money brought back is money in. Both are ordinary transactions tied 
   its balance is there at once.
 - A bill or an income also accepts transactions in either direction (a refund tied to a
   bill), and its paid total is their net; it simply has no balance.
+
+### Due dates
+
+When a bill is normally due is separate from when its payment is scheduled: a card due on
+the 20th may be paid on payday, or as it happens. `dueDate` is one day it is due; it
+repeats every `dueInterval` `dueUnit`s from there, with the same maths as a schedule
+(counted from `dueDate`, so the 31st falls back to a short month's last day). Null means
+no due date, and then the unit and interval mean nothing. Decided 2026-10-20 (decision 16).
+
+- **Only a bill or a transfer** has one (`canHaveDueDate`: its own entries are money out).
+  An income with a due date is a field error on `dueDate`, on create and after an edit is
+  merged, so turning a bill into an income must send `dueDate: null` with it.
+- Nothing is due before `dueDate` or after the item's `endDate`.
+- **Covered.** A due date D, with D′ the day it was due before (one step back from D, even
+  when D is the first), is covered by any transaction tied to the item, in its own direction
+  (money out), paid or upcoming, whatever the amount, dated after D′ and on or before D.
+  It may sit in another period. A refund or money brought back from a transfer pays nothing.
+- **Late.** When D is not covered, the first such transaction dated after D and before the
+  next due date is reported as late. It still covers that next due date too: a payment is
+  not matched to one due date, only looked for in each cycle. (So paying on the 25th for a
+  bill due on the 20th warns once, then reads as paying early for the next month.)
+- **Notices.** `PeriodView.dueNotices` lists every due date inside the period that is not
+  covered, by date and then name, with `lateDate` or null. They are worked out on read
+  (`dueNoticesIn`); nothing is stored. The wording is `dueNoticeMessage` in
+  `src/shared/dueDates.ts`, past tense once the day has gone by. The home screen shows them
+  above the category-limit warnings; the MCP period report has a `DUE:` line for each.
+- Setting, changing or removing a due date moves no money and generates nothing.
 
 ### Turning occurrences into transactions
 
@@ -485,6 +513,7 @@ transactions       id, user_id → users, name, amount_cents, occurs_at, status,
 bills_income       id, user_id → users, name, description, kind, opening_cents, default_amount_cents,
                    recurrence_unit, recurrence_interval, first_due_date, end_date,
                    category_id → categories (set null),
+                   due_date (null = none), due_unit, due_interval,
                    created_at, updated_at
 categories         id, user_id → users, name, default_limit_cents (null = none),
                    created_at, updated_at
@@ -568,7 +597,7 @@ DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
 GET    /api/bills-income
-POST   /api/bills-income                  may carry categoryId
+POST   /api/bills-income                  may carry categoryId, and dueDate, dueUnit, dueInterval
 POST   /api/bills-income/preview          what creating this item would add, without saving
 GET    /api/bills-income/:id/transactions ?limit= (30, at most 100) &before=<nextCursor> → { transactions (newest first), nextCursor, totals }
                                            totals: { count, paidCents, upcomingCents (signed nets), paidOutCents, paidInCents (positive), balanceCents (a transfer's; else null) }
@@ -595,6 +624,7 @@ GET    /api/reports?from=&to=          → Report (src/shared/reports.ts): the p
   totals: { paidCents, upcomingCents, leftoverCents, projectedCents },
   transactions: Transaction[],          // ordered; empty until phase 4
   categoryLimits: Array<{ categoryId, name, limitCents, spentCents, paidSpentCents }>,   // by name
+  dueNotices: Array<{ billIncomeId, name, dueDate, lateDate }>,   // uncovered due dates in it, by date
   nav: { prevId: string | null, canAddPrevious: boolean, nextId: string | null, nextDate: LocalDate | null },
 }
 ```

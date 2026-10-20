@@ -2,6 +2,7 @@
 // dollars and as the integer cents the API uses, so nothing has to be converted by eye.
 import type { PeriodView } from "../src/shared/budget.ts";
 import { type Category, overLimitMessage, type PeriodCategoryLimit } from "../src/shared/categories.ts";
+import type { DueNotice } from "../src/shared/dueDates.ts";
 import { formatCents } from "../src/shared/money.ts";
 import { type BillOrIncome, entryKindOf } from "../src/shared/billsIncome.ts";
 import type { Report } from "../src/shared/reports.ts";
@@ -63,7 +64,16 @@ export function limitLines(limits: PeriodCategoryLimit[]): string[] {
   ];
 }
 
-export function periodReport({ period, totals, transactions, categoryLimits }: PeriodView): string {
+/** A line for each day in the period a bill is due with nothing set to pay it by then. */
+export function dueLines(notices: DueNotice[]): string[] {
+  return notices.map(
+    ({ name, dueDate, lateDate, billIncomeId }) =>
+      `DUE: ${name} is due ${dueDate} and nothing tied to it is dated on or before then` +
+      `${lateDate ? `; its next payment is dated ${lateDate}, after it is due` : ""} | bill or income ${billIncomeId}`,
+  );
+}
+
+export function periodReport({ period, totals, transactions, categoryLimits, dueNotices }: PeriodView): string {
   const flags = [
     period.isCurrent && "the current period",
     period.seq < 0 && "before the budget began",
@@ -83,6 +93,8 @@ export function periodReport({ period, totals, transactions, categoryLimits }: P
     `Projected leftover (starting + paid + upcoming): ${money(totals.projectedCents)}`,
     "",
     ...limitLines(categoryLimits),
+    // An older server sends none.
+    ...(dueNotices?.length ? ["", ...dueLines(dueNotices)] : []),
     "",
     `${plural(transactions.length, "transaction")}:`,
     transactionList(transactions),
@@ -100,9 +112,11 @@ export function billOrIncomeLine(item: BillOrIncome): string {
     item.recurrenceUnit === "none" ? "No schedule" : item.scheduleText,
     ...(item.recurrenceUnit === "none" ? [] : [`first due ${item.firstDueDate}`]),
     ...(item.kind === "transfer" && item.openingCents !== 0 ? [`starting balance ${money(item.openingCents)}`] : []),
+    ...(item.dueText ? [`${item.dueText} (dueDate ${item.dueDate}, every ${item.dueInterval} ${item.dueUnit})`] : []),
     ...(item.endDate ? [`ends ${item.endDate}`] : []),
     ...(item.categoryId ? [`category ${item.categoryId}`] : []),
     ...(item.archived ? ["archived"] : item.nextDueDate ? [`next due ${item.nextDueDate}`] : []),
+    ...(item.nextDueBy ? [`next due by ${item.nextDueBy}`] : []),
     ...(item.description ? [`description: ${item.description}`] : []),
     `id ${item.id}`,
   ].join(" | ");

@@ -22,6 +22,10 @@ type TransactionSectionProps = {
   onReorder: (occursAt: LocalDateTime, orderedIds: string[]) => void;
   /** A day to point out, when the user arrived by searching for a date. */
   highlightDay?: LocalDate | null;
+  /** While a filter hides some rows: how many there are in all. The header then says "3 of 11". */
+  totalCount?: number;
+  /** False hides Reorder: with rows hidden, it would be unclear where one moves to. */
+  reorderable?: boolean;
 };
 
 function groupByDay(transactions: Transaction[]): Array<[LocalDate, Transaction[]]> {
@@ -45,6 +49,8 @@ export function TransactionSection({
   onEdit,
   onReorder,
   highlightDay,
+  totalCount,
+  reorderable = true,
 }: TransactionSectionProps) {
   const headingId = useId();
   const categories = useCategories();
@@ -57,7 +63,9 @@ export function TransactionSection({
       <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
         <h3 id={headingId} className="font-semibold text-fg">
           {title}
-          <span className="ml-2 text-sm font-normal text-muted">{transactions.length}</span>
+          <span className="ml-2 text-sm font-normal text-muted">
+            {totalCount === undefined ? transactions.length : `${transactions.length} of ${totalCount}`}
+          </span>
         </h3>
         <p className="font-semibold text-fg tabular-nums">{formatCents(totalCents, { showPlus: true })}</p>
       </header>
@@ -69,7 +77,7 @@ export function TransactionSection({
           {groupByDay(newestFirst(transactions)).map(([day, items]) => {
             // Order can only be chosen among rows at exactly the same date and time.
             const sameMoment = (occursAt: LocalDateTime) => items.filter((item) => item.occursAt === occursAt);
-            const canReorder = items.some((item) => sameMoment(item.occursAt).length > 1);
+            const canReorder = reorderable && items.some((item) => sameMoment(item.occursAt).length > 1);
             const reordering = canReorder && reorderingDay === day;
 
             return (

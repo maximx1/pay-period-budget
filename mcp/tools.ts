@@ -125,6 +125,12 @@ const KIND_RULE =
 const OPENING_RULE =
   "Only for a transfer: what the other account held before its first transaction in the budget, in whole cents. " +
   "Negative for money owed, such as a loan. It moves no money in any pay period; it only sets where the balance starts.";
+const DUE_DATE_RULE =
+  "YYYY-MM-DD, or null for none. Only for a bill or a transfer: a day it is normally due, apart from when its " +
+  "payment is scheduled. It repeats every dueInterval dueUnit from there. A pay period that contains a due date " +
+  "warns when nothing tied to the item (money out, paid or upcoming) is dated after the due date before it and on " +
+  "or before this one.";
+const DUE_UNIT_RULE = '"week", "month" (the default) or "year": how often the due date comes around.';
 const UNIT_RULE =
   '"week", "month" or "year" repeat every `recurrenceInterval` of those from `firstDueDate`; "period" is once every ' +
   'pay period, on its first day (a paycheck); "none" is no schedule at all: nothing is ever added by itself, and the ' +
@@ -535,6 +541,9 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         categoryId: billOrIncomeFields.categoryId.describe(
           `${CATEGORY_ID_RULE} Every entry the item adds, and every transaction tied to it without a category of its own, is filed under it.`,
         ),
+        dueDate: billOrIncomeFields.dueDate.describe(DUE_DATE_RULE),
+        dueUnit: billOrIncomeFields.dueUnit.describe(DUE_UNIT_RULE),
+        dueInterval: billOrIncomeFields.dueInterval.describe("Every this many weeks, months or years. Defaults to 1."),
         dryRun: z.boolean().default(true).describe("True (the default) reports without saving. False saves."),
       },
       readOnly: false,
@@ -576,6 +585,9 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         categoryId: billOrIncomePatchFields.categoryId.describe(
           `${CATEGORY_ID_RULE} What it adds from now on is filed under it; null takes its category away.`,
         ),
+        dueDate: billOrIncomePatchFields.dueDate.describe(DUE_DATE_RULE),
+        dueUnit: billOrIncomePatchFields.dueUnit.describe(DUE_UNIT_RULE),
+        dueInterval: billOrIncomePatchFields.dueInterval.describe("Every this many weeks, months or years."),
         applyToTransactions: billOrIncomePatchFields.applyToTransactions.describe(
           "True also files every transaction already tied to this item under its category (or under none, if it has " +
             "none), replacing whatever category each of them had. Ask the owner before using it.",

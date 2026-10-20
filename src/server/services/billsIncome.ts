@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { dateOf, type LocalDate } from "../../shared/dates.ts";
+import { describeDue, nextDueOn } from "../../shared/dueDates.ts";
 import { describeRecurrence, nextOccurrence } from "../../shared/recurrence.ts";
 import {
   AMOUNT_NEEDED_MESSAGE,
+  canHaveDueDate,
+  DUE_ONLY_FOR_MONEY_OUT_MESSAGE,
   END_BEFORE_START_MESSAGE,
   OPENING_ONLY_FOR_TRANSFER_MESSAGE,
   type BillOrIncomeInput,
@@ -16,6 +19,7 @@ import {
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, BillOrIncomeRecord, Repos } from "../repos/types.ts";
 import { NO_SUCH_CATEGORY } from "./billIncomeLinks.ts";
+import { dueRuleOf } from "./dueNotices.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import { materializeInPeriod, ruleOf } from "./materialize.ts";
 import type { PeriodService } from "./periods.ts";
@@ -27,6 +31,7 @@ const notFound = () => new AppError(404, "not_found", "No such bill or income");
 
 function toItem(record: BillOrIncomeRecord, today: LocalDate): BillOrIncome {
   const rule = ruleOf(record);
+  const due = dueRuleOf(record);
   const archived = record.endDate !== null && record.endDate < today;
   return {
     id: record.id,
@@ -40,6 +45,11 @@ function toItem(record: BillOrIncomeRecord, today: LocalDate): BillOrIncome {
     firstDueDate: record.firstDueDate,
     endDate: record.endDate,
     categoryId: record.categoryId,
+    dueDate: record.dueDate,
+    dueUnit: record.dueUnit,
+    dueInterval: record.dueInterval,
+    dueText: due && describeDue(due),
+    nextDueBy: due && !archived ? nextDueOn(due, today) : null,
     archived,
     nextDueDate: archived ? null : nextOccurrence(rule, today),
     scheduleText: describeRecurrence(rule),
@@ -63,6 +73,9 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
     firstDueDate: input.firstDueDate ?? today,
     endDate: input.endDate,
     categoryId: input.categoryId,
+    dueDate: input.dueDate,
+    dueUnit: input.dueUnit,
+    dueInterval: input.dueInterval,
     createdAt,
     updatedAt: createdAt,
   });
@@ -151,6 +164,13 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
         if (after.kind !== "transfer" && after.openingCents !== 0) {
           throw new AppError(400, "validation", "Some fields need attention", {
             openingCents: OPENING_ONLY_FOR_TRANSFER_MESSAGE,
+          });
+        }
+
+        // So does a due date: it belongs to something paid out. Turning a bill into an income gives it up.
+        if (after.dueDate !== null && !canHaveDueDate(after.kind)) {
+          throw new AppError(400, "validation", "Some fields need attention", {
+            dueDate: DUE_ONLY_FOR_MONEY_OUT_MESSAGE,
           });
         }
 

@@ -293,6 +293,9 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
           recurrenceInterval: 1,
           endDate: null,
           categoryId: null,
+          dueDate: null,
+          dueUnit: "month",
+          dueInterval: 1,
         });
         tiedTo = item.id;
         // Made now, so a save that fails below doesn't make it twice when tried again.

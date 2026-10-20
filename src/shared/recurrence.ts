@@ -86,6 +86,25 @@ export function nextOccurrence(rule: Recurrence, onOrAfter: LocalDate): LocalDat
   return endDate !== null && date > endDate ? null : date;
 }
 
+/**
+ * The occurrences either side of `date`, which must be one of the rule's own (week, month
+ * or year): the one a step before it, even when `date` is the first, and the one a step
+ * after, even past the end date. Counted from the first due date like every occurrence,
+ * so the 31st of a month has Feb 28 before Mar 31.
+ */
+export function neighbouringOccurrences(
+  unit: DateUnit,
+  interval: number,
+  firstDueDate: LocalDate,
+  date: LocalDate,
+): { previous: LocalDate; next: LocalDate } {
+  const k = firstIndexOnOrAfter(unit, interval, firstDueDate, date);
+  return {
+    previous: occurrenceAt(unit, interval, firstDueDate, k - 1),
+    next: occurrenceAt(unit, interval, firstDueDate, k + 1),
+  };
+}
+
 function ordinal(n: number): string {
   const lastTwo = n % 100;
   const suffix = lastTwo >= 11 && lastTwo <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");

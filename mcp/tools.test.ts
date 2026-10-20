@@ -583,6 +583,30 @@ describe("categories and limits", () => {
     expect(after).not.toContain("OVER");
   });
 
+  it("sets a due date and reports a period with nothing set to pay it", async () => {
+    const added = await call("create_bill_or_income", {
+      name: "Visa",
+      kind: "expense",
+      defaultAmountCents: 0,
+      recurrenceUnit: "none",
+      dueDate: "2026-01-20",
+      dryRun: false,
+    });
+    expect(added).toContain("| Due every month on the 20th (dueDate 2026-01-20, every 1 month) |");
+    expect(added).toContain("| next due by 2026-01-20 |");
+    const id = /\| id ([\w-]+)$/m.exec(added)![1]!;
+
+    expect(await call("get_period")).toContain(
+      `DUE: Visa is due 2026-01-20 and nothing tied to it is dated on or before then | bill or income ${id}`,
+    );
+    await call("create_transaction", row("2026-01-22", { billIncomeId: id }));
+    expect(await call("get_period")).toContain(
+      "DUE: Visa is due 2026-01-20 and nothing tied to it is dated on or before then; its next payment is dated 2026-01-22, after it is due",
+    );
+    await call("create_transaction", row("2026-01-19", { billIncomeId: id }));
+    expect(await call("get_period")).not.toContain("DUE:");
+  });
+
   it("gives a past period a limit, changes it and takes it away", async () => {
     const id = idIn(await call("create_category", { name: "Groceries", defaultLimitCents: 20_000, applyToPeriods: true }));
     const past = await periodId("2025-12-20");

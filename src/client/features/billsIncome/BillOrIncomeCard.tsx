@@ -81,6 +81,7 @@ export function BillOrIncomeCard({ item, categoryName, onOpen, onEdit }: BillOrI
             {item.scheduleText}
             {categoryName && ` · ${categoryName}`}
           </p>
+          {item.dueText && <p className="text-sm text-muted">{item.dueText}</p>}
         </div>
         <IconButton label={`Edit ${item.name}`} onClick={onEdit} className="relative z-10 -mt-2 -mr-2">
           <Pencil className="size-5" aria-hidden />
@@ -94,9 +95,10 @@ export function BillOrIncomeCard({ item, categoryName, onOpen, onEdit }: BillOrI
         </p>
       )}
 
-      {(item.nextDueDate || item.archived) && (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+      {(item.nextDueDate || item.nextDueBy || item.archived) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
           {item.nextDueDate && <span>Next: {formatDay(item.nextDueDate)}</span>}
+          {item.nextDueBy && <span>Due: {formatDay(item.nextDueBy)}</span>}
           {item.archived && (
             <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-xs font-semibold tracking-wide uppercase">
               Archived

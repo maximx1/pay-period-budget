@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
 import { BILL_OR_INCOME_KINDS } from "../../shared/billsIncome.ts";
+import { DUE_UNITS } from "../../shared/dueDates.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
 import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
@@ -204,6 +205,10 @@ export const billsIncome = sqliteTable(
     endDate: text("end_date"),
     /** What its entries are filed under as they are added. Cleared if that category is deleted. */
     categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /** A day it is normally due, repeating every due_interval due_units. Null: none. */
+    dueDate: text("due_date"),
+    dueUnit: text("due_unit", { enum: DUE_UNITS }).notNull().default("month"),
+    dueInterval: integer("due_interval").notNull().default(1),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

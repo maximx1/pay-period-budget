@@ -5,6 +5,7 @@
 import type { ApiTokenScope } from "../../shared/auth.ts";
 import type { BillOrIncomeKind } from "../../shared/billsIncome.ts";
 import type { LocalDate, LocalDateTime } from "../../shared/dates.ts";
+import type { DueUnit } from "../../shared/dueDates.ts";
 import type { RecurrenceUnit } from "../../shared/recurrence.ts";
 import type { ScheduleType } from "../../shared/schedule.ts";
 import type { TransactionKind, TransactionStatus } from "../../shared/transactions.ts";
@@ -256,6 +257,13 @@ export interface TransactionRepo {
    * tied to it by hand: those are the user's own entries.
    */
   listUpcomingForBillOrIncomeAfter(userId: string, billIncomeId: string, date: LocalDate): Promise<TransactionRecord[]>;
+  /** The transactions tied to any of these bills and income, dated `from` through `to` inclusive, oldest first. */
+  listForBillsIncomeInRange(
+    userId: string,
+    billIncomeIds: string[],
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<TransactionRecord[]>;
   /**
    * Files every transaction tied to a bill or income under this category (null: under
    * none). Returns how many were filed differently before.
@@ -291,6 +299,10 @@ export type BillOrIncomeRecord = {
   endDate: LocalDate | null;
   /** The category its entries are filed under as they are added, or null. */
   categoryId: string | null;
+  /** A day it is normally due, repeating every `dueInterval` `dueUnit`s; null for none. */
+  dueDate: LocalDate | null;
+  dueUnit: DueUnit;
+  dueInterval: number;
   createdAt: Date;
   updatedAt: Date;
 };

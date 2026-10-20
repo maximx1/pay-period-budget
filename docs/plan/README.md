@@ -53,6 +53,7 @@ different app.
 | [22](phase-22-advice.md) | Advice: an optional side-panel section of set questions, each answered in a few lines by an OpenAI-compatible model from figures the server works out; a voice chosen per account | Built 2026-10-16, off by default (`ADVICE_ENABLED`). Not yet tried with a real model. Adds migration `0011` | n/a |
 | [23](phase-23-category-move.md) | Moving everything under a category to another, optionally deleting it after (a merge); Delete can send its items somewhere | Built 2026-10-16. Not yet deployed. Rebuild the MCP file with it | n/a |
 | [24](phase-24-report-additions.md) | Reports: "Year to date" span, and a cash-flow (Sankey) chart of where the money came from and went | Year to date on `main` 2026-10-16; the chart built 2026-10-16. Neither deployed | n/a |
+| [25](phase-25-due-dates.md) | Due dates on recurring items: when a bill or transfer is normally due (every n weeks, months or years), and a warning on the pay period it falls in when nothing is set to pay it by then | Built 2026-10-20. Not yet deployed; adds migration `0012`. Rebuild the MCP file and the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -249,3 +250,10 @@ unless marked otherwise.
     decision 13, and so do the server's error messages and the MCP server's text, which an
     assistant reads. Some recurring items have no schedule; the page subtitle ("on a
     schedule or as it happens") says so.
+16. **A due date is separate from the schedule** (decided 2026-10-20 on the owner's request,
+    the details assumed and open to change). A bill or transfer may say when it is normally
+    due, repeating every n weeks, months or years, apart from when its payment is scheduled.
+    The pay period a due date falls in warns when nothing tied to the item is dated in the
+    cycle up to it, and names the payment when it comes after. Amounts are not compared.
+    The schedule's own date field is now labelled "First date", so that "due date" means
+    only this. See "Due dates" in `domain.md` and `phase-25-due-dates.md`.

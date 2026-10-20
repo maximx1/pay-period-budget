@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { localDateSchema } from "./budget.ts";
 import type { LocalDate } from "./dates.ts";
+import { DUE_UNITS, type DueUnit } from "./dueDates.ts";
 import { RECURRENCE_UNITS, type RecurrenceUnit } from "./recurrence.ts";
 import { MAX_TRANSACTION_CENTS, type Transaction, type TransactionKind } from "./transactions.ts";
 
@@ -25,6 +26,10 @@ export const MAX_OPENING_CENTS = 1_000_000_000; // $10,000,000.00
 export const OPENING_ONLY_FOR_TRANSFER_MESSAGE = "Only a transfer has a starting balance";
 export const AMOUNT_NEEDED_MESSAGE = "Enter an amount greater than zero";
 export const FIRST_DUE_NEEDED_MESSAGE = "Enter the first due date";
+export const DUE_ONLY_FOR_MONEY_OUT_MESSAGE = "Only a bill or a transfer has a due date";
+
+/** Whether an item of this kind may have a due date: one whose own entries are money out. */
+export const canHaveDueDate = (kind: BillOrIncomeKind): boolean => entryKindOf(kind) === "expense";
 
 // Plain field rules, shared by the create and patch schemas below. Defaults live only on
 // the create schema: a patch must never fill in a field the caller didn't send.
@@ -60,6 +65,17 @@ const fields = {
   endDate: localDateSchema.nullable(),
   /** The category its entries are filed under as they are added. */
   categoryId: z.string().min(1).max(100).nullable(),
+  /**
+   * A day it is normally due, apart from when its payment is scheduled; it repeats every
+   * `dueInterval` `dueUnit`s from there. Null: no due date. Only a bill or a transfer.
+   */
+  dueDate: localDateSchema.nullable(),
+  dueUnit: z.enum(DUE_UNITS),
+  dueInterval: z
+    .number("Enter a number")
+    .int("Enter a whole number")
+    .min(1, "Must be at least 1")
+    .max(MAX_RECURRENCE_INTERVAL, `Must be ${MAX_RECURRENCE_INTERVAL} or less`),
 };
 
 export const END_BEFORE_START_MESSAGE = "Must be on or after the first due date";
@@ -74,6 +90,9 @@ export const billOrIncomeInputSchema = z
     firstDueDate: fields.firstDueDate.optional(),
     endDate: fields.endDate.default(null),
     categoryId: fields.categoryId.default(null),
+    dueDate: fields.dueDate.default(null),
+    dueUnit: fields.dueUnit.default("month"),
+    dueInterval: fields.dueInterval.default(1),
   })
   .refine((item) => item.recurrenceUnit === "none" || item.firstDueDate !== undefined, {
     path: ["firstDueDate"],
@@ -90,6 +109,10 @@ export const billOrIncomeInputSchema = z
   .refine((item) => item.kind === "transfer" || item.openingCents === 0, {
     path: ["openingCents"],
     message: OPENING_ONLY_FOR_TRANSFER_MESSAGE,
+  })
+  .refine((item) => item.dueDate === null || canHaveDueDate(item.kind), {
+    path: ["dueDate"],
+    message: DUE_ONLY_FOR_MONEY_OUT_MESSAGE,
   });
 export type BillOrIncomeInput = z.output<typeof billOrIncomeInputSchema>;
 
@@ -107,6 +130,10 @@ export const billOrIncomePatchSchema = z
     endDate: fields.endDate.optional(),
     /** Null takes its category away. Entries it adds from then on follow; existing ones do not. */
     categoryId: fields.categoryId.optional(),
+    /** Null takes the due date away. */
+    dueDate: fields.dueDate.optional(),
+    dueUnit: fields.dueUnit.optional(),
+    dueInterval: fields.dueInterval.optional(),
     /**
      * Also file every transaction already tied to it under its category (or under none),
      * replacing whatever category each had.
@@ -137,6 +164,14 @@ export type BillOrIncome = {
   endDate: LocalDate | null;
   /** The category its entries are filed under as they are added, or null. */
   categoryId: string | null;
+  /** A day it is normally due, which repeats; null for none. See `dueText`. */
+  dueDate: LocalDate | null;
+  dueUnit: DueUnit;
+  dueInterval: number;
+  /** The due date in words, e.g. "Due every month on the 20th"; null without one. */
+  dueText: string | null;
+  /** The next day it is due from today on; null without a due date, or once archived. */
+  nextDueBy: LocalDate | null;
   /** Its end date has passed; it produces nothing further. */
   archived: boolean;
   /** Next occurrence from today on, when it can be known ahead of time. */

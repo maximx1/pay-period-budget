@@ -14,6 +14,7 @@ import { earliestSeq, horizonSeq, MAX_HISTORY_YEARS, nominalPeriod } from "../..
 import { AppError } from "../lib/errors.ts";
 import { applyLeftoverDelta, markStaleAfter, projectedLeftover, recomputeChain, shiftHistory } from "./carry.ts";
 import { limitsWithSpending } from "./categoryLimits.ts";
+import { dueNoticesIn } from "./dueNotices.ts";
 import { planDateChange } from "./periodDates.ts";
 import { toTransaction } from "./transactionMapper.ts";
 import {
@@ -209,6 +210,7 @@ export function createPeriodService(deps: {
       },
       transactions: records.map(toTransaction),
       categoryLimits: await limitsWithSpending(repos, period, records),
+      dueNotices: await dueNoticesIn(repos, period),
       nav: {
         prevId: prev?.id ?? null,
         canAddPrevious,
