@@ -34,9 +34,11 @@ export function Dialog({ open, onClose, title, size = "md", children }: DialogPr
         "modal-sheet flex-col overflow-hidden bg-surface p-0 text-fg shadow-xl backdrop:bg-black/50 open:flex",
         "m-0 mt-auto w-full max-w-none rounded-t-2xl",
         "sm:m-auto sm:rounded-2xl",
+        // On a phone the sheet stops short of the status bar, which the Android app draws
+        // over the page: the close button under it could not be tapped.
         size === "full"
-          ? "h-[calc(100dvh-0.75rem)] max-h-none sm:h-[90dvh] sm:max-w-3xl"
-          : "max-h-[90dvh] sm:max-w-md",
+          ? "h-[calc(100dvh-0.75rem-env(safe-area-inset-top))] max-h-none sm:h-[90dvh] sm:max-w-3xl"
+          : "max-h-[min(90dvh,calc(100dvh-0.75rem-env(safe-area-inset-top)))] sm:max-w-md",
       )}
     >
       {open && (
