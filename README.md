@@ -214,6 +214,7 @@ token the server refused.
 | `get_budget` | Pay schedule, first period, opening balance, time zone, today's date there |
 | `list_periods` | Every pay period with its dates |
 | `get_period` | One period (by id, by date, or the current one): starting amount, totals, category limits with what has been spent against each, transactions |
+| `get_balance_outlook` | How each of the next few periods is set to end, and which the app warns about as low or below zero (Settings → Low balance warnings) |
 | `list_transactions` | Transactions between two dates, at most 366 days |
 | `search_transactions` | Transactions in any pay period by words in the name or note, by category, within dates, with what they add up to |
 | `get_report` | A span of pay periods added up: each period's income, expenses and leftover; money out by category and by bill; limits passed; the names most was spent under |

@@ -5,6 +5,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import type { AuthResponse } from "../src/shared/auth.ts";
 import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shared/budget.ts";
+import type { BalanceOutlook } from "../src/shared/outlook.ts";
 import type { Report } from "../src/shared/reports.ts";
 import {
   categoryInputSchema,
@@ -303,6 +304,30 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
           );
         }
         return periodReport(await api.get<PeriodView>(`/api/periods/${found.id}`));
+      },
+    }),
+
+    define({
+      name: "get_balance_outlook",
+      title: "Coming pay periods",
+      description:
+        "How each of the next few pay periods after the current one is set to end (its projected leftover), as far ahead " +
+        "as the owner's warning settings say, and which the app warns about: LOW below the owner's amount, BELOW ZERO " +
+        "under zero. Periods not created yet are left out, so the list can be shorter than the setting. Creates nothing.",
+      inputSchema: {},
+      readOnly: true,
+      async run() {
+        const { settings, periods } = await api.get<BalanceOutlook>("/api/periods/outlook");
+        if (settings.periodsAhead === 0) return "Low balance warnings are turned off in the app's settings.";
+        const marks = { ok: "", low: " | LOW", negative: " | BELOW ZERO" } as const;
+        return [
+          `Warning below ${money(settings.lowBalanceCents)}, looking ${plural(settings.periodsAhead, "pay period")} ahead:`,
+          ...periods.map(
+            (period) =>
+              `- ${period.startDate} to ${period.endDate} | ends with ${money(period.projectedCents)}` +
+              ` | id ${period.periodId}${marks[period.level]}`,
+          ),
+        ].join("\n");
       },
     }),
 

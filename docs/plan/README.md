@@ -54,6 +54,7 @@ different app.
 | [23](phase-23-category-move.md) | Moving everything under a category to another, optionally deleting it after (a merge); Delete can send its items somewhere | Built 2026-10-16. Not yet deployed. Rebuild the MCP file with it | n/a |
 | [24](phase-24-report-additions.md) | Reports: "Year to date" span, and a cash-flow (Sankey) chart of where the money came from and went | Year to date on `main` 2026-10-16; the chart built 2026-10-16. Neither deployed | n/a |
 | [25](phase-25-due-dates.md) | Due dates on recurring items: when a bill or transfer is normally due (every n weeks, months or years), and a warning on the pay period it falls in when nothing is set to pay it by then | Built 2026-10-20. Not yet deployed; adds migration `0012`. Rebuild the MCP file and the Android app with it | n/a |
+| [26](phase-26-low-balance.md) | Low balance warnings: the current period warns when one of the next few is set to end below an amount ($200 by default) or below zero; how far ahead (5 by default, up to 10, 0 for off) and the amount are set per account | Built 2026-10-20. Not yet deployed; adds migration `0013`. Rebuild the MCP file and the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -257,3 +258,10 @@ unless marked otherwise.
     cycle up to it, and names the payment when it comes after. Amounts are not compared.
     The schedule's own date field is now labelled "First date", so that "due date" means
     only this. See "Due dates" in `domain.md` and `phase-25-due-dates.md`.
+17. **Low balance warnings look ahead from today** (decided 2026-10-20 on the owner's
+    request: "a warning that a future period is getting close to being low ... and a more
+    emergency message that a future period is below 0", default $200 and five periods, up
+    to ten, 0 for off, per account; the rest assumed and open to change). The measure is
+    each period's projected leftover. Only periods that exist count: the owner asked for
+    ones not generated yet to be ignored rather than worked out. See "Low balance warnings" in `domain.md` and
+    `phase-26-low-balance.md`.

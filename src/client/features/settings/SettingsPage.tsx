@@ -7,6 +7,7 @@ import { AppLockSection } from "./AppLockSection.tsx";
 import { AppearanceSection } from "./AppearanceSection.tsx";
 import { BudgetSection } from "./BudgetSection.tsx";
 import { DevicesSection } from "./DevicesSection.tsx";
+import { LowBalanceSection } from "./LowBalanceSection.tsx";
 import { PasswordSection } from "./PasswordSection.tsx";
 import { Detail, SettingsSection } from "./SettingsSection.tsx";
 
@@ -24,6 +25,7 @@ export function SettingsPage() {
           </dl>
         </SettingsSection>
         <BudgetSection />
+        <LowBalanceSection />
         <AppearanceSection />
         <AdviceSection />
         {isNative && <AppLockSection />}

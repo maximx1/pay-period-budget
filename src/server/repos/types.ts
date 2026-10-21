@@ -87,6 +87,8 @@ export type SettingsRecord = {
   timezone: string;
   advicePersona: string | null;
   advicePersonaCustom: string | null;
+  lowBalanceCents: number;
+  lowBalancePeriods: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -96,6 +98,8 @@ export interface SettingsRepo {
   upsert(userId: string, values: { timezone: string }, now: Date): Promise<void>;
   /** Changes the voice Advice answers in. Returns false when the user has no settings yet. */
   setAdvicePersona(userId: string, persona: { persona: string; custom: string | null }, now: Date): Promise<boolean>;
+  /** Changes when coming periods are warned about. Returns false when the user has no settings yet. */
+  setLowBalance(userId: string, values: { lowBalanceCents: number; lowBalancePeriods: number }, now: Date): Promise<boolean>;
 }
 
 export type ScheduleRecord = {

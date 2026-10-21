@@ -22,6 +22,7 @@ import { IMPORT_PATH, SCAN_PATH, transactionRoutes } from "./routes/transactions
 import { createAuthService } from "./services/auth.ts";
 import { createImportService } from "./services/import.ts";
 import { materializeAllInPeriod } from "./services/materialize.ts";
+import { createOutlookService } from "./services/outlook.ts";
 import { createPeriodService } from "./services/periods.ts";
 import { createReportService } from "./services/reports.ts";
 import { createScanService } from "./services/scan.ts";
@@ -61,6 +62,7 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
       if (how === "forward") await addUsualLimits(repos, period, clock());
     },
   });
+  const outlook = createOutlookService({ store, periods, now });
   const transactions = createTransactionService({ store, periods, now });
   const imports = createImportService({ store, periods, now });
   const billsIncome = createBillsIncomeService({ store, periods, now });
@@ -104,12 +106,12 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   api.route("/auth", authRoutes({ auth, config, now }));
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));
-  api.route("/periods", periodRoutes({ periods, authed }));
+  api.route("/periods", periodRoutes({ periods, outlook, authed }));
   api.route("/transactions", transactionRoutes({ transactions, imports, scans, authed }));
   api.route("/bills-income", billsIncomeRoutes({ billsIncome, authed }));
   api.route("/categories", categoryRoutes({ categories, authed }));
   api.route("/reports", reportRoutes({ reports, authed }));
-  api.route("/settings", settingsRoutes({ periods, authed }));
+  api.route("/settings", settingsRoutes({ periods, outlook, authed }));
   api.route("/advice", adviceRoutes({ advice, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");

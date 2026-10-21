@@ -229,6 +229,28 @@ See decision 1 in `README.md`; the rules below assume the default.
   Apply the leftover deltas for those that changed period.
 - Ungenerated future periods are unaffected because generation uses nominal ends.
 
+### Low balance warnings
+
+Decided 2026-10-20 (decision 17). The current period warns about the pay periods after it
+that are set to end low: a period's **projected leftover** (its "Balance at end of
+period") below the user's amount is *low*, and below zero is *negative*, the urgent one.
+Exactly the amount is not low; exactly zero is low, not negative.
+
+- **Per user**, in `user_settings`: `low_balance_cents` (default 20000, $200.00; 0 warns only
+  below zero) and `low_balance_periods`, how many periods after the current one to look at
+  (default 5, at most 10; 0 turns the warnings off). `PUT /api/settings/low-balance`.
+- **Which periods**: up to `low_balance_periods` periods after the one containing today.
+  The current period itself is not among them: its own card already shows how it ends.
+- **Only periods that exist count.** One not generated yet is left out, not worked out
+  from the schedules (decided 2026-10-20), so the warnings can cover fewer periods than the
+  setting until the user or a dated transaction has gone that far ahead. Each period
+  reports its projected leftover as stored and summed, a starting amount set by hand
+  included.
+- The outlook is worked out on read (`GET /api/periods/outlook`); nothing is stored and
+  nothing is created but the current period, which always exists. The home screen shows one
+  warning for each level, below zero first, on the current period only; the wording is
+  `outlookHeading` and `outlookLine`. The MCP tool `get_balance_outlook` reports the same.
+
 ## Transactions
 
 Fields: `id`, `userId`, `name`, `amountCents` (signed), `occursAt`, `status`
@@ -496,7 +518,8 @@ Deleting a bill or income keeps its past transactions (their `billIncomeId` beco
 Phases add these with migrations; column names follow the existing snake_case style.
 
 ```
-user_settings      user_id PK → users, timezone, created_at, updated_at
+user_settings      user_id PK → users, timezone, advice_persona, advice_persona_custom,
+                   low_balance_cents (20000), low_balance_periods (5), created_at, updated_at
 budget_schedules   id, user_id → users (unique for now), type, anchor_date,
                    opening_cents, created_at
 periods            id, user_id → users, schedule_id → budget_schedules, seq,
@@ -572,10 +595,12 @@ GET    /api/auth/tokens                API tokens, without their secrets → { t
 POST   /api/auth/tokens                { name, scope: "read" | "write", expiresInDays? } → { secret, token }; the secret is never shown again
 DELETE /api/auth/tokens/:id
 PATCH  /api/settings                   { timezone }
+PUT    /api/settings/low-balance       { lowBalanceCents (≥ 0), periodsAhead (0 to 10) } → { settings }
 GET    /api/budget                     → { budget | null }
 POST   /api/budget                     setup; 409 if one exists
 GET    /api/periods                    every existing period, oldest first → { periods }
 GET    /api/periods/current            ensures a period for today → PeriodView
+GET    /api/periods/outlook            the existing periods after the current one → { settings, periods: [{ periodId, startDate, endDate, projectedCents, level: "ok" | "low" | "negative" }] }; creates nothing
 POST   /api/periods/earlier            adds the period before the earliest → { periodId }
 GET    /api/periods/:id                → PeriodView
 POST   /api/periods/locate   { date }  ensures through date → { periodId }

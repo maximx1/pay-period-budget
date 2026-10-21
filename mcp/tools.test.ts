@@ -128,6 +128,22 @@ describe("reading the budget", () => {
     await expect(call("get_period", { id: "nope" })).rejects.toThrow("No such period");
   });
 
+  it("reports how the coming pay periods are set to end, and which are warned about", async () => {
+    await call("create_transaction", row("2026-01-20", { amountCents: 85_000 }));
+    await session.put("/api/settings/low-balance", { lowBalanceCents: 20_000, periodsAhead: 2 });
+    const next = await session.post("/api/periods/locate", { date: "2026-01-27" });
+    await call("create_transaction", row("2026-01-28", { amountCents: 20_000 }));
+
+    const text = await call("get_balance_outlook");
+    expect(text.split("\n")).toEqual([
+      "Warning below $200.00 (20000 cents), looking 2 pay periods ahead:",
+      `- 2026-01-27 to 2026-02-09 | ends with -$50.00 (-5000 cents) | id ${(await next.json()).periodId} | BELOW ZERO`,
+    ]);
+
+    await session.put("/api/settings/low-balance", { lowBalanceCents: 20_000, periodsAhead: 0 });
+    expect(await call("get_balance_outlook")).toBe("Low balance warnings are turned off in the app's settings.");
+  });
+
   it("lists transactions by date with their origin, and bills and income", async () => {
     const created = await session.post("/api/bills-income", {
       name: "Rent",
@@ -908,6 +924,7 @@ describe("over the protocol", () => {
       ["get_budget", true, false],
       ["list_periods", true, false],
       ["get_period", true, false],
+      ["get_balance_outlook", true, false],
       ["list_transactions", true, false],
       ["search_transactions", true, false],
       ["get_report", true, false],

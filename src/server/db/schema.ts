@@ -3,6 +3,7 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "driz
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
 import { BILL_OR_INCOME_KINDS } from "../../shared/billsIncome.ts";
 import { DUE_UNITS } from "../../shared/dueDates.ts";
+import { DEFAULT_LOW_BALANCE_CENTS, DEFAULT_PERIODS_AHEAD } from "../../shared/outlook.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
 import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
@@ -88,6 +89,10 @@ export const userSettings = sqliteTable("user_settings", {
   advicePersona: text("advice_persona"),
   /** With advicePersona "custom", who to answer as, in the owner's words. */
   advicePersonaCustom: text("advice_persona_custom"),
+  /** Warn when a coming period is set to end below this many cents. */
+  lowBalanceCents: integer("low_balance_cents").notNull().default(DEFAULT_LOW_BALANCE_CENTS),
+  /** How many periods after the current one the warnings look at; 0 is off. */
+  lowBalancePeriods: integer("low_balance_periods").notNull().default(DEFAULT_PERIODS_AHEAD),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });

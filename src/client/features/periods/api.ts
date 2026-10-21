@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LocateResponse, PeriodDatesResponse, PeriodListResponse, PeriodView } from "../../../shared/budget.ts";
+import type { BalanceOutlook } from "../../../shared/outlook.ts";
 import type { LocalDate } from "../../../shared/dates.ts";
 import { ApiError, api } from "../../lib/api.ts";
 
@@ -8,6 +9,8 @@ export const periodKeys = {
   all: ["period"] as const,
   current: ["period", "current"] as const,
   byId: (id: string) => ["period", id] as const,
+  /** Under the prefix, so every change to a period also refreshes the warnings about the coming ones. */
+  outlook: ["period", "outlook"] as const,
 };
 
 /** One period with its totals and navigation: the given one, or today's when `periodId` is omitted. */
@@ -22,6 +25,20 @@ export function usePeriodView(periodId: string | undefined) {
       return view;
     },
     // A 4xx (unknown period, no budget) won't improve on retry.
+    retry: (failures, error) => failures < 1 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
+  });
+}
+
+/**
+ * The periods after the current one and how each is set to end, as far ahead as the user's
+ * settings say. A server older than the app (the phone carries its own copy) has no such
+ * endpoint: that is an error, and the warnings simply don't show.
+ */
+export function useBalanceOutlook(enabled = true) {
+  return useQuery({
+    queryKey: periodKeys.outlook,
+    queryFn: () => api.get<BalanceOutlook>("/api/periods/outlook"),
+    enabled,
     retry: (failures, error) => failures < 1 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
   });
 }

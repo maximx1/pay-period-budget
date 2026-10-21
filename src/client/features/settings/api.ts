@@ -7,6 +7,7 @@ import type {
   SessionListResponse,
 } from "../../../shared/auth.ts";
 import type { BudgetResponse } from "../../../shared/budget.ts";
+import type { LowBalanceSettings, LowBalanceSettingsResponse } from "../../../shared/outlook.ts";
 import { api } from "../../lib/api.ts";
 import { BUDGET_QUERY_KEY } from "../budget/api.ts";
 import { periodKeys } from "../periods/api.ts";
@@ -91,5 +92,14 @@ export function useSetTimezone() {
       // "Today", and so which period is current, may have changed.
       return queryClient.invalidateQueries({ queryKey: periodKeys.all });
     },
+  });
+}
+
+/** When the home screen warns about a coming pay period. Read back from the outlook. */
+export function useSetLowBalance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: LowBalanceSettings) => api.put<LowBalanceSettingsResponse>("/api/settings/low-balance", settings),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodKeys.outlook }),
   });
 }

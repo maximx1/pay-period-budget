@@ -9,17 +9,22 @@ import {
   periodDatesSchema,
   startingAmountSchema,
 } from "../../shared/budget.ts";
+import type { BalanceOutlook } from "../../shared/outlook.ts";
 import { type AppEnv, parseJson } from "../http.ts";
+import type { OutlookService } from "../services/outlook.ts";
 import type { PeriodService } from "../services/periods.ts";
 
-export function periodRoutes(deps: { periods: PeriodService; authed: MiddlewareHandler<AppEnv> }) {
-  const { periods } = deps;
+export function periodRoutes(deps: { periods: PeriodService; outlook: OutlookService; authed: MiddlewareHandler<AppEnv> }) {
+  const { periods, outlook } = deps;
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
 
   routes.get("/", async (c) => c.json<PeriodListResponse>({ periods: await periods.list(c.var.user.id) }));
 
   routes.get("/current", async (c) => c.json<PeriodView>(await periods.getCurrent(c.var.user.id)));
+
+  // Before "/:id", which would otherwise take "outlook" for a period id.
+  routes.get("/outlook", async (c) => c.json<BalanceOutlook>(await outlook.get(c.var.user.id)));
 
   routes.post("/locate", async (c) => {
     const { date } = await parseJson(c, locateSchema);

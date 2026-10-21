@@ -19,8 +19,9 @@ import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 import { useSwipe } from "../../lib/useSwipe.ts";
 import { useBudget } from "../budget/api.ts";
 import { useCategories } from "../categories/api.ts";
-import { usePeriodView } from "../periods/api.ts";
+import { useBalanceOutlook, usePeriodView } from "../periods/api.ts";
 import { GoToDateDialog } from "../periods/GoToDateDialog.tsx";
+import { OutlookWarnings } from "../periods/OutlookWarnings.tsx";
 import { PeriodHeader } from "../periods/PeriodHeader.tsx";
 import { PeriodSettingsDialog } from "../periods/PeriodSettingsDialog.tsx";
 import { PeriodSummary } from "../periods/PeriodSummary.tsx";
@@ -172,6 +173,10 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
     message: dueNoticeMessage(notice, today),
   }));
 
+  // The coming periods set to end low or below zero, warned about on the current period only.
+  const outlook = useBalanceOutlook(view.period.isCurrent).data;
+  const outlookWarns = view.period.isCurrent && Boolean(outlook?.periods.some((period) => period.level !== "ok"));
+
   const filtering = isFiltering(filter);
   const categoryNames = new Map(categories.data?.map((category) => [category.id, category.name]));
   /** One section's rows as shown, with what to say about them. */
@@ -225,8 +230,9 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
               Nothing on {formatDay(soughtDay)}.
             </p>
           )}
-          {(overLimits.length > 0 || dueNotices.length > 0) && (
+          {(outlookWarns || overLimits.length > 0 || dueNotices.length > 0) && (
             <div className="mb-4 flex flex-col gap-2">
+              {outlookWarns && outlook && <OutlookWarnings outlook={outlook} />}
               {dueNotices.map(({ key, message }) => (
                 <Alert key={key} tone="warning">
                   {message}

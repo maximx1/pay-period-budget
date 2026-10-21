@@ -109,6 +109,7 @@ export function UiKitPage() {
         <div className="flex flex-col gap-3">
           <Alert>Something needs your attention.</Alert>
           <Alert tone="warning">You went over your budget for Groceries by $15.00 this period.</Alert>
+          <Alert tone="danger">A coming pay period is set to end below zero.</Alert>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => toast("Moved to Oct 16 – Oct 29, 2026")}>
               Show toast
