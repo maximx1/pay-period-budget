@@ -12,10 +12,12 @@ import {
   transactionSearchSchema,
 } from "../../shared/transactions.ts";
 import { MAX_SCAN_BYTES, type ScanResponse } from "../../shared/scan.ts";
+import { transactionSplitSchema, type TransactionSplitResponse } from "../../shared/split.ts";
 import { type AppEnv, parseJson, parseQuery } from "../http.ts";
 import { AppError } from "../lib/errors.ts";
 import type { ImportService } from "../services/import.ts";
 import type { ScanService } from "../services/scan.ts";
+import type { SplitService } from "../services/split.ts";
 import type { TransactionService } from "../services/transactions.ts";
 
 /** Where many transactions arrive in one request; app.ts allows this path a larger body. */
@@ -27,9 +29,10 @@ export function transactionRoutes(deps: {
   transactions: TransactionService;
   imports: ImportService;
   scans: ScanService;
+  splits: SplitService;
   authed: MiddlewareHandler<AppEnv>;
 }) {
-  const { transactions, imports, scans } = deps;
+  const { transactions, imports, scans, splits } = deps;
   const routes = new Hono<AppEnv>();
   routes.use(deps.authed);
 
@@ -63,6 +66,13 @@ export function transactionRoutes(deps: {
   routes.post("/import", async (c) => {
     const input = await parseJson(c, transactionImportSchema);
     return c.json<TransactionImportResponse>(await imports.importTransactions(c.var.user.id, input));
+  });
+
+  // Amounts due by dates, spread over the pay periods before them as one transaction per
+  // period. With `dryRun`, only says what it would make.
+  routes.post("/split", async (c) => {
+    const input = await parseJson(c, transactionSplitSchema);
+    return c.json<TransactionSplitResponse>(await splits.split(c.var.user.id, input));
   });
 
   // Registered before "/:id" routes so "order" is never taken for an id.

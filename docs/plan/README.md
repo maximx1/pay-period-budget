@@ -55,6 +55,7 @@ different app.
 | [24](phase-24-report-additions.md) | Reports: "Year to date" span, and a cash-flow (Sankey) chart of where the money came from and went | Year to date on `main` 2026-10-16; the chart built 2026-10-16. Neither deployed | n/a |
 | [25](phase-25-due-dates.md) | Due dates on recurring items: when a bill or transfer is normally due (every n weeks, months or years), and a warning on the pay period it falls in when nothing is set to pay it by then | Built 2026-10-20. Not yet deployed; adds migration `0012`. Rebuild the MCP file and the Android app with it | n/a |
 | [26](phase-26-low-balance.md) | Low balance warnings: the current period warns when one of the next few is set to end below an amount ($200 by default) or below zero; how far ahead (5 by default, up to 10, 0 for off) and the amount are set per account | Built 2026-10-20. Not yet deployed; adds migration `0013`. Rebuild the MCP file and the Android app with it | n/a |
+| [27](phase-27-split.md) | "Split it up" in the add dialog: amounts due by dates spread evenly over the pay periods before them, one transaction per period summing every item's share; payments more than a year ahead wait, with a home-screen reminder and a Split payments page | Built 2026-10-21. Not yet deployed; adds migration `0014`. Rebuild the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

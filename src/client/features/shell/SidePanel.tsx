@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { cn } from "../../lib/cn.ts";
 import { useAdviceEnabled, useCurrentUser, useLogout } from "../auth/session.ts";
+import { useWaitingSplits } from "../splits/api.ts";
 import { navItemForPath, navItems } from "./navItems.ts";
 
 const rowClass =
@@ -14,7 +15,11 @@ export function SidePanel({ onNavigate }: { onNavigate?: () => void }) {
   const logout = useLogout();
   const active = navItemForPath(useLocation().pathname);
   const adviceEnabled = useAdviceEnabled();
-  const shown = navItems.filter((item) => !item.advice || adviceEnabled);
+  const waiting = useWaitingSplits();
+  const anyWaiting = (waiting.data?.length ?? 0) > 0;
+  const shown = navItems.filter(
+    (item) => (!item.advice || adviceEnabled) && (!item.splits || anyWaiting || item === active),
+  );
 
   return (
     <div className="flex h-full w-full flex-col pl-[env(safe-area-inset-left)]">

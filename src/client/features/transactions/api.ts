@@ -1,5 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PeriodView } from "../../../shared/budget.ts";
+import type { TransactionSplitInput, TransactionSplitResponse } from "../../../shared/split.ts";
 import type {
   TransactionImportInput,
   TransactionImportResponse,
@@ -12,6 +13,7 @@ import { useToast } from "../../components/ui/Toaster.tsx";
 import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
 import { billsIncomeKeys } from "../billsIncome/api.ts";
+import { SPLITS_QUERY_KEY } from "../splits/api.ts";
 import { withOrder, withStatus } from "./optimistic.ts";
 
 // A transaction changes its own period's totals and the starting amount of every period
@@ -43,6 +45,33 @@ export function useImportTransactions() {
   return useMutation({
     mutationFn: (input: TransactionImportInput) => api.post<TransactionImportResponse>("/api/transactions/import", input),
     onSuccess: (_result, input) => (input.dryRun ? undefined : refresh()),
+  });
+}
+
+/**
+ * Amounts due by dates, spread over the pay periods before them: one transaction per
+ * period. What falls too far ahead waits under Split payments.
+ */
+export function useSplitTransaction() {
+  const refresh = useRefreshAfterChange();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TransactionSplitInput) => api.post<TransactionSplitResponse>("/api/transactions/split", input),
+    onSuccess: () => Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: SPLITS_QUERY_KEY })]),
+  });
+}
+
+/** The transactions a split would make, without making them. Pass null when there is nothing to work out. */
+export function useSplitPreview(input: Omit<TransactionSplitInput, "dryRun"> | null) {
+  return useQuery({
+    queryKey: ["split-preview", input],
+    queryFn: () => api.post<TransactionSplitResponse>("/api/transactions/split", { ...input, dryRun: true }),
+    enabled: input !== null,
+    // The last plan stays on screen while the next is worked out.
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
   });
 }
 

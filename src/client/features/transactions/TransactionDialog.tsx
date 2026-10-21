@@ -5,8 +5,9 @@ import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { z } from "zod";
 import type { PeriodView } from "../../../shared/budget.ts";
-import { atStartOfDay, dateOf, formatDateRange, formatDay, nowIn } from "../../../shared/dates.ts";
+import { atStartOfDay, dateOf, formatDateRange, formatDay, formatLongDate, isLocalDate, isLocalDateTime, nowIn } from "../../../shared/dates.ts";
 import { centsToInput, formatCents, parseMoneyInput } from "../../../shared/money.ts";
+import { laterTotal, MAX_SPLIT_LABEL, type TransactionSplitInput, type TransactionSplitResponse } from "../../../shared/split.ts";
 import {
   MAX_TRANSACTION_CENTS,
   type Transaction,
@@ -21,11 +22,13 @@ import { SelectField } from "../../components/ui/SelectField.tsx";
 import { TextField } from "../../components/ui/TextField.tsx";
 import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
+import { useDebouncedValue } from "../../lib/useDebouncedValue.ts";
 import { applyApiError } from "../auth/formErrors.ts";
 import { billOrIncomeDetailPath, useBillsIncome, useCreateBillOrIncome } from "../billsIncome/api.ts";
 import { useCategories, useCreateCategory } from "../categories/api.ts";
 import { ScreenshotPicker } from "../scan/ScreenshotPicker.tsx";
-import { useCreateTransaction, useDeleteTransaction, useUpdateTransaction } from "./api.ts";
+import { useCreateTransaction, useDeleteTransaction, useSplitPreview, useSplitTransaction, useUpdateTransaction } from "./api.ts";
+import { SplitItems, SplitPreview } from "./SplitFields.tsx";
 
 const parseAmount = (text: string) => {
   const cents = parseMoneyInput(text);
@@ -37,10 +40,25 @@ const NEW_CATEGORY = "__new__";
 /** In the Transfer list: make a new transfer, likewise. */
 const NEW_TRANSFER = "__new_transfer__";
 
+const AMOUNT_HINT = "Enter an amount like 27.50";
+
 // The server's rules for the fields it shares with this form, plus the form's own shapes
 // for the amount (typed as text) and the optional extras.
 const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursAt: true }).extend({
-  amount: z.string().refine((text) => parseAmount(text) !== null, "Enter an amount like 27.50"),
+  /** Splitting: several amounts with due dates instead of one amount. */
+  split: z.boolean(),
+  /** Used unless splitting. */
+  amount: z.string(),
+  /** Used when splitting: each amount, the date it is due by, and (with several) what it is. */
+  items: z.array(
+    z.object({
+      label: z.string().max(MAX_SPLIT_LABEL, `Keep it under ${MAX_SPLIT_LABEL} characters`),
+      amount: z.string(),
+      dueDate: z.string(),
+    }),
+  ),
+  /** When splitting: each item ends in the pay period before the one it is due in. */
+  finishEarly: z.boolean(),
   note: z.string().max(500, "Keep the note under 500 characters"),
   paid: z.boolean(),
   /** The bill or income it belongs to; empty for none. */
@@ -53,7 +71,17 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   newCategory: z.string(),
   /** The name of a transfer made as this is saved. */
   newTransfer: z.string(),
-}).superRefine(({ categoryId, newCategory, billIncomeId, newTransfer }, context) => {
+}).superRefine(({ split, amount, items, categoryId, newCategory, billIncomeId, newTransfer }, context) => {
+  if (!split && parseAmount(amount) === null) context.addIssue({ code: "custom", path: ["amount"], message: AMOUNT_HINT });
+  if (split) {
+    for (const [index, item] of items.entries()) {
+      const at = (field: string, message: string) => context.addIssue({ code: "custom", path: ["items", index, field], message });
+      if (parseAmount(item.amount) === null) at("amount", AMOUNT_HINT);
+      if (!isLocalDate(item.dueDate)) at("dueDate", "Enter the date it's due by");
+      if (items.length > 1 && !item.label.trim()) at("label", "Say what this one is");
+    }
+  }
+
   const named = (value: string, field: "newCategory" | "newTransfer", what: string, max: number) => {
     const name = value.trim();
     if (!name) context.addIssue({ code: "custom", path: [field], message: `Name the new ${what}` });
@@ -62,7 +90,7 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   if (categoryId === NEW_CATEGORY) named(newCategory, "newCategory", "category", 40);
   if (billIncomeId === NEW_TRANSFER) named(newTransfer, "newTransfer", "transfer", 80);
 });
-type FormValues = z.infer<typeof formSchema>;
+export type FormValues = z.infer<typeof formSchema>;
 
 // A transfer is not a third way for money to move: it is money sent to, or brought back
 // from, one of the owner's other accounts, saved as an expense or income tied to that transfer.
@@ -93,36 +121,50 @@ type TransactionDialogProps = {
 
 const addTabs = [
   { value: "type", label: "Type it in" },
-  { value: "screenshots", label: "From screenshots" },
+  { value: "screenshots", label: "Screenshots" },
+  { value: "split", label: "Split it up" },
 ] as const;
+type AddTab = (typeof addTabs)[number]["value"];
 
 export function TransactionDialog({ open, onClose, transaction, onScan, ...rest }: TransactionDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title={transaction ? "Edit transaction" : "Add transaction"}>
-      {!transaction && onScan ? (
-        <AddTabs onScan={onScan} onClose={onClose} {...rest} />
-      ) : (
+      {transaction ? (
         <TransactionForm onClose={onClose} transaction={transaction} {...rest} />
+      ) : (
+        <AddTabs onScan={onScan} onClose={onClose} {...rest} />
       )}
     </Dialog>
   );
 }
 
-function AddTabs({ onScan, ...rest }: Omit<TransactionDialogProps, "open" | "transaction" | "onScan"> & { onScan: (files: File[]) => void }) {
-  const [tab, setTab] = useState<(typeof addTabs)[number]["value"]>("type");
+function AddTabs({ onScan, ...rest }: Omit<TransactionDialogProps, "open" | "transaction">) {
+  const [tab, setTab] = useState<AddTab>("type");
+  const tabs = addTabs.filter((option) => option.value !== "screenshots" || onScan);
   return (
     <>
       <div className="mb-4">
-        <SegmentedControl label="How to add it" hideLabel options={addTabs} value={tab} onChange={setTab} />
+        <SegmentedControl label="How to add it" hideLabel options={tabs} value={tab} onChange={setTab} />
       </div>
-      {tab === "type" ? <TransactionForm {...rest} /> : <ScreenshotPicker onPick={onScan} />}
+      {tab === "screenshots" && onScan ? (
+        <ScreenshotPicker onPick={onScan} />
+      ) : (
+        // Keyed so each tab starts its own form.
+        <TransactionForm key={tab} split={tab === "split"} {...rest} />
+      )}
     </>
   );
 }
 
-function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: Omit<TransactionDialogProps, "open">) {
+type TransactionFormProps = Omit<TransactionDialogProps, "open" | "onScan"> & {
+  /** Several amounts with due dates, spread over the pay periods before them. Only when adding. */
+  split?: boolean;
+};
+
+function TransactionForm({ onClose, view, timezone, transaction, onFindLike, split = false }: TransactionFormProps) {
   const toast = useToast();
   const create = useCreateTransaction();
+  const splitter = useSplitTransaction();
   const update = useUpdateTransaction();
   const remove = useDeleteTransaction();
   const [formError, setFormError] = useState<string | null>(null);
@@ -149,7 +191,10 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     defaultValues: transaction
       ? {
           name: transaction.name,
+          split: false,
           amount: centsToInput(transaction.amountCents),
+          items: [],
+          finishEarly: false,
           kind: transaction.kind,
           occursAt: transaction.occursAt,
           note: transaction.note ?? "",
@@ -162,7 +207,10 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         }
       : {
           name: "",
+          split,
           amount: "",
+          items: [{ label: "", amount: "", dueDate: "" }],
+          finishEarly: false,
           kind: "expense",
           occursAt: defaultOccursAt,
           note: "",
@@ -219,7 +267,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
 
   // What a new payment could be paying: the upcoming entries that bill or income added to
   // the period on screen. Paying toward one shrinks it, so the bill is not counted twice.
-  const payable = transaction
+  const payable = transaction || split
     ? []
     : view.transactions.filter(
         (entry) =>
@@ -260,6 +308,36 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         : `Money going to ${chosen.name}.`
       : undefined;
 
+  // Splitting: what it would make, worked out by the server as the form changes.
+  const [watchedName, watchedOccursAt, watchedItems, finishEarly, watchedNote] = watch(["name", "occursAt", "items", "finishEarly", "note"]);
+  const splitLabels = watchedItems.length > 1 ? watchedItems.map((item, index) => item.label.trim() || `Item ${index + 1}`) : [];
+  const previewInput = ((): Omit<TransactionSplitInput, "dryRun"> | null => {
+    if (!split || !isLocalDateTime(watchedOccursAt)) return null;
+    const items = watchedItems.map((item, index) => ({
+      label: splitLabels[index] ?? "",
+      amountCents: parseAmount(item.amount),
+      dueDate: item.dueDate,
+    }));
+    if (items.some((item) => item.amountCents === null || !isLocalDate(item.dueDate))) return null;
+    return {
+      // What it is called and tied to change nothing about the plan.
+      name: watchedName.trim() || "Split",
+      kind: chosenKind,
+      occursAt: watchedOccursAt,
+      note: watchedNote,
+      finishEarly,
+      items: items.map((item) => ({ ...item, amountCents: item.amountCents! })),
+    };
+  })();
+  const previewKey = previewInput && JSON.stringify(previewInput);
+  const settledKey = useDebouncedValue(previewKey, 300);
+  const preview = useSplitPreview(settledKey === null ? null : (JSON.parse(settledKey) as Omit<TransactionSplitInput, "dryRun">));
+  const previewCurrent = previewKey !== null && settledKey === previewKey && !preview.isFetching;
+  const previewFailure = previewCurrent && preview.error instanceof ApiError ? preview.error : null;
+  const previewErrors = previewFailure?.fields ?? {};
+  const previewProblem = previewFailure && !previewFailure.fields ? previewFailure.message : previewCurrent && preview.isError && !previewFailure ? "Couldn't work out the transactions. Try again." : null;
+  const plan = previewKey === null || previewFailure ? undefined : preview.data;
+
   function finish({ period, countedToward }: TransactionResponse) {
     onClose();
     if (countedToward) {
@@ -273,7 +351,55 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer }) => {
+  function finishSplit(result: TransactionSplitResponse) {
+    const { payments, later } = result;
+    onClose();
+    const first = dateOf(payments[0]!.occursAt);
+    const added =
+      payments.length === 1
+        ? `Added 1 transaction on ${formatLongDate(first)}`
+        : `Added ${payments.length} transactions, ${formatDateRange(first, dateOf(payments.at(-1)!.occursAt))}`;
+    // What is too far ahead to add yet, so it can be split again nearer the time.
+    toast(
+      later.length === 0
+        ? added
+        : `${added}. ${formatCents(laterTotal(result))} more waits under Split payments, from ${formatLongDate(dateOf(later[0]!.occursAt))}`,
+    );
+  }
+
+  async function saveSplit(values: Pick<FormValues, "name" | "kind" | "occursAt" | "note" | "items" | "finishEarly">, links: Pick<TransactionSplitInput, "billIncomeId" | "categoryId">) {
+    const { items } = values;
+    try {
+      finishSplit(
+        await splitter.mutateAsync({
+          name: values.name,
+          kind: values.kind,
+          occursAt: values.occursAt,
+          note: values.note,
+          finishEarly: values.finishEarly,
+          ...links,
+          items: items.map((item) => ({
+            label: items.length > 1 ? item.label.trim() : "",
+            amountCents: parseAmount(item.amount) ?? 0,
+            dueDate: item.dueDate,
+          })),
+        }),
+      );
+    } catch (error) {
+      let onItems = false;
+      for (const [path, message] of Object.entries(error instanceof ApiError ? (error.fields ?? {}) : {})) {
+        const match = /^items\.(\d+)\.(amountCents|dueDate|label)$/.exec(path);
+        if (!match) continue;
+        const field = match[2] === "amountCents" ? "amount" : (match[2] as "dueDate" | "label");
+        setError(`items.${Number(match[1])}.${field}`, { message });
+        onItems = true;
+      }
+      const message = applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "categoryId"]);
+      setFormError(onItems ? null : message);
+    }
+  }
+
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer, items, finishEarly }) => {
     setFormError(null);
     if (transferMode && billIncomeId === "") {
       setError("billIncomeId", { message: "Choose the account it moved between, or make a new one" });
@@ -320,6 +446,13 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         else setFormError(error instanceof ApiError ? error.message : "Couldn't make that category. Try again.");
         return;
       }
+    }
+    if (split) {
+      await saveSplit(
+        { name, kind, occursAt, note, items, finishEarly },
+        { billIncomeId: tiedTo, ...(categories.data && { categoryId: filedUnder }) },
+      );
+      return;
     }
     try {
       finish(
@@ -373,7 +506,16 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
     }
   }
 
-  const saving = create.isPending || update.isPending || createCategory.isPending || createTransfer.isPending;
+  const saving = create.isPending || update.isPending || splitter.isPending || createCategory.isPending || createTransfer.isPending;
+  const typeControl = (
+    <Controller
+      control={control}
+      name="kind"
+      render={({ field }) => (
+        <SegmentedControl label="Type" options={typeOptions} value={transferMode ? "transfer" : field.value} onChange={chooseType} />
+      )}
+    />
+  );
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
@@ -381,24 +523,22 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
 
       <TextField label="Name" autoComplete="off" data-autofocus error={errors.name?.message} {...register("name")} />
 
-      {/* Three types need the width: side by side only from sm. */}
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-        <TextField
-          label="Amount"
-          inputMode="decimal"
-          placeholder="0.00"
-          autoComplete="off"
-          error={errors.amount?.message}
-          {...register("amount")}
-        />
-        <Controller
-          control={control}
-          name="kind"
-          render={({ field }) => (
-            <SegmentedControl label="Type" options={typeOptions} value={transferMode ? "transfer" : field.value} onChange={chooseType} />
-          )}
-        />
-      </div>
+      {split ? (
+        typeControl
+      ) : (
+        // Three types need the width: side by side only from sm.
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+          <TextField
+            label="Amount"
+            inputMode="decimal"
+            placeholder="0.00"
+            autoComplete="off"
+            error={errors.amount?.message}
+            {...register("amount")}
+          />
+          {typeControl}
+        </div>
+      )}
 
       {transferMode && (
         <>
@@ -434,11 +574,34 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
       )}
 
       <TextField
-        label="Date and time"
+        label={split ? "First payment" : "Date and time"}
         type="datetime-local"
-        error={errors.occursAt?.message}
+        hint={split ? "The rest go on the first day of each pay period after it." : undefined}
+        error={errors.occursAt?.message ?? previewErrors.occursAt}
         {...register("occursAt")}
       />
+
+      {split && (
+        <>
+          <SplitItems
+            control={control}
+            register={register}
+            setValue={setValue}
+            errors={errors}
+            previewErrors={previewErrors}
+            name={watchedName}
+          />
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5">
+            <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-primary" {...register("finishEarly")} />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-fg">Finish a pay period early</span>
+              <span className="text-sm text-muted">
+                Each one is paid off by the period before the one it's due in, instead of in that period.
+              </span>
+            </span>
+          </label>
+        </>
+      )}
 
       {!transferMode && billChoices.length > 0 && (
         <SelectField
@@ -484,7 +647,13 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
       )}
 
       {showNote ? (
-        <TextField label="Note" autoComplete="off" error={errors.note?.message} {...register("note")} />
+        <TextField
+          label="Note"
+          autoComplete="off"
+          hint={split && splitLabels.length > 1 ? "Each transaction's note also lists what every item makes up of it." : undefined}
+          error={errors.note?.message ?? previewErrors.note}
+          {...register("note")}
+        />
       ) : (
         <button
           type="button"
@@ -520,7 +689,17 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
         </button>
       )}
 
-      {!transaction && (
+      {split && (
+        <SplitPreview
+          plan={plan}
+          problem={previewProblem}
+          blocked={Object.keys(previewErrors).length > 0}
+          loading={previewKey !== null && !previewCurrent}
+          labels={splitLabels}
+        />
+      )}
+
+      {!transaction && !split && (
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-fg">
           <input type="checkbox" className="size-5 accent-primary" {...register("paid")} />
           Already paid
@@ -548,7 +727,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike }: O
             Cancel
           </Button>
           <Button type="submit" loading={saving}>
-            {transaction ? "Save" : "Add"}
+            {transaction ? "Save" : split && plan && plan.payments.length > 1 ? `Add ${plan.payments.length}` : "Add"}
           </Button>
         </DialogActions>
       )}

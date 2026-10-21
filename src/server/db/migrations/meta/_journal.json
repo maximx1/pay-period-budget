@@ -99,6 +99,13 @@
       "when": 1792546814990,
       "tag": "0013_low_balance_warnings",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792609485579,
+      "tag": "0014_split_waiting_payments",
+      "breakpoints": true
     }
   ]
 }

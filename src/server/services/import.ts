@@ -352,6 +352,9 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
   }
 
   return {
+    /** The import itself, inside a transaction the caller holds and decides to keep or roll back. */
+    importIn: run,
+
     /**
      * Saves many transactions at once, all or none. With `dryRun` the same work is done
      * and then undone, so the report describes exactly what a real run would do.

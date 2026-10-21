@@ -15,6 +15,7 @@ import { reportRoutes } from "./routes/reports.ts";
 import { billsIncomeRoutes } from "./routes/billsIncome.ts";
 import { categoryRoutes } from "./routes/categories.ts";
 import { settingsRoutes } from "./routes/settings.ts";
+import { splitRoutes } from "./routes/splits.ts";
 import { adviceRoutes } from "./routes/advice.ts";
 import { MAX_SCAN_BYTES } from "../shared/scan.ts";
 import { createTesseractEngine, type OcrEngine } from "./lib/ocr.ts";
@@ -26,6 +27,7 @@ import { createOutlookService } from "./services/outlook.ts";
 import { createPeriodService } from "./services/periods.ts";
 import { createReportService } from "./services/reports.ts";
 import { createScanService } from "./services/scan.ts";
+import { createSplitService } from "./services/split.ts";
 import { createAdviceService } from "./services/advice.ts";
 import { createBillsIncomeService } from "./services/billsIncome.ts";
 import { createCategoryService } from "./services/categories.ts";
@@ -65,6 +67,7 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   const outlook = createOutlookService({ store, periods, now });
   const transactions = createTransactionService({ store, periods, now });
   const imports = createImportService({ store, periods, now });
+  const splits = createSplitService({ store, periods, imports, now });
   const billsIncome = createBillsIncomeService({ store, periods, now });
   const categories = createCategoryService({ store, periods, now });
   const reports = createReportService({ store, periods });
@@ -107,7 +110,8 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   // New feature routers mount here. Each one takes `authed` and applies it to all its routes.
   api.route("/budget", budgetRoutes({ periods, authed }));
   api.route("/periods", periodRoutes({ periods, outlook, authed }));
-  api.route("/transactions", transactionRoutes({ transactions, imports, scans, authed }));
+  api.route("/transactions", transactionRoutes({ transactions, imports, scans, splits, authed }));
+  api.route("/splits", splitRoutes({ splits, authed }));
   api.route("/bills-income", billsIncomeRoutes({ billsIncome, authed }));
   api.route("/categories", categoryRoutes({ categories, authed }));
   api.route("/reports", reportRoutes({ reports, authed }));

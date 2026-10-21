@@ -36,6 +36,7 @@ import { PeriodFilterBar } from "../transactions/PeriodFilterBar.tsx";
 import { isFiltering, matchesPeriodFilter, NO_FILTER, type PeriodFilter } from "../transactions/periodFilter.ts";
 import { TransactionDialog } from "../transactions/TransactionDialog.tsx";
 import { TransactionSection } from "../transactions/TransactionSection.tsx";
+import { WaitingSplitsReminder } from "../splits/WaitingSplitsReminder.tsx";
 
 const block = "animate-pulse rounded-2xl bg-surface-2";
 
@@ -245,6 +246,7 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
               ))}
             </div>
           )}
+          <WaitingSplitsReminder />
           <PeriodSummary view={view} today={today} />
           {(view.transactions.length > 0 || filtering) && (
             <PeriodFilterBar filter={filter} onChange={setFilter} categories={categories.data ?? []} />

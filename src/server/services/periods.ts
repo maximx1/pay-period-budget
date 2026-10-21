@@ -582,6 +582,12 @@ export function createPeriodService(deps: {
       await ensureThroughIn(repos, userId, budget.schedule, date, todayIn(budget.timezone, now()));
     },
 
+    /** The last day a pay period may cover today: the end of the one holding the day a year from now. */
+    async reachEnd(repos: Repos, userId: string): Promise<LocalDate> {
+      const { schedule, timezone } = await loadBudget(repos, userId);
+      return nominalPeriod(schedule, horizonSeq(schedule, todayIn(timezone, now()))).end;
+    },
+
     /**
      * Creates periods towards both ends of a span of dates, as far as the limits allow, in
      * the caller's transaction: forwards to the horizon, and backwards only if `addEarlier`

@@ -32,6 +32,15 @@ say what to build; this file says what must always be true.
 - **Leftover so far**: starting amount + paid transactions only. If the bank statement
   disagrees with this, something was missed.
 
+## Splits and waiting payments (phase 27)
+
+A **split** spreads amounts due by dates evenly over the pay periods up to them and makes
+one ordinary transaction per period. Payments in periods more than a year ahead, which
+cannot exist yet, are kept as **waiting payments**, each already worked out in full. They
+are added as transactions once their periods are within reach: the home screen offers to
+when all of a split's remaining payments can be, or three of them can. A waiting payment
+belongs to no period and counts toward no total until it is added.
+
 ## Value formats
 
 | Kind | Format | Example |
@@ -621,6 +630,10 @@ PATCH  /api/transactions/:id           may carry billIncomeId; null unties. And 
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
+POST   /api/transactions/split         { name, kind, occursAt, note?, billIncomeId?, categoryId?, finishEarly?, items (1 to 10: label, amountCents, dueDate), dryRun? } → { payments, later, waitingId, current }; one transaction per period up to the furthest one, the rest kept as waiting payments; all or nothing (phase 27)
+GET    /api/splits                     { splits }: each split's waiting payments, with inReach and remind
+POST   /api/splits/:id/add             adds its waiting payments that are in reach → { added, waiting? }; 409 if none are
+DELETE /api/splits/:id                 drops what it still has waiting
 GET    /api/bills-income
 POST   /api/bills-income                  may carry categoryId, and dueDate, dueUnit, dueInterval
 POST   /api/bills-income/preview          what creating this item would add, without saving

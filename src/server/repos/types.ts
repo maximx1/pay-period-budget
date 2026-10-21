@@ -369,6 +369,31 @@ export interface CategoryLimitRepo {
   delete(userId: string, periodId: string, categoryId: string): Promise<boolean>;
 }
 
+export type SplitWaitingRecord = {
+  id: string;
+  userId: string;
+  /** Shared by the payments one split left waiting. */
+  splitId: string;
+  name: string;
+  /** Signed: negative for an expense, positive for income. */
+  amountCents: number;
+  occursAt: LocalDateTime;
+  note: string | null;
+  billIncomeId: string | null;
+  categoryId: string | null;
+  createdAt: Date;
+};
+
+export interface SplitWaitingRepo {
+  createMany(records: SplitWaitingRecord[]): Promise<void>;
+  /** Every payment the user has waiting, by date, then by split. */
+  listForUser(userId: string): Promise<SplitWaitingRecord[]>;
+  /** One split's waiting payments, by date. Empty if it has none, or is someone else's. */
+  listSplit(userId: string, splitId: string): Promise<SplitWaitingRecord[]>;
+  /** Removes these of the user's waiting payments. Returns how many there were. */
+  deleteMany(userId: string, ids: string[]): Promise<number>;
+}
+
 export interface Repos {
   users: UserRepo;
   sessions: SessionRepo;
@@ -380,6 +405,7 @@ export interface Repos {
   billsIncome: BillsIncomeRepo;
   categories: CategoryRepo;
   categoryLimits: CategoryLimitRepo;
+  splitWaiting: SplitWaitingRepo;
 }
 
 export interface DataStore extends Repos {

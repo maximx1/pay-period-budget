@@ -274,3 +274,34 @@ export const deletedImportKeys = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.importKey] })],
 );
+
+/**
+ * The payments of a split that fall too far ahead for their pay periods to exist yet.
+ * Each is a transaction worked out in full and waiting to be added; the rows one split
+ * left share a `split_id`. Adding one deletes it here.
+ */
+export const splitWaitingPayments = sqliteTable(
+  "split_waiting_payments",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    splitId: text("split_id").notNull(),
+    name: text("name").notNull(),
+    /** Signed: negative for an expense, positive for income. */
+    amountCents: integer("amount_cents").notNull(),
+    /** "YYYY-MM-DDTHH:mm" in the budget's time zone, as the transaction will have it. */
+    occursAt: text("occurs_at").notNull(),
+    note: text("note"),
+    /** Cleared if that bill or income is deleted before the payment is added. */
+    billIncomeId: text("bill_income_id").references(() => billsIncome.id, { onDelete: "set null" }),
+    /** Cleared if that category is deleted before the payment is added. */
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("split_waiting_user_occurs_idx").on(t.userId, t.occursAt),
+    index("split_waiting_split_idx").on(t.splitId),
+  ],
+);
