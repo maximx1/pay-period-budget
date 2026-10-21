@@ -1,5 +1,4 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PeriodView } from "../../../shared/budget.ts";
 import type { TransactionSplitInput, TransactionSplitResponse } from "../../../shared/split.ts";
 import type {
   TransactionImportInput,
@@ -14,7 +13,7 @@ import { api } from "../../lib/api.ts";
 import { periodKeys } from "../periods/api.ts";
 import { billsIncomeKeys } from "../billsIncome/api.ts";
 import { SPLITS_QUERY_KEY } from "../splits/api.ts";
-import { withOrder, withStatus } from "./optimistic.ts";
+import { isPeriodView, withOrder, withStatus } from "./optimistic.ts";
 
 // A transaction changes its own period's totals and the starting amount of every period
 // after it, so each of these refreshes all cached periods rather than just one. It may
@@ -105,9 +104,11 @@ export function useSetTransactionStatus() {
     onMutate: async ({ id, status }) => {
       // An in-flight refetch would overwrite the optimistic state with older data.
       await queryClient.cancelQueries({ queryKey: periodKeys.all });
-      const previous = queryClient.getQueriesData<PeriodView>({ queryKey: periodKeys.all });
+      const previous = queryClient.getQueriesData({ queryKey: periodKeys.all });
       const paidAt = new Date().toISOString();
-      queryClient.setQueriesData<PeriodView>({ queryKey: periodKeys.all }, (view) => view && withStatus(view, id, status, paidAt));
+      queryClient.setQueriesData({ queryKey: periodKeys.all }, (data) =>
+        isPeriodView(data) ? withStatus(data, id, status, paidAt) : data,
+      );
       return { previous };
     },
 
@@ -140,8 +141,8 @@ export function useReorderTransactions() {
 
     onMutate: async (ids) => {
       await queryClient.cancelQueries({ queryKey: periodKeys.all });
-      const previous = queryClient.getQueriesData<PeriodView>({ queryKey: periodKeys.all });
-      queryClient.setQueriesData<PeriodView>({ queryKey: periodKeys.all }, (view) => view && withOrder(view, ids));
+      const previous = queryClient.getQueriesData({ queryKey: periodKeys.all });
+      queryClient.setQueriesData({ queryKey: periodKeys.all }, (data) => (isPeriodView(data) ? withOrder(data, ids) : data));
       return { previous };
     },
 

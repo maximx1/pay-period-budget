@@ -2,6 +2,14 @@ import type { PeriodView } from "../../../shared/budget.ts";
 import type { TransactionStatus } from "../../../shared/transactions.ts";
 
 /**
+ * Whether cached data under the `period` prefix is one period's view. The prefix also holds
+ * the period list, the balance outlook, reports and searches, which have no rows to move.
+ */
+export function isPeriodView(data: unknown): data is PeriodView {
+  return typeof data === "object" && data !== null && "period" in data && "transactions" in data && "totals" in data;
+}
+
+/**
  * The period view as it will look once a transaction's status change is saved: the row
  * switches section and its amount moves between the paid and upcoming totals. The projected
  * leftover counts both, so it stays as it was. Returns the same object when nothing applies.

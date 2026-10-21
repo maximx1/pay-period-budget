@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PeriodView } from "../../../shared/budget.ts";
 import type { Transaction } from "../../../shared/transactions.ts";
-import { mergeOrder, withOrder, withStatus } from "./optimistic.ts";
+import { isPeriodView, mergeOrder, withOrder, withStatus } from "./optimistic.ts";
 
 const tx = (id: string, amountCents: number, status: Transaction["status"]): Transaction => ({
   id,
@@ -41,6 +41,19 @@ const view: PeriodView = {
 };
 
 const NOW = "2026-01-16T09:00:00.000Z";
+
+describe("isPeriodView", () => {
+  // Everything else cached under the `period` prefix: tapping paid used to throw on these.
+  it.each([
+    ["a period view", view, true],
+    ["the balance outlook", { settings: {}, periods: [] }, false],
+    ["the period list", [], false],
+    ["a search", { pages: [], pageParams: [] }, false],
+    ["nothing yet", undefined, false],
+  ])("%s", (_name, data, expected) => {
+    expect(isPeriodView(data)).toBe(expected);
+  });
+});
 
 describe("withStatus", () => {
   it("moves an expense into paid", () => {
