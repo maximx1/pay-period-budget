@@ -663,7 +663,7 @@ GET    /api/reports?from=&to=          → Report (src/shared/reports.ts): the p
   transactions: Transaction[],          // ordered; empty until phase 4
   categoryLimits: Array<{ categoryId, name, limitCents, spentCents, paidSpentCents }>,   // by name
   dueNotices: Array<{ billIncomeId, name, dueDate, lateDate }>,   // uncovered due dates in it, by date
-  nav: { prevId: string | null, canAddPrevious: boolean, nextId: string | null, nextDate: LocalDate | null },
+  nav: { prevId: string | null, canAddPrevious: boolean, nextId: string | null, nextDate: LocalDate | null, lastId: string | null },
 }
 ```
 
@@ -673,3 +673,7 @@ GET    /api/reports?from=&to=          → Report (src/shared/reports.ts): the p
 `nav.nextId` is set when the next period already exists. Otherwise `nav.nextDate` is the
 day after this period ends if that is within the horizon (the client calls `locate` with
 it), or null when the horizon has been reached.
+
+`nav.lastId` is the latest period that exists (the one with the highest `seq`), for the
+"Latest" link. It is null when that is this period, or when it is today's period, which the
+"Today" link already reaches.

@@ -18,9 +18,12 @@ function describe({ isCurrent, startDate, endDate, datesEdited, seq }: PeriodVie
   return datesEdited ? `${when} · dates edited` : when;
 }
 
+const jumpLink =
+  "inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
 /**
- * The period's date range with controls to step to its neighbours, adjust it, and return to
- * today. The range itself is a button that opens the date search.
+ * The period's date range with controls to step to its neighbours, adjust it, and jump to
+ * today's period or the latest one that exists. The range itself is a button that opens the date search.
  */
 type PeriodHeaderProps = {
   view: PeriodView;
@@ -97,13 +100,19 @@ export function PeriodHeader({
         </span>
       </div>
 
-      {!period.isCurrent && (
-        <Link
-          to="/"
-          className="ml-auto inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-primary hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          Today
-        </Link>
+      {(!period.isCurrent || nav.lastId) && (
+        <div className="ml-auto flex items-center">
+          {!period.isCurrent && (
+            <Link to="/" className={jumpLink}>
+              Today
+            </Link>
+          )}
+          {nav.lastId && (
+            <Link to={`/periods/${nav.lastId}`} className={jumpLink}>
+              Latest
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );

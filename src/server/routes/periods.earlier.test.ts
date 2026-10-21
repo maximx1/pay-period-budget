@@ -82,7 +82,7 @@ describe("adding a period before the first one", () => {
       carryStale: false,
     });
     expect(earlier.totals.projectedCents).toBe(OPENING);
-    expect(earlier.nav).toEqual({ prevId: null, canAddPrevious: true, nextId: first.id, nextDate: null });
+    expect(earlier.nav).toEqual({ prevId: null, canAddPrevious: true, nextId: first.id, nextDate: null, lastId: null });
     expect((await view(ann, first.id)).nav).toMatchObject({ prevId: earlier.period.id, canAddPrevious: false });
     expect(await budgetStartings()).toEqual(BASE);
   });

@@ -89,6 +89,11 @@ export type PeriodView = {
     nextId: string | null;
     /** When there is no next period yet: the date to `locate` to create it, or null at the horizon. */
     nextDate: LocalDate | null;
+    /**
+     * The latest period that exists, when that is neither this one nor today's (the Today
+     * link covers that one).
+     */
+    lastId: string | null;
   };
 };
 

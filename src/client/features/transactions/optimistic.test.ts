@@ -37,7 +37,7 @@ const view: PeriodView = {
   transactions: [tx("rent", -4000, "paid"), tx("ice", -2700, "upcoming"), tx("pay", 150_000, "upcoming")],
   categoryLimits: [],
   dueNotices: [],
-  nav: { prevId: null, canAddPrevious: false, nextId: null, nextDate: null },
+  nav: { prevId: null, canAddPrevious: false, nextId: null, nextDate: null, lastId: null },
 };
 
 const NOW = "2026-01-16T09:00:00.000Z";

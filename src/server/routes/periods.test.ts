@@ -258,10 +258,25 @@ describe("navigation", () => {
     await setUp(client);
     const [first, second, third] = await allPeriods("ann");
 
-    expect((await view(client, first!.id)).nav).toEqual({ prevId: null, canAddPrevious: true, nextId: second!.id, nextDate: null });
-    expect((await view(client, second!.id)).nav).toEqual({ prevId: first!.id, canAddPrevious: false, nextId: third!.id, nextDate: null });
+    expect((await view(client, first!.id)).nav).toEqual({ prevId: null, canAddPrevious: true, nextId: second!.id, nextDate: null, lastId: null });
+    expect((await view(client, second!.id)).nav).toEqual({ prevId: first!.id, canAddPrevious: false, nextId: third!.id, nextDate: null, lastId: null });
     // The last generated period has no next yet, but offers the date that would create it.
-    expect((await view(client, third!.id)).nav).toEqual({ prevId: second!.id, canAddPrevious: false, nextId: null, nextDate: "2026-01-27" });
+    expect((await view(client, third!.id)).nav).toEqual({ prevId: second!.id, canAddPrevious: false, nextId: null, nextDate: "2026-01-27", lastId: null });
+  });
+
+  it("points at the latest period once there are some after today's", async () => {
+    const client = await signUp("ann");
+    await setUp(client);
+    // Today's period is the latest until later ones exist: the Today link already reaches it.
+    expect((await current(client)).nav.lastId).toBeNull();
+
+    const { periodId: latestId } = await (await client.post("/api/periods/locate", { date: "2026-03-01" })).json();
+    const [first, , today, nextAfterToday] = await allPeriods("ann");
+
+    for (const id of [first!.id, today!.id, nextAfterToday!.id]) {
+      expect((await view(client, id)).nav.lastId).toBe(latestId);
+    }
+    expect((await view(client, latestId)).nav.lastId).toBeNull();
   });
 
   it("locate returns an existing period without creating any", async () => {

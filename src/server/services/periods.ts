@@ -179,6 +179,9 @@ export function createPeriodService(deps: {
     const next = await repos.periods.findBySeq(userId, period.seq + 1);
     const canGenerateNext = period.seq + 1 <= horizonSeq(budget.schedule, today);
     const canAddPrevious = !prev && period.seq - 1 >= earliestSeq(budget.schedule, today);
+    // Without a next period this one is the latest.
+    const last = next ? await repos.periods.findLast(userId) : null;
+    const lastIsToday = last !== null && last.startDate <= today && today <= last.endDate;
 
     const records = await repos.transactions.listInRange(userId, period.startDate, period.endDate);
     let paidCents = 0;
@@ -216,6 +219,7 @@ export function createPeriodService(deps: {
         canAddPrevious,
         nextId: next?.id ?? null,
         nextDate: !next && canGenerateNext ? addDays(period.endDate, 1) : null,
+        lastId: last && !lastIsToday ? last.id : null,
       },
     };
   }
