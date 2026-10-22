@@ -37,6 +37,7 @@ import { isFiltering, matchesPeriodFilter, NO_FILTER, type PeriodFilter } from "
 import { TransactionDialog } from "../transactions/TransactionDialog.tsx";
 import { TransactionSection } from "../transactions/TransactionSection.tsx";
 import { WaitingSplitsReminder } from "../splits/WaitingSplitsReminder.tsx";
+import { BalanceAsksCard } from "../balances/BalanceAsksCard.tsx";
 
 const block = "animate-pulse rounded-2xl bg-surface-2";
 
@@ -248,6 +249,8 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
           )}
           <WaitingSplitsReminder />
           <PeriodSummary view={view} today={today} />
+          {/* Below the summary: the period's own figures come first, these are a chore. */}
+          {view.period.isCurrent && <BalanceAsksCard />}
           {(view.transactions.length > 0 || filtering) && (
             <PeriodFilterBar filter={filter} onChange={setFilter} categories={categories.data ?? []} />
           )}

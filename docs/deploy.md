@@ -101,6 +101,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # An Advice answer from a model that thinks first can take a few minutes; nginx
+        # gives up after 60 seconds otherwise. Match ADVICE_MODEL_TIMEOUT_SECONDS or more.
+        proxy_read_timeout 200s;
     }
 }
 ```
@@ -209,10 +212,11 @@ To stop using it without losing the settings, set `SCAN_MODEL_ENABLED=false` and
 
 ## Advice
 
-An **Advice** section can be added to the side panel: a set list of questions ("Will I
-make it to payday?", "What should I cut first?", ...), each answered in a few lines by a
-model, from figures the server works out from your budget. It is off unless turned on. In
-`.env`:
+The **Advice** page is always in the side panel. Its **Quick Questions** ("Will I make it
+to payday?", where extra money should go, ...) are answered by the app itself and need
+nothing set up. **Smart Questions** below them ("What should I cut first?", "I'm not sure.
+What should I do?", ...) are each answered in a few lines by a model, from figures the
+server works out from your budget. They are off unless turned on. In `.env`:
 
 ```
 ADVICE_ENABLED=true
@@ -230,8 +234,18 @@ Answering a question sends that budget's figures to the model: amounts, dates, a
 names of transactions, bills and categories. With a hosted model such as OpenAI's, that
 leaves this machine; with one you run yourself, it does not.
 
-An answer that takes longer than `ADVICE_MODEL_TIMEOUT_SECONDS` (60 by default) is given
-up on and the page says so. Each account can ask 30 questions an hour. The voice the
+An answer that takes longer than `ADVICE_MODEL_TIMEOUT_SECONDS` (180 by default) is given
+up on and the page says so. A reverse proxy in front of the app must wait at least as
+long: nginx's `proxy_read_timeout` is 60 seconds unless set (see the example above).
+
+**Models that think before answering** (Qwen 3 and its offspring, DeepSeek R1 and the like)
+answer better that way, and slower. A Qwen 27B on a home server took 15 seconds to two
+minutes per question thinking, and 4 to 8 seconds with thinking turned off, when its
+answers misread more of the figures. To turn it off anyway, set
+`ADVICE_MODEL_THINKING=false`: each request then carries `chat_template_kwargs: {
+"enable_thinking": false }`, which llama.cpp's `llama-server`, vLLM and SGLang understand.
+Leave it unset for OpenAI and other hosted APIs, which refuse a request with a field they
+do not know. Each account can ask 30 questions an hour. The voice the
 answers come in is chosen per account under Settings. Advice is not offered to an
 assistant through the MCP server: an assistant can read the budget itself.
 

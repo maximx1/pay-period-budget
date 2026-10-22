@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import type { DataStore, Repos } from "../types.ts";
 import { createApiTokenRepo } from "./apiTokens.ts";
+import { createBalanceRepo } from "./balances.ts";
 import { createPeriodRepo } from "./periods.ts";
 import { createBillsIncomeRepo } from "./billsIncome.ts";
 import { createCategoryRepo } from "./categories.ts";
@@ -27,6 +28,7 @@ function createRepos(db: Db): Repos {
     categories: createCategoryRepo(db),
     categoryLimits: createCategoryLimitRepo(db),
     splitWaiting: createSplitWaitingRepo(db),
+    balances: createBalanceRepo(db),
   };
 }
 

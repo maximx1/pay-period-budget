@@ -17,6 +17,7 @@ import { categoryRoutes } from "./routes/categories.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { splitRoutes } from "./routes/splits.ts";
 import { adviceRoutes } from "./routes/advice.ts";
+import { balanceRoutes } from "./routes/balances.ts";
 import { MAX_SCAN_BYTES } from "../shared/scan.ts";
 import { createTesseractEngine, type OcrEngine } from "./lib/ocr.ts";
 import { IMPORT_PATH, SCAN_PATH, transactionRoutes } from "./routes/transactions.ts";
@@ -29,6 +30,7 @@ import { createReportService } from "./services/reports.ts";
 import { createScanService } from "./services/scan.ts";
 import { createSplitService } from "./services/split.ts";
 import { createAdviceService } from "./services/advice.ts";
+import { createBalanceService } from "./services/balances.ts";
 import { createBillsIncomeService } from "./services/billsIncome.ts";
 import { createCategoryService } from "./services/categories.ts";
 import { addUsualLimits } from "./services/categoryLimits.ts";
@@ -44,9 +46,11 @@ export type AppDeps = {
   ocr?: OcrEngine;
   /** For calling the screenshot-reading and advice models; tests pass a stand-in. */
   fetch?: typeof fetch;
+  /** Spreads out when tracked balances are asked about; in [0, 1). Tests pass a fixed one. */
+  random?: () => number;
 };
 
-export function createApp({ store, config, now, staticDir, ocr = createTesseractEngine(), fetch }: AppDeps) {
+export function createApp({ store, config, now, staticDir, ocr = createTesseractEngine(), fetch, random }: AppDeps) {
   const auth = createAuthService({
     store,
     sessionTtlMs: config.sessionTtlMs,
@@ -70,9 +74,11 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   const splits = createSplitService({ store, periods, imports, now });
   const billsIncome = createBillsIncomeService({ store, periods, now });
   const categories = createCategoryService({ store, periods, now });
+
   const reports = createReportService({ store, periods });
   const scans = createScanService({ store, periods, ocr, model: config.scanModel, fetch });
-  const advice = createAdviceService({ store, periods, reports, billsIncome, model: config.adviceModel, fetch, now });
+  const balances = createBalanceService({ store, periods, now, random });
+  const advice = createAdviceService({ store, periods, reports, billsIncome, outlook, balances, model: config.adviceModel, fetch, now });
   const authed = requireAuth(auth, config);
 
   const api = new Hono<AppEnv>();
@@ -117,6 +123,7 @@ export function createApp({ store, config, now, staticDir, ocr = createTesseract
   api.route("/reports", reportRoutes({ reports, authed }));
   api.route("/settings", settingsRoutes({ periods, outlook, authed }));
   api.route("/advice", adviceRoutes({ advice, authed }));
+  api.route("/balances", balanceRoutes({ balances, authed }));
   api.all("*", () => {
     throw new AppError(404, "not_found", "No such endpoint");
   });

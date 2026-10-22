@@ -89,6 +89,8 @@ export type SettingsRecord = {
   advicePersonaCustom: string | null;
   lowBalanceCents: number;
   lowBalancePeriods: number;
+  balanceCheckDays: number;
+  balanceChecksPerDay: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -100,6 +102,8 @@ export interface SettingsRepo {
   setAdvicePersona(userId: string, persona: { persona: string; custom: string | null }, now: Date): Promise<boolean>;
   /** Changes when coming periods are warned about. Returns false when the user has no settings yet. */
   setLowBalance(userId: string, values: { lowBalanceCents: number; lowBalancePeriods: number }, now: Date): Promise<boolean>;
+  /** Changes how often tracked balances are asked about. Returns false when the user has no settings yet. */
+  setBalanceChecks(userId: string, values: { balanceCheckDays: number; balanceChecksPerDay: number }, now: Date): Promise<boolean>;
 }
 
 export type ScheduleRecord = {
@@ -256,6 +260,8 @@ export interface TransactionRepo {
     userId: string,
     billIncomeId: string,
   ): Promise<{ count: number; paidCents: number; upcomingCents: number; paidOutCents: number; paidInCents: number }>;
+  /** The paid transactions tied to a bill or income dated strictly after `after`, oldest first. */
+  listPaidForBillOrIncomeAfter(userId: string, billIncomeId: string, after: LocalDateTime): Promise<TransactionRecord[]>;
   /**
    * The upcoming transactions a bill or income generated, dated after `date`. Not ones
    * tied to it by hand: those are the user's own entries.
@@ -394,6 +400,51 @@ export interface SplitWaitingRepo {
   deleteMany(userId: string, ids: string[]): Promise<number>;
 }
 
+export type TrackedBalanceRecord = {
+  billIncomeId: string;
+  userId: string;
+  /** Its own interval in days; null follows the user's setting. */
+  checkEveryDays: number | null;
+  nextCheckOn: LocalDate;
+  /** The last day it was checked or snoozed. */
+  handledOn: LocalDate | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type BalanceCheckRecord = {
+  id: string;
+  userId: string;
+  billIncomeId: string;
+  /** Signed: below zero is owed. */
+  balanceCents: number;
+  /** Basis points; null for no rate. */
+  aprBps: number | null;
+  asOf: LocalDateTime;
+  createdAt: Date;
+};
+
+export interface BalanceRepo {
+  /** Every item the user tracks a balance for. */
+  listTracked(userId: string): Promise<TrackedBalanceRecord[]>;
+  findTracked(userId: string, billIncomeId: string): Promise<TrackedBalanceRecord | null>;
+  /** Starts tracking. The caller makes sure it isn't already. */
+  track(record: TrackedBalanceRecord): Promise<void>;
+  updateTracked(
+    userId: string,
+    billIncomeId: string,
+    patch: Partial<Pick<TrackedBalanceRecord, "checkEveryDays" | "nextCheckOn" | "handledOn">>,
+    now: Date,
+  ): Promise<void>;
+  /** Stops tracking; the checks stay. Returns whether it was tracked. */
+  untrack(userId: string, billIncomeId: string): Promise<boolean>;
+  addCheck(check: BalanceCheckRecord): Promise<void>;
+  /** An item's checks, newest first: by `asOf`, then by when they were entered. */
+  listChecks(userId: string, billIncomeId: string): Promise<BalanceCheckRecord[]>;
+  findCheck(userId: string, id: string): Promise<BalanceCheckRecord | null>;
+  deleteCheck(userId: string, id: string): Promise<void>;
+}
+
 export interface Repos {
   users: UserRepo;
   sessions: SessionRepo;
@@ -406,6 +457,7 @@ export interface Repos {
   categories: CategoryRepo;
   categoryLimits: CategoryLimitRepo;
   splitWaiting: SplitWaitingRepo;
+  balances: BalanceRepo;
 }
 
 export interface DataStore extends Repos {

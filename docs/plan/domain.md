@@ -482,6 +482,69 @@ no due date, and then the unit and interval mean nothing. Decided 2026-10-20 (de
   above the category-limit warnings; the MCP period report has a `DUE:` line for each.
 - Setting, changing or removing a due date moves no money and generates nothing.
 
+### Balances (phase 28)
+
+What a bill or transfer's own account owes or holds: a car loan, a card, a savings account.
+On screen the page is "Balances"; never "accounts" (decision 11).
+
+- **Tracking** is a row in `tracked_balances` for the item. Only a bill or a transfer can
+  have one (`canTrackBalance`); an income is a field error on `billIncomeId`. While tracked,
+  an item can't become an income (field error on `kind`). Tracking starts with a check;
+  stopping deletes the row and keeps the checks, so tracking again shows them.
+- **A check** (`balance_checks`) is a signed balance (below zero is owed), an optional APR
+  in basis points (2499 is 24.99%), and `asOf`, a local date-time no later than now (by
+  default now). A check that leaves out the APR keeps the last one's. The last check can't
+  be deleted while tracked (409).
+- **The estimate** is worked out on read, never stored: the latest check (by `asOf`, then
+  by when it was entered), less the signed amount of every **paid** transaction tied to the
+  item dated strictly after `asOf`. Money sent to it (an expense) raises it, money taken
+  back lowers it, as a transfer's balance always has. A payment dated on or before the
+  check is taken to be in the bank's figure already. Charges and interest on the account's
+  own side are not seen until the next check. The interest shown is about a month's at the
+  last APR on the estimate (`monthlyInterestCents`); it is not added in.
+- A tracked item's `totals.balanceCents` (its transactions endpoint) is this estimate. An
+  untracked transfer's is worked out from its starting balance as before.
+- **When to ask.** Each tracked item has `next_check_on`. After every check it is set to
+  about the interval after today (the item's `check_every_days`, else the user's
+  `balance_check_days`, 30 by default; offered as 14, 30, 61 or 91), give or take a quarter
+  of it at random (`nextCheckOn`), so items checked together drift apart. Changing the
+  interval moves it to match the last check.
+- **Today's asks** (`asksFor`): due items (`next_check_on` on or before today), oldest due
+  first, then by name, as many as `balance_checks_per_day` (3 by default, 1 to 5) less those
+  handled today. Checking or snoozing sets `handled_on` to today, so each uses one of the
+  day's asks wherever it was done, and never brings another in its place. Snooze is 1, 3 or
+  7 days; "not today" snoozes every one asked about today by a day. The home screen shows
+  today's asks on today's period only; the Balances page lists every due one.
+- The test app's random is fixed at 0.5: every next check is exactly its interval away.
+
+### Where extra money goes (phase 29)
+
+The plans in `src/shared/paydown.ts`, worked out by the page as the amount changes and by
+the server as facts for a model. Debts are tracked balances below zero (not ended);
+savings those at or above.
+
+- **Safe to spare** (`safeToSpare`): paying something now lowers today's period's end and
+  every later one by the same amount, so the lowest projected end among today's period
+  and the coming ones that exist (as many as the low balance warnings look at, and at
+  least five) limits it. The safe amount keeps every one at or above `low_balance_cents`;
+  `zeroCents` keeps them at or above zero. A plan never uses more than `zeroCents`. (A
+  coming period with a hand-set starting amount doesn't take the carry; that is ignored.)
+- **Fastest**: highest APR first, then smaller balances; a debt with no APR last.
+  **Fewest payments**: smallest balance first. Each debt takes at most what it owes; what
+  no debt needs is left unplaced. **Savings**: all of it to savings, raising the lowest
+  to the next, then both, and so on (`splitOverSavings`).
+- **Balanced**: savings up to about a month of usual spending (the median past period's
+  expenses times periods per month) when they are below it; then debts at 8% APR or more,
+  highest first; then half of what is left to savings and half to the highest-rate debt
+  still owing; anything the debts don't need goes to savings.
+- **Payoff** (`payoffMonths`): month by month, interest at APR / 12 on the balance, then
+  the item's usual payment as a monthly amount by its schedule; "never" when the payment
+  doesn't cover the interest or it runs past fifty years.
+- A Smart answer about extra money ends with `PLAN: [1] $250.00; [3] $100.00`, the numbers
+  being the items as the facts list them (debts, then savings). The server keeps it only
+  when every number is listed, every amount is positive and they add up to no more than
+  the amount the plans use; the line is never shown.
+
 ### Turning occurrences into transactions
 
 An occurrence becomes a transaction: `name` = the item's name, amount = default amount with
@@ -528,7 +591,8 @@ Phases add these with migrations; column names follow the existing snake_case st
 
 ```
 user_settings      user_id PK → users, timezone, advice_persona, advice_persona_custom,
-                   low_balance_cents (20000), low_balance_periods (5), created_at, updated_at
+                   low_balance_cents (20000), low_balance_periods (5),
+                   balance_check_days (30), balance_checks_per_day (3), created_at, updated_at
 budget_schedules   id, user_id → users (unique for now), type, anchor_date,
                    opening_cents, created_at
 periods            id, user_id → users, schedule_id → budget_schedules, seq,
@@ -558,6 +622,11 @@ api_tokens         id, user_id → users, name, token_hash, hint, scope, created
                    unique (token_hash)
 deleted_import_keys  user_id → users, import_key, deleted_at
                    primary key (user_id, import_key)
+tracked_balances   bill_income_id PK → bills_income, user_id → users, check_every_days (null = the user's),
+                   next_check_on, handled_on, created_at, updated_at
+balance_checks     id, user_id → users, bill_income_id → bills_income, balance_cents, apr_bps (null = none),
+                   as_of, created_at
+                   index (bill_income_id, as_of)
 ```
 
 All child rows cascade when a user is deleted.
@@ -631,6 +700,24 @@ DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
 POST   /api/transactions/split         { name, kind, occursAt, note?, billIncomeId?, categoryId?, finishEarly?, items (1 to 10: label, amountCents, dueDate), dryRun? } → { payments, later, waitingId, current }; one transaction per period up to the furthest one, the rest kept as waiting payments; all or nothing (phase 27)
+GET    /api/balances                   { balances (by name), totals: { owedCents, heldCents }, asks, settings }
+PUT    /api/balances/settings          { checkEveryDays (14|30|61|91), checksPerDay (1 to 5) } → { settings }
+POST   /api/balances/snooze-today      every item asked about today waits a day → 204
+GET    /api/balances/:billIncomeId     { balance, checks (newest first), since (paid since the last, oldest first) }
+POST   /api/balances/:billIncomeId     starts tracking { balanceCents, aprBps?, asOf?, checkEveryDays? } → 201 { balance }
+PATCH  /api/balances/:billIncomeId     { checkEveryDays | null } → { balance }
+DELETE /api/balances/:billIncomeId     stops tracking; the checks stay → 204
+POST   /api/balances/:billIncomeId/checks       { balanceCents, aprBps? (left out: the last), asOf? } → 201 { balance }
+DELETE /api/balances/:billIncomeId/checks/:id   → { balance }; 409 for its only check
+POST   /api/balances/:billIncomeId/looks-right  records the estimate as a check → 201 { balance }
+POST   /api/balances/:billIncomeId/snooze       { days: 1 | 3 | 7 } → { balance }
+GET    /api/advice/quick               { answers (the four Quick Questions), extra }: no model needed. `extra` is what the
+                                       extra money plans are worked out from: today's and the coming periods' projected ends,
+                                       lowBalanceCents, debts and savings (tracked balances), monthlySpendCents, categoryIds
+GET    /api/advice                     { groups, persona }: the Smart Questions; 403 without a model
+POST   /api/advice                     { questionId, amountCents? (needed for an "Extra money" one) } →
+                                       { questionId, answer, askedAt, plan? }; plan is null when the answer's PLAN line failed the checks
+PUT    /api/advice/persona             { persona, custom? } → { persona }
 GET    /api/splits                     { splits }: each split's waiting payments, with inReach and remind
 POST   /api/splits/:id/add             adds its waiting payments that are in reach → { added, waiting? }; 409 if none are
 DELETE /api/splits/:id                 drops what it still has waiting

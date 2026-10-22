@@ -18,6 +18,8 @@ import {
 } from "../../shared/billsIncome.ts";
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, BillOrIncomeRecord, Repos } from "../repos/types.ts";
+import { canTrackBalance } from "../../shared/balances.ts";
+import { estimateFor } from "./balances.ts";
 import { NO_SUCH_CATEGORY } from "./billIncomeLinks.ts";
 import { dueRuleOf } from "./dueNotices.ts";
 import { applyLeftoverDelta } from "./carry.ts";
@@ -167,6 +169,13 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
           });
         }
 
+        // A tracked balance belongs to a bill or transfer: stop tracking before making it an income.
+        if (!canTrackBalance(after.kind) && (await repos.balances.findTracked(userId, id))) {
+          throw new AppError(400, "validation", "Some fields need attention", {
+            kind: "Stop tracking its balance first",
+          });
+        }
+
         // So does a due date: it belongs to something paid out. Turning a bill into an income gives it up.
         if (after.dueDate !== null && !canHaveDueDate(after.kind)) {
           throw new AppError(400, "validation", "Some fields need attention", {
@@ -204,12 +213,18 @@ export function createBillsIncomeService(deps: { store: DataStore; periods: Peri
       const page = records.slice(0, limit);
       const last = page.at(-1);
       const sums = await store.transactions.sumForBillOrIncome(userId, id);
+      // A tracked balance is worked out from its checks; otherwise a transfer's from its start.
+      const tracked = (await store.balances.findTracked(userId, id)) && (await estimateFor(store, userId, id));
       return {
         transactions: page.map(toTransaction),
         nextCursor: records.length > limit && last ? `${last.occursAt}_${last.id}` : null,
         totals: {
           ...sums,
-          balanceCents: item.kind === "transfer" ? item.openingCents + sums.paidOutCents - sums.paidInCents : null,
+          balanceCents: tracked
+            ? tracked.estimateCents
+            : item.kind === "transfer"
+              ? item.openingCents + sums.paidOutCents - sums.paidInCents
+              : null,
         },
       };
     },

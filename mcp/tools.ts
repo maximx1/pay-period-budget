@@ -6,6 +6,14 @@ import { z } from "zod";
 import type { AuthResponse } from "../src/shared/auth.ts";
 import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shared/budget.ts";
 import type { BalanceOutlook } from "../src/shared/outlook.ts";
+import {
+  type BalanceHistoryResponse,
+  balanceCheckInputSchema,
+  type BalancesResponse,
+  formatApr,
+  type TrackedBalance,
+  type TrackedBalanceResponse,
+} from "../src/shared/balances.ts";
 import type { Report } from "../src/shared/reports.ts";
 import {
   categoryInputSchema,
@@ -529,17 +537,75 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         );
         return [
           `${plural(totals.count, "transaction")} tied to this item in all: paid ${money(totals.paidCents)}, upcoming ${money(totals.upcomingCents)}.`,
-          // Only a transfer has a balance.
+          // A transfer has a balance, and so does a bill whose balance is tracked.
           ...(totals.balanceCents === null
             ? []
             : [
                 `Sent to it ${money(totals.paidOutCents)}, brought back ${money(totals.paidInCents)}, balance ${money(totals.balanceCents)}` +
-                  `${totals.balanceCents < 0 ? " (owed)" : ""}: its starting balance, plus what was sent, less what came back, paid transactions only.`,
+                  `${totals.balanceCents < 0 ? " (owed)" : ""}: when its balance is tracked, its last check plus what was paid to it ` +
+                  "since, less what came back (see list_balances); otherwise its starting balance plus what was sent, less what came back.",
               ]),
           `${transactions.length === totals.count ? "All of them" : `These ${transactions.length}`}, newest first:`,
           transactionList(transactions),
           ...(nextCursor ? [`There are older ones. Call again with before: "${nextCursor}"`] : []),
         ].join("\n");
+      },
+    }),
+
+    define({
+      name: "list_balances",
+      title: "Tracked balances",
+      description:
+        "The balances the owner tracks: what a loan, card or savings account that is one of their bills or transfers owes " +
+        "(negative) or holds. Each is the last balance the owner checked, plus the paid transactions tied to the item since " +
+        "then (money sent to it raises it, money taken out lowers it). Charges and interest on the account's own side are not " +
+        "seen until the next check. Also says which are due for a check, and the APR if one was given.",
+      inputSchema: {},
+      readOnly: true,
+      async run() {
+        const { balances, totals } = await api.get<BalancesResponse>("/api/balances");
+        if (balances.length === 0) return "No balances are tracked. The owner can start tracking one on the Balances page, or with record_balance_check.";
+        return [
+          `${plural(balances.length, "tracked balance")}. Owed in all ${money(-totals.owedCents)}; held ${money(totals.heldCents)}.`,
+          ...balances.map((balance) => `- ${balanceLine(balance)}`),
+        ].join("\n");
+      },
+    }),
+
+    define({
+      name: "record_balance_check",
+      title: "Record a balance",
+      description:
+        "Records what a bill or transfer's own account says its balance is, for example read off a statement. Starts tracking " +
+        "its balance if it isn't tracked yet. Only a bill or a transfer can have one, not an income. Owed is negative.",
+      inputSchema: {
+        id: z.string().min(1).describe(BILL_INCOME_ID_RULE),
+        balanceCents: balanceCheckInputSchema.shape.balanceCents.describe(
+          "Signed whole cents: negative for money owed ($8,450.00 owed is -845000), positive for money held.",
+        ),
+        aprBps: z
+          .number()
+          .int()
+          .min(0)
+          .nullable()
+          .optional()
+          .describe("The APR in basis points (24.99% is 2499); null for none. Left out, the last check's rate carries on."),
+        asOf: z
+          .string()
+          .optional()
+          .describe('When the balance was this, "YYYY-MM-DDTHH:mm" in the budget\'s time zone; never later than now. Left out: now.'),
+      },
+      readOnly: false,
+      async run({ id, balanceCents, aprBps, asOf }) {
+        const { balances } = await api.get<BalancesResponse>("/api/balances");
+        const tracked = balances.some((balance) => balance.billIncomeId === id);
+        const path = `/api/balances/${encodeURIComponent(id)}`;
+        const body = { balanceCents, ...(aprBps !== undefined && { aprBps }), ...(asOf && { asOf }) };
+        const { balance } = await api.post<TrackedBalanceResponse>(tracked ? `${path}/checks` : path, body);
+        const { checks } = await api.get<BalanceHistoryResponse>(path);
+        return [`${tracked ? "Recorded" : "Started tracking, with"} a check of ${money(balanceCents)}.`, balanceLine(balance), `${plural(checks.length, "check")} so far.`].join(
+          "\n",
+        );
       },
     }),
 
@@ -1085,4 +1151,18 @@ function duplicateLine({ index, existing, reason, daysApart }: PossibleDuplicate
     `row ${index} ${incoming} ↔ existing ${dateOf(existing.occursAt)} "${existing.name}" ${money(existing.amountCents)}, ` +
     `${existing.status}, ${REASONS[reason]}, ${apart}, id ${existing.id}`
   );
+}
+
+/** One tracked balance on a line: what it is now, from when, the rate, and when it is next asked about. */
+function balanceLine(balance: TrackedBalance): string {
+  const check = balance.lastCheck;
+  return [
+    `${balance.name}: ${balance.estimateCents < 0 ? "owes" : "holds"} ${money(balance.estimateCents)}`,
+    balance.sinceCount > 0
+      ? `estimated: checked at ${money(check.balanceCents)} on ${check.asOf}, then ${plural(balance.sinceCount, "paid transaction")}`
+      : `checked on ${check.asOf}`,
+    check.aprBps === null ? "no APR given" : `APR ${formatApr(check.aprBps)}`,
+    balance.due ? "DUE for a check" : `next check around ${balance.nextCheckOn}`,
+    `id ${balance.billIncomeId}`,
+  ].join(" | ");
 }

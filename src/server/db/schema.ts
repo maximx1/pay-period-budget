@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { API_TOKEN_SCOPES } from "../../shared/auth.ts";
+import { DEFAULT_CHECK_EVERY_DAYS, DEFAULT_CHECKS_PER_DAY } from "../../shared/balances.ts";
 import { BILL_OR_INCOME_KINDS } from "../../shared/billsIncome.ts";
 import { DUE_UNITS } from "../../shared/dueDates.ts";
 import { DEFAULT_LOW_BALANCE_CENTS, DEFAULT_PERIODS_AHEAD } from "../../shared/outlook.ts";
@@ -93,6 +94,10 @@ export const userSettings = sqliteTable("user_settings", {
   lowBalanceCents: integer("low_balance_cents").notNull().default(DEFAULT_LOW_BALANCE_CENTS),
   /** How many periods after the current one the warnings look at; 0 is off. */
   lowBalancePeriods: integer("low_balance_periods").notNull().default(DEFAULT_PERIODS_AHEAD),
+  /** About how many days apart to ask for a tracked balance to be checked. */
+  balanceCheckDays: integer("balance_check_days").notNull().default(DEFAULT_CHECK_EVERY_DAYS),
+  /** The most checks to ask for on the home screen in one day. */
+  balanceChecksPerDay: integer("balance_checks_per_day").notNull().default(DEFAULT_CHECKS_PER_DAY),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
@@ -304,4 +309,51 @@ export const splitWaitingPayments = sqliteTable(
     index("split_waiting_user_occurs_idx").on(t.userId, t.occursAt),
     index("split_waiting_split_idx").on(t.splitId),
   ],
+);
+
+/**
+ * A bill or transfer whose own account's balance is tracked (phase 28). Its checks are in
+ * `balance_checks`; the row going away stops the asking and keeps them.
+ */
+export const trackedBalances = sqliteTable(
+  "tracked_balances",
+  {
+    billIncomeId: text("bill_income_id")
+      .primaryKey()
+      .references(() => billsIncome.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Its own interval in days; null follows user_settings.balance_check_days. */
+    checkEveryDays: integer("check_every_days"),
+    /** When to ask for a check next. */
+    nextCheckOn: text("next_check_on").notNull(),
+    /** The last day it was checked or snoozed, which counts toward that day's asks. */
+    handledOn: text("handled_on"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("tracked_balances_user_idx").on(t.userId)],
+);
+
+/** A balance as the owner read it at a moment. Kept after tracking stops; deleted with the item. */
+export const balanceChecks = sqliteTable(
+  "balance_checks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    billIncomeId: text("bill_income_id")
+      .notNull()
+      .references(() => billsIncome.id, { onDelete: "cascade" }),
+    /** Signed: below zero is owed. */
+    balanceCents: integer("balance_cents").notNull(),
+    /** Basis points: 2499 is 24.99%. Null: no rate given. */
+    aprBps: integer("apr_bps"),
+    /** "YYYY-MM-DDTHH:mm" in the budget's time zone, as transactions have it. */
+    asOf: text("as_of").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("balance_checks_item_as_of_idx").on(t.billIncomeId, t.asOf)],
 );

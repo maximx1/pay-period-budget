@@ -30,7 +30,10 @@ const envSchema = z.object({
   ADVICE_MODEL_URL: blankIsUnset(z.url()),
   ADVICE_MODEL: blankIsUnset(z.string()),
   ADVICE_MODEL_KEY: blankIsUnset(z.string()),
-  ADVICE_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(60),
+  ADVICE_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(180),
+  // "false" asks a model that thinks before answering (Qwen 3 and the like) not to. Only
+  // servers that take chat_template_kwargs understand it (llama.cpp, vLLM, SGLang).
+  ADVICE_MODEL_THINKING: z.enum(["true", "false"]).default("true"),
 });
 
 /** Where an OpenAI-compatible model is, and how long to wait for it. */
@@ -40,6 +43,12 @@ export type ModelConfig = {
   model: string;
   apiKey: string | null;
   timeoutMs: number;
+  /**
+   * False asks the model to answer without thinking first, by sending
+   * `chat_template_kwargs: { enable_thinking: false }`. Left out, nothing extra is sent: an
+   * API that doesn't know the field, such as OpenAI's, refuses the request.
+   */
+  thinking?: false;
 };
 
 /** A model the server sends screenshots' text (or the screenshots) to, in place of the built-in reader. */
@@ -122,5 +131,6 @@ function adviceModelOf(parsed: z.output<typeof envSchema>): ModelConfig | null {
     model,
     apiKey: parsed.ADVICE_MODEL_KEY ?? parsed.SCAN_MODEL_KEY ?? null,
     timeoutMs: parsed.ADVICE_MODEL_TIMEOUT_SECONDS * 1000,
+    ...(parsed.ADVICE_MODEL_THINKING === "false" && { thinking: false as const }),
   };
 }

@@ -401,6 +401,36 @@ describe("importing a file", () => {
   });
 });
 
+describe("balances", () => {
+  it("starts tracking with the first check, records the next, and lists what each owes or holds", async () => {
+    const loan = (await (await session.post("/api/bills-income", { name: "Car loan", kind: "expense", defaultAmountCents: 0, recurrenceUnit: "none" })).json()).item;
+    expect(await call("list_balances")).toContain("No balances are tracked.");
+
+    const started = await call("record_balance_check", { id: loan.id, balanceCents: -845_000, aprBps: 690 });
+    expect(started.split("\n")).toEqual([
+      "Started tracking, with a check of -$8,450.00 (-845000 cents).",
+      `Car loan: owes -$8,450.00 (-845000 cents) | checked on 2026-01-15T12:00 | APR 6.9% | next check around 2026-02-14 | id ${loan.id}`,
+      "1 check so far.",
+    ]);
+
+    await session.post("/api/transactions", { name: "Payment", amountCents: 30_000, kind: "expense", occursAt: "2026-01-16T00:00", paid: true, billIncomeId: loan.id });
+    expect(await call("list_balances")).toBe(
+      [
+        "1 tracked balance. Owed in all -$8,150.00 (-815000 cents); held $0.00 (0 cents).",
+        "- Car loan: owes -$8,150.00 (-815000 cents) | estimated: checked at -$8,450.00 (-845000 cents) on 2026-01-15T12:00, then 1 paid transaction" +
+          ` | APR 6.9% | next check around 2026-02-14 | id ${loan.id}`,
+      ].join("\n"),
+    );
+
+    const recorded = await call("record_balance_check", { id: loan.id, balanceCents: -810_000, asOf: "2026-01-15T11:00" });
+    expect(recorded).toContain("Recorded a check of -$8,100.00 (-810000 cents).");
+    expect(recorded).toContain("2 checks so far.");
+    await expect(call("record_balance_check", { id: loan.id, balanceCents: -1, asOf: "2026-01-16T00:00" })).rejects.toMatchObject({
+      fields: { asOf: "That's later than now" },
+    });
+  });
+});
+
 describe("bills and income", () => {
   const rent = { name: "Rent", kind: "expense", defaultAmountCents: 90_000, recurrenceUnit: "month", firstDueDate: "2026-01-25" };
   const idIn = (text: string) => /\| id ([\w-]+)/.exec(text)![1]!;
@@ -515,7 +545,8 @@ describe("bills and income", () => {
     expect((await call("list_bill_or_income_transactions", { id })).split("\n").slice(0, 2)).toEqual([
       "2 transactions tied to this item in all: paid $600.00 (60000 cents), upcoming $0.00 (0 cents).",
       "Sent to it $400.00 (40000 cents), brought back $1,000.00 (100000 cents), balance $1,900.00 (190000 cents): " +
-        "its starting balance, plus what was sent, less what came back, paid transactions only.",
+        "when its balance is tracked, its last check plus what was paid to it since, less what came back (see list_balances); " +
+        "otherwise its starting balance plus what was sent, less what came back.",
     ]);
 
     // A balance belongs to a transfer: going back to a bill has to give it up.
@@ -933,6 +964,8 @@ describe("over the protocol", () => {
       ["delete_transaction", false, true],
       ["list_bills_income", true, false],
       ["list_bill_or_income_transactions", true, false],
+      ["list_balances", true, false],
+      ["record_balance_check", false, false],
       ["create_bill_or_income", false, false],
       ["update_bill_or_income", false, false],
       ["end_bill_or_income", false, true],

@@ -5,6 +5,7 @@ import { AdviceSection } from "./AdviceSection.tsx";
 import { ApiTokensSection } from "./ApiTokensSection.tsx";
 import { AppLockSection } from "./AppLockSection.tsx";
 import { AppearanceSection } from "./AppearanceSection.tsx";
+import { BalanceChecksSection } from "./BalanceChecksSection.tsx";
 import { BudgetSection } from "./BudgetSection.tsx";
 import { DevicesSection } from "./DevicesSection.tsx";
 import { LowBalanceSection } from "./LowBalanceSection.tsx";
@@ -26,6 +27,7 @@ export function SettingsPage() {
         </SettingsSection>
         <BudgetSection />
         <LowBalanceSection />
+        <BalanceChecksSection />
         <AppearanceSection />
         <AdviceSection />
         {isNative && <AppLockSection />}

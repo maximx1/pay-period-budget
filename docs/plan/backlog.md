@@ -23,23 +23,14 @@ accounts.)
   balances that are reconciled. When it is built, the transfer items are its first rows:
   move them rather than keeping two ways to say the same thing.
 
-## Advice: debts and paying them down
+## Advice: debts, savings and balances
 
-Follows [phase 22](phase-22-advice.md). Bills and income would carry more about a debt: a
-credit card's or loan's balance, its interest rate (APR), the minimum payment, and the
-statement and due days. Then an Advice question such as "How much should I pay on each
-one to pay this down fastest?", answered by working out avalanche (highest rate first)
-and snowball (smallest balance first) plans on the server against what each pay period
-can spare, and having the model explain the better one. As with the rest of Advice, the
-server does the arithmetic; the model explains it.
-
-## Advice: balances over time and concerns
-
-Needs the above, or Accounts. Record the balance of each card, loan and savings account
-over time (entered by hand, read from a statement screenshot, or worked out for
-transfers), so a question like "Where are my biggest concerns?" can point at a card whose
-balance keeps climbing ("stop using the Visa"), savings being drawn down, or a minimum
-payment that no longer covers the interest.
+Planned 2026-10-21 as [phase 28](phase-28-balances.md) (balances checked over time, with
+interest rates), [phase 29](phase-29-paydown-advice.md) (avalanche, snowball and savings
+plans for extra money) and [phase 30](phase-30-advice-talk.md) (a conversation). Left
+after those: "Where are my biggest concerns?" over the balance history (a card whose
+balance keeps climbing, savings being drawn down, a payment that no longer covers the
+interest), savings goals, reading a balance from a statement screenshot.
 
 ## Deployment
 

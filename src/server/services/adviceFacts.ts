@@ -105,7 +105,12 @@ export function adviceFacts({ scheduleType, today, current, report, items }: Adv
       `- Bills and transfers take ${money(committed)} of a pay period on average, ${percent(committed, usualIncome)} of usual income.`,
     );
     if (pace.usual && pace.usual.length > 3) {
-      add(`- Usually ${percent(pace.usual[2]!, pace.usual.at(-1)!)} of a period's spending happens in its first three days.`);
+      // Without the even-spread share to compare with, a model read 22% of a 14-day period's
+      // spending in three days as a splurge (2026-10-21).
+      add(
+        `- Usually ${percent(pace.usual[2]!, pace.usual.at(-1)!)} of a period's spending happens in its first three days; ` +
+          `spread evenly it would be ${percent(3, pace.usual.length)}.`,
+      );
     }
     add("");
 

@@ -1,7 +1,10 @@
 import { z } from "zod";
+import type { LocalDate } from "./dates.ts";
+import type { Debt, Saving } from "./paydown.ts";
 
-// The Advice page: a fixed set of questions, each answered in one go by a model the server
-// is set up to ask, from figures the server works out. No free text, no conversation.
+// The Advice page (phases 22 and 29). Quick Questions are answered by the app itself from
+// its own figures, with no model. Smart Questions are a fixed set answered in one go by a
+// model the server is set up to ask, from figures the server works out.
 
 export type AdviceQuestion = {
   id: string;
@@ -9,24 +12,22 @@ export type AdviceQuestion = {
   label: string;
   /** What the model is told to look at and come back with. Only the server sends it. */
   focus: string;
+  /** Asked about an amount of extra money, which the request then has to give. */
+  needsAmount?: true;
 };
+
+/** Answered by the app itself, at once. Their answers come with `GET /api/advice/quick`. */
+export const QUICK_QUESTIONS = [
+  { id: "make-it-to-payday", label: "Will I make it to payday?" },
+  { id: "safe-daily-spend", label: "How much can I safely spend each day until payday?" },
+  { id: "spoken-for", label: "How much of each paycheck is already spoken for?" },
+  { id: "tight-periods", label: "Which pay periods coming up will be tight?" },
+] as const;
 
 export const ADVICE_GROUPS: ReadonlyArray<{ title: string; questions: readonly AdviceQuestion[] }> = [
   {
     title: "This pay period",
     questions: [
-      {
-        id: "make-it-to-payday",
-        label: "Will I make it to payday?",
-        focus:
-          "Say yes, tight or no: whether the projected leftover stays above zero, and whether this period ends above or below what it started with. Name the upcoming payments before payday that matter most, and anything overdue.",
-      },
-      {
-        id: "safe-daily-spend",
-        label: "How much can I safely spend each day until payday?",
-        focus:
-          "Headline the daily amount that still ends the period no lower than it started. Mention the amount that uses up what was carried over only as the outer limit. Say what is already allowed for.",
-      },
       {
         id: "spending-pace",
         label: "Am I spending faster than usual?",
@@ -61,17 +62,6 @@ export const ADVICE_GROUPS: ReadonlyArray<{ title: string; questions: readonly A
     title: "Bills and the months ahead",
     questions: [
       {
-        id: "spoken-for",
-        label: "How much of each paycheck is already spoken for?",
-        focus:
-          "Give the share of usual income per pay period that bills and transfers already take, and what that leaves for everything else.",
-      },
-      {
-        id: "tight-periods",
-        label: "Which pay periods coming up will be tight?",
-        focus: "Use the coming pay periods' scheduled bills against their income. Name the heavy ones and what makes them heavy.",
-      },
-      {
         id: "question-bills",
         label: "Which bills should I question?",
         focus:
@@ -82,6 +72,39 @@ export const ADVICE_GROUPS: ReadonlyArray<{ title: string; questions: readonly A
         label: "Am I saving steadily?",
         focus:
           "Use money sent to and brought back from transfers each period against income. Say whether savings stick or keep being pulled back out.",
+      },
+    ],
+  },
+  {
+    title: "Extra money",
+    questions: [
+      {
+        id: "pay-down-debt",
+        label: "Which debt should I pay down?",
+        needsAmount: true,
+        focus:
+          "Compare the Fastest and Fewest payments plans for this amount: what each clears, the interest saved, the payments ended. Recommend one for this owner and say why in a sentence.",
+      },
+      {
+        id: "build-savings",
+        label: "How should I build my savings?",
+        needsAmount: true,
+        focus:
+          "Say how many pay periods of usual spending the savings would cover after this amount, and where to put it among the savings. Mention any debt costing far more in interest than savings earn.",
+      },
+      {
+        id: "debt-or-savings",
+        label: "How should I balance debt and savings?",
+        needsAmount: true,
+        focus:
+          "Weigh paying debts down against building savings for this amount. Use the Balanced plan as a starting point and change it only for a reason you name.",
+      },
+      {
+        id: "not-sure",
+        label: "I'm not sure. What should I do?",
+        needsAmount: true,
+        focus:
+          "Pick the one plan (or a mix) that suits these figures best, in plain words for someone who doesn't know the terms. Say what to do first.",
       },
     ],
   },
@@ -127,13 +150,76 @@ export function voiceOf({ persona, custom }: AdvicePersona): string | null {
 }
 
 const questionIds = ADVICE_QUESTIONS.map((question) => question.id) as [string, ...string[]];
-export const adviceRequestSchema = z.object({ questionId: z.enum(questionIds, "Choose a question") });
+export const adviceRequestSchema = z.object({
+  questionId: z.enum(questionIds, "Choose a question"),
+  /** For a question about extra money: how much. */
+  amountCents: z.number("Enter an amount").int("Enter a whole number of cents").min(1, "Enter an amount").max(100_000_000, "That amount is too large").optional(),
+});
 
 export type AdviceQuestionsResponse = {
-  groups: Array<{ title: string; questions: Array<{ id: string; label: string }> }>;
+  groups: Array<{ title: string; questions: Array<{ id: string; label: string; needsAmount?: true }> }>;
   persona: AdvicePersona;
 };
-export type AdviceAnswerResponse = { questionId: string; answer: string; askedAt: string };
+
+/** Payments a Smart answer suggests, checked against the tracked balances, for quick add. */
+export type AdvicePlan = { items: Array<{ billIncomeId: string; name: string; amountCents: number }> };
+
+export type AdviceAnswerResponse = {
+  questionId: string;
+  answer: string;
+  askedAt: string;
+  /** For a question about extra money: what the answer suggests paying, when it named amounts the server could check. */
+  plan?: AdvicePlan | null;
+};
+
+/** "Talk it through" (phase 30): one message of a conversation. */
+export type AdviceTalkMessage = { role: "owner" | "adviser"; text: string };
+
+/** Twenty turns each way. */
+export const MAX_TALK_MESSAGES = 40;
+export const MAX_TALK_MESSAGE_LENGTH = 1000;
+
+export const adviceTalkSchema = z
+  .object({
+    /** The conversation so far, oldest first. Empty: the adviser opens it. */
+    messages: z
+      .array(
+        z.object({
+          role: z.enum(["owner", "adviser"]),
+          text: z
+            .string()
+            .trim()
+            .min(1, "Say something first")
+            .max(MAX_TALK_MESSAGE_LENGTH, `Keep a message under ${MAX_TALK_MESSAGE_LENGTH.toLocaleString("en-US")} characters`),
+        }),
+      )
+      .max(MAX_TALK_MESSAGES - 1, "That's as long as one conversation goes"),
+    /** The extra money the owner has in mind, if any. */
+    amountCents: adviceRequestSchema.shape.amountCents,
+  })
+  .refine((input) => input.messages.length === 0 || input.messages.at(-1)!.role === "owner", {
+    path: ["messages"],
+    message: "It's the owner's turn to say something",
+  });
+export type AdviceTalkInput = z.input<typeof adviceTalkSchema>;
+export type AdviceTalkResponse = { text: string; plan: AdvicePlan | null };
+
+export type QuickAnswer = { id: string; label: string; answer: string };
+
+/** What the extra money plans on the page are worked out from. */
+export type ExtraMoneyFacts = {
+  /** Today's period, then the coming ones that exist, each with how it is set to end. */
+  periods: Array<{ startDate: LocalDate; endDate: LocalDate; projectedCents: number }>;
+  lowBalanceCents: number;
+  debts: Debt[];
+  savings: Saving[];
+  /** About a month of usual spending: the cushion the balanced plan builds toward. */
+  monthlySpendCents: number;
+  /** Each tracked item's category, which a quick-added payment is filed under. */
+  categoryIds: Record<string, string | null>;
+};
+
+export type QuickAdviceResponse = { answers: QuickAnswer[]; extra: ExtraMoneyFacts };
 export type AdvicePersonaResponse = { persona: AdvicePersona };
 
 export const ADVICE_OFF_MESSAGE = "Advice is turned off on this server";

@@ -1,6 +1,6 @@
 import type { ModelConfig } from "../env.ts";
 
-export type ChatMessage = { role: "system" | "user"; content: string | ReadonlyArray<Record<string, unknown>> };
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string | ReadonlyArray<Record<string, unknown>> };
 
 /**
  * Sends one chat completion to an OpenAI-compatible API (OpenAI itself, or one the owner
@@ -21,6 +21,7 @@ export async function chatCompletion(
         model: config.model,
         temperature: request.temperature,
         ...(request.maxTokens && { max_tokens: request.maxTokens }),
+        ...(config.thinking === false && { chat_template_kwargs: { enable_thinking: false } }),
         messages: request.messages,
       }),
       signal: AbortSignal.timeout(config.timeoutMs),
@@ -30,8 +31,21 @@ export async function chatCompletion(
   }
   if (!response.ok) throw new Error(`it answered with an error (${response.status})`);
 
-  const body = (await response.json().catch(() => null)) as { choices?: Array<{ message?: { content?: unknown } }> } | null;
-  const content = body?.choices?.[0]?.message?.content;
+  const body = (await response.json().catch(() => null)) as {
+    choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
+  } | null;
+  const choice = body?.choices?.[0];
+  const content = choice?.message?.content;
+  // A model that thinks first can spend every token it was allowed on that, leaving no
+  // answer. Some servers then send null, others an empty string or an unfinished <think>.
+  if (choice?.finish_reason === "length" && (typeof content !== "string" || isOnlyThinking(content))) {
+    throw new Error("it ran out of room before answering, probably thinking it over first");
+  }
   if (typeof content !== "string") throw new Error("its answer was not in the expected form");
   return content;
+}
+
+/** Nothing but reasoning, closed or not, or nothing at all. */
+function isOnlyThinking(content: string): boolean {
+  return content.replace(/<think>[\s\S]*?(<\/think>|$)/gi, "").trim() === "";
 }

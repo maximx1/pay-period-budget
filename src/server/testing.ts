@@ -17,7 +17,7 @@ import { createSqliteStore } from "./repos/sqlite/index.ts";
  *   move the clock by days and are not about a browser being left alone.
  * @param deps stand-ins for what the app reaches outside itself: the screenshot reader (`ocr`) and `fetch`.
  */
-export async function createTestApp(env: Record<string, string> = {}, deps: Pick<AppDeps, "ocr" | "fetch"> = {}) {
+export async function createTestApp(env: Record<string, string> = {}, deps: Pick<AppDeps, "ocr" | "fetch" | "random"> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ppb-test-"));
   const { db, close } = await openDatabase(`file:${join(dir, "test.db")}`);
   const store = createSqliteStore(db);
@@ -31,7 +31,8 @@ export async function createTestApp(env: Record<string, string> = {}, deps: Pick
     },
   };
 
-  const { app, auth, ocr } = createApp({ store, config, now: clock.now, ...deps });
+  // A fixed "random" puts every next balance check exactly its interval away.
+  const { app, auth, ocr } = createApp({ store, config, now: clock.now, random: () => 0.5, ...deps });
 
   return {
     app,

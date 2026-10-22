@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { addDays, atStartOfDay, type LocalDate } from "../../../shared/dates.ts";
 import { IGNORED_IN_SEARCH, searchKey } from "../../../shared/transactions.ts";
 import type { Db } from "../../db/client.ts";
@@ -193,6 +193,20 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         paidOutCents: Number(row?.paidOutCents ?? 0),
         paidInCents: Number(row?.paidInCents ?? 0),
       };
+    },
+    async listPaidForBillOrIncomeAfter(userId, billIncomeId, after) {
+      return db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.billIncomeId, billIncomeId),
+            eq(transactions.status, "paid"),
+            gt(transactions.occursAt, after),
+          ),
+        )
+        .orderBy(asc(transactions.occursAt), asc(transactions.sortOrder));
     },
     async listUpcomingForBillOrIncomeAfter(userId, billIncomeId, date) {
       return db

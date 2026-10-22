@@ -3,6 +3,9 @@ import {
   type AdviceAnswerResponse,
   type AdvicePersonaResponse,
   type AdviceQuestionsResponse,
+  type AdviceTalkResponse,
+  type QuickAdviceResponse,
+  adviceTalkSchema,
   advicePersonaSchema,
   adviceRequestSchema,
 } from "../../shared/advice.ts";
@@ -16,9 +19,17 @@ export function adviceRoutes(deps: { advice: AdviceService; authed: MiddlewareHa
 
   routes.get("/", async (c) => c.json<AdviceQuestionsResponse>(await advice.questions(c.var.user.id)));
 
+  // Answered by the app itself: works with or without a model.
+  routes.get("/quick", async (c) => c.json<QuickAdviceResponse>(await advice.quick(c.var.user.id)));
+
   routes.post("/", async (c) => {
-    const { questionId } = await parseJson(c, adviceRequestSchema);
-    return c.json<AdviceAnswerResponse>(await advice.ask(c.var.user.id, questionId));
+    const { questionId, amountCents } = await parseJson(c, adviceRequestSchema);
+    return c.json<AdviceAnswerResponse>(await advice.ask(c.var.user.id, questionId, amountCents));
+  });
+
+  routes.post("/talk", async (c) => {
+    const { messages, amountCents } = await parseJson(c, adviceTalkSchema);
+    return c.json<AdviceTalkResponse>(await advice.talk(c.var.user.id, messages, amountCents));
   });
 
   routes.put("/persona", async (c) => {

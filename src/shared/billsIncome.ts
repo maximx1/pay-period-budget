@@ -232,7 +232,8 @@ export type BillOrIncomeTotals = {
   paidOutCents: number;
   paidInCents: number;
   /**
-   * For a transfer, what the other account holds as far as the budget knows: its starting
+   * For a tracked balance (phase 28), its estimate from the last check. Otherwise, for a
+   * transfer, what the other account holds as far as the budget knows: its starting
    * balance, plus what was paid out to it, less what was paid back in. Negative is money
    * owed. Null for a bill or an income.
    */

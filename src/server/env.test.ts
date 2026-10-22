@@ -63,7 +63,7 @@ describe("loadConfig", () => {
       url: "http://localhost:11434/v1",
       model: "reader-7b",
       apiKey: "k",
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     });
     // Its own settings win, and the scan model can be off while advice is on, or the reverse.
     const own = { ADVICE_MODEL_URL: "https://api.example.com/v1", ADVICE_MODEL: "big", ADVICE_MODEL_KEY: "a", ADVICE_MODEL_TIMEOUT_SECONDS: "20" };
@@ -72,5 +72,12 @@ describe("loadConfig", () => {
     expect(both.scanModel).toBeNull();
     expect(loadConfig({ ...scan, ...own }).scanModel).not.toBeNull();
     expect(loadConfig({ ADVICE_ENABLED: "true", ADVICE_MODEL_URL: "", ADVICE_MODEL: "" }).adviceModel).toBeNull();
+  });
+
+  it("asks the advice model not to think first only when told to", () => {
+    const on = { ADVICE_ENABLED: "true", ADVICE_MODEL_URL: "http://localhost:8080/v1", ADVICE_MODEL: "qwen" };
+    expect(loadConfig(on).adviceModel).not.toHaveProperty("thinking");
+    expect(loadConfig({ ...on, ADVICE_MODEL_THINKING: "false" }).adviceModel).toMatchObject({ thinking: false });
+    expect(() => loadConfig({ ...on, ADVICE_MODEL_THINKING: "no" })).toThrow();
   });
 });

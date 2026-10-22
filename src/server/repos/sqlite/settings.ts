@@ -23,6 +23,14 @@ export function createSettingsRepo(db: Db): SettingsRepo {
         .returning({ userId: userSettings.userId });
       return changed.length > 0;
     },
+    async setBalanceChecks(userId, values, now) {
+      const changed = await db
+        .update(userSettings)
+        .set({ ...values, updatedAt: now })
+        .where(eq(userSettings.userId, userId))
+        .returning({ userId: userSettings.userId });
+      return changed.length > 0;
+    },
     async setLowBalance(userId, values, now) {
       const changed = await db
         .update(userSettings)
