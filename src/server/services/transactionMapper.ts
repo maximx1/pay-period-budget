@@ -16,5 +16,6 @@ export function toTransaction(record: TransactionRecord): Transaction {
     occurrenceDate: record.occurrenceDate,
     importKey: record.importKey,
     categoryId: record.categoryId,
+    splitId: record.splitId,
   };
 }

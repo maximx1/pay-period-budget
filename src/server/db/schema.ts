@@ -7,7 +7,8 @@ import { DUE_UNITS } from "../../shared/dueDates.ts";
 import { DEFAULT_LOW_BALANCE_CENTS, DEFAULT_PERIODS_AHEAD } from "../../shared/outlook.ts";
 import { RECURRENCE_UNITS } from "../../shared/recurrence.ts";
 import { SCHEDULE_TYPES } from "../../shared/schedule.ts";
-import { TRANSACTION_STATUSES } from "../../shared/transactions.ts";
+import { TRANSACTION_KINDS, TRANSACTION_STATUSES } from "../../shared/transactions.ts";
+import type { StoredShare } from "../repos/types.ts";
 
 // Conventions: text UUID primary keys, instants as integer milliseconds (timestamp_ms),
 // money as integer cents, calendar dates as "YYYY-MM-DD" text.
@@ -250,11 +251,16 @@ export const transactions = sqliteTable(
     importKey: text("import_key"),
     /** What it is filed under, if anything. Cleared if that category is deleted. */
     categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /** The split that made it, if any (phase 31). */
+    splitId: text("split_id").references(() => splits.id, { onDelete: "set null" }),
+    /** With a split: what each of its items makes up of this payment, as JSON. */
+    splitShares: text("split_shares", { mode: "json" }).$type<StoredShare[]>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [
     index("transactions_user_occurs_idx").on(t.userId, t.occursAt),
+    index("transactions_split_idx").on(t.splitId),
     // Rows that were not imported have a null key and never collide.
     uniqueIndex("transactions_user_import_key_unique").on(t.userId, t.importKey),
     // One transaction per occurrence of an item. Rows with no item have a null bill_income_id,
@@ -281,6 +287,59 @@ export const deletedImportKeys = sqliteTable(
 );
 
 /**
+ * A split (phase 27, kept since phase 31): amounts due by dates spread over the pay periods
+ * before them. What it was asked for is kept so its unpaid payments can be worked out again
+ * when it is added to or a payment is skipped. Its transactions and waiting payments point
+ * at it. A split made before phase 31 has a row (made by migration 0016) but no items.
+ */
+export const splits = sqliteTable(
+  "splits",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: TRANSACTION_KINDS }).notNull(),
+    note: text("note"),
+    billIncomeId: text("bill_income_id").references(() => billsIncome.id, { onDelete: "set null" }),
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    finishEarly: integer("finish_early", { mode: "boolean" }).notNull().default(false),
+    roundUp: integer("round_up", { mode: "boolean" }).notNull().default(false),
+    /** The pay periods (by seq) whose payment was skipped, as a JSON array. */
+    skippedSeqs: text("skipped_seqs", { mode: "json" }).$type<number[]>().notNull().default([]),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("splits_user_idx").on(t.userId)],
+);
+
+/** What one split spreads: each amount, the date it is due by, and when its payments began. */
+export const splitItems = sqliteTable(
+  "split_items",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    splitId: text("split_id")
+      .notNull()
+      .references(() => splits.id, { onDelete: "cascade" }),
+    /** Its place in the split: the order the note lists items in. */
+    position: integer("position").notNull(),
+    /** Empty for the only item of a split. */
+    label: text("label").notNull(),
+    /** The whole amount, positive. */
+    amountCents: integer("amount_cents").notNull(),
+    dueDate: text("due_date").notNull(),
+    /** Its first payment's date: the split's, or the day it was added to the split. */
+    startDate: text("start_date").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("split_items_split_idx").on(t.splitId, t.position)],
+);
+
+/**
  * The payments of a split that fall too far ahead for their pay periods to exist yet.
  * Each is a transaction worked out in full and waiting to be added; the rows one split
  * left share a `split_id`. Adding one deletes it here.
@@ -303,6 +362,8 @@ export const splitWaitingPayments = sqliteTable(
     billIncomeId: text("bill_income_id").references(() => billsIncome.id, { onDelete: "set null" }),
     /** Cleared if that category is deleted before the payment is added. */
     categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /** What each item of the split makes up of it, as JSON; null for one waiting since before phase 31. */
+    shares: text("shares", { mode: "json" }).$type<StoredShare[]>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [

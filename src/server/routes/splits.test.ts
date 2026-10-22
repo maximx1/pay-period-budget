@@ -36,7 +36,9 @@ async function split(client: Client, overrides: Body = {}) {
   return (await response.json()) as TransactionSplitResponse;
 }
 
-const waiting = async (client: Client) => ((await (await client.get("/api/splits")).json()) as WaitingSplitsResponse).splits;
+/** The splits with payments waiting. The list also holds splits with only unpaid transactions left. */
+const waiting = async (client: Client) =>
+  ((await (await client.get("/api/splits")).json()) as WaitingSplitsResponse).splits.filter((split) => split.payments.length > 0);
 
 async function add(client: Client, id: string) {
   const response = await client.post(`/api/splits/${id}/add`);

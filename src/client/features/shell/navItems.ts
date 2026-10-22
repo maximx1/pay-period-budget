@@ -3,7 +3,7 @@ import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 
 /**
  * `title` is what the page is headed with, when that differs from its name in the menu.
- * `splits` marks a section shown only while a split has payments waiting (or while it is open).
+ * `splits` marks a section shown only while a split has something left to pay (or while it is open).
  */
 export type NavItem = { to: string; label: string; icon: LucideIcon; title?: string; splits?: true };
 

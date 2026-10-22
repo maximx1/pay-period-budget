@@ -117,6 +117,8 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           occurrenceDate: null,
           importKey: null,
           categoryId: link.categoryId,
+          splitId: null,
+          splitShares: null,
           createdAt,
           updatedAt: createdAt,
         });

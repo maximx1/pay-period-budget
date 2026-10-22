@@ -242,3 +242,62 @@ describe("0010: categories", () => {
     now.close();
   });
 });
+
+describe("0016: splits are kept", () => {
+  it("gives each split that only had payments waiting a row of its own, and keeps the payments", async () => {
+    const url = await databaseBefore("0016_splits_kept");
+    const old = createClient({ url });
+    await old.execute("PRAGMA foreign_keys = ON");
+    await old.batch([
+      "insert into users (id, username, email, password_hash, created_at, updated_at) values ('u1', 'ann', 'ann@example.com', 'x', 1, 1)",
+      `insert into split_waiting_payments (id, user_id, split_id, name, amount_cents, occurs_at, note, bill_income_id, category_id, created_at)
+       values ('w1', 'u1', 'sp1', 'PayPal', -2941, '2027-10-22T00:00', null, null, null, 7),
+              ('w2', 'u1', 'sp1', 'PayPal', -2941, '2027-11-05T00:00', null, null, null, 7),
+              ('w3', 'u1', 'sp2', 'Refund', 1000, '2027-11-05T00:00', null, null, null, 9)`,
+    ]);
+    old.close();
+
+    const { close } = await openDatabase(url);
+    close();
+
+    const now = createClient({ url });
+    await now.execute("PRAGMA foreign_keys = ON");
+    const rows = async (sql: string) => (await now.execute(sql)).rows.map((row) => Object.values(row));
+    expect(await rows("select id, user_id, name, kind, finish_early, round_up, skipped_seqs, created_at from splits order by id")).toEqual([
+      ["sp1", "u1", "PayPal", "expense", 0, 0, "[]", 7],
+      ["sp2", "u1", "Refund", "income", 0, 0, "[]", 9],
+    ]);
+    expect(await rows("select id, split_id, shares from split_waiting_payments order by id")).toEqual([
+      ["w1", "sp1", null],
+      ["w2", "sp1", null],
+      ["w3", "sp2", null],
+    ]);
+    now.close();
+  });
+
+  it("unties a split's transactions when the split goes, and takes its items with it", async () => {
+    const url = await databaseBefore("0016_splits_kept");
+    const { close } = await openDatabase(url);
+    close();
+
+    const now = createClient({ url });
+    await now.execute("PRAGMA foreign_keys = ON");
+    const rows = async (sql: string) => (await now.execute(sql)).rows.map((row) => Object.values(row));
+    await now.batch([
+      "insert into users (id, username, email, password_hash, created_at, updated_at) values ('u1', 'ann', 'ann@example.com', 'x', 1, 1)",
+      "insert into splits (id, user_id, name, kind, created_at, updated_at) values ('sp1', 'u1', 'PayPal', 'expense', 1, 1)",
+      `insert into split_items (id, user_id, split_id, position, label, amount_cents, due_date, start_date, created_at)
+       values ('i1', 'u1', 'sp1', 0, '', 10000, '2026-03-05', '2026-01-15', 1)`,
+      `insert into transactions (id, user_id, name, amount_cents, occurs_at, status, sort_order, split_id, split_shares, created_at, updated_at)
+       values ('t1', 'u1', 'PayPal', -5000, '2026-01-15T09:00', 'upcoming', 0, 'sp1', '[{"itemId":"i1","cents":5000}]', 1, 1)`,
+    ]);
+    await expect(
+      now.execute("insert into transactions (id, user_id, name, amount_cents, occurs_at, status, sort_order, split_id, created_at, updated_at) values ('t2', 'u1', 'X', -1, '2026-01-15T09:00', 'upcoming', 0, 'nope', 1, 1)"),
+    ).rejects.toThrow(/FOREIGN KEY/);
+
+    await now.execute("delete from splits where id = 'sp1'");
+    expect(await rows("select id, split_id from transactions")).toEqual([["t1", null]]);
+    expect(await rows("select count(*) from split_items")).toEqual([[0]]);
+    now.close();
+  });
+});

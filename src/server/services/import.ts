@@ -9,7 +9,7 @@ import {
   type TransactionImportResponse,
 } from "../../shared/transactions.ts";
 import { AppError } from "../lib/errors.ts";
-import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
+import type { DataStore, PeriodRecord, Repos, StoredShare, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
 import { type PeriodService, TOO_FAR_BACK } from "./periods.ts";
 import { createLinkPlanner } from "./billIncomeLinks.ts";
@@ -25,6 +25,12 @@ class DryRunRollback extends Error {
 }
 
 const signed = (row: ImportRow) => (row.kind === "expense" ? -row.amountCents : row.amountCents);
+
+/** What only the server's own callers can ask of an import. */
+export type ImportOptions = {
+  /** The rows are payments of this split, each holding these shares of its items. */
+  split?: { id: string; shares: (index: number) => StoredShare[] | null };
+};
 
 /** Lower case, with every run of anything but letters and digits turned into one space. */
 const normalise = (text: string) =>
@@ -171,7 +177,12 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
     return suggestions;
   }
 
-  async function run(repos: Repos, userId: string, input: TransactionImportInput): Promise<TransactionImportResponse> {
+  async function run(
+    repos: Repos,
+    userId: string,
+    input: TransactionImportInput,
+    options: ImportOptions = {},
+  ): Promise<TransactionImportResponse> {
     const rows = input.transactions.map((row, index) => ({ index, row }));
     const before = await currentFigures(repos, userId);
 
@@ -308,6 +319,8 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
         occurrenceDate: null,
         importKey: row.importKey ?? null,
         categoryId: linkedTo.get(index)?.categoryId ?? null,
+        splitId: options.split?.id ?? null,
+        splitShares: options.split?.shares(index) ?? null,
         createdAt,
         updatedAt: createdAt,
       };

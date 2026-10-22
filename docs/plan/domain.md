@@ -41,6 +41,17 @@ are added as transactions once their periods are within reach: the home screen o
 when all of a split's remaining payments can be, or three of them can. A waiting payment
 belongs to no period and counts toward no total until it is added.
 
+A split is kept (phase 31): its items, its options and the periods skipped, with each of its
+transactions and waiting payments pointing at it and holding each item's share. **Rounding
+up** rounds each period's payment (the sum of its shares, never each share) up to a
+multiple of $50; the extra goes to the item due soonest, so payments shrink and drop off at
+the end. **Adding to** a split or **skipping** a payment works the split out again from a
+period on: payments already paid, and any in earlier periods, stay as they are and count for
+what they came to; what is left of each item is spread over the open periods to its due
+date (not skipped, not holding a kept payment), rounded up if the split says so; unpaid
+payments are changed in place, made or deleted to match. Skipping the last payment before
+an item is due is refused.
+
 ## Value formats
 
 | Kind | Format | Example |
@@ -699,7 +710,7 @@ PATCH  /api/transactions/:id           may carry billIncomeId; null unties. And 
 DELETE /api/transactions/:id
 PUT    /api/transactions/order         { ids }
 POST   /api/transactions/import        { transactions (1 to 500), dryRun?, addEarlierPeriods?, restoreDeleted? } → what was (or would be) saved; all or nothing
-POST   /api/transactions/split         { name, kind, occursAt, note?, billIncomeId?, categoryId?, finishEarly?, items (1 to 10: label, amountCents, dueDate), dryRun? } → { payments, later, waitingId, current }; one transaction per period up to the furthest one, the rest kept as waiting payments; all or nothing (phase 27)
+POST   /api/transactions/split         { name, kind, occursAt, note?, billIncomeId?, categoryId?, finishEarly?, roundUp?, items (1 to 10: label, amountCents, dueDate), dryRun? } → { payments, later, waitingId, splitId, current }; one transaction per period up to the furthest one, the rest kept as waiting payments; all or nothing (phase 27)
 GET    /api/balances                   { balances (by name), totals: { owedCents, heldCents }, asks, settings }
 PUT    /api/balances/settings          { checkEveryDays (14|30|61|91), checksPerDay (1 to 5) } → { settings }
 POST   /api/balances/snooze-today      every item asked about today waits a day → 204
@@ -718,7 +729,9 @@ GET    /api/advice                     { groups, persona }: the Smart Questions;
 POST   /api/advice                     { questionId, amountCents? (needed for an "Extra money" one) } →
                                        { questionId, answer, askedAt, plan? }; plan is null when the answer's PLAN line failed the checks
 PUT    /api/advice/persona             { persona, custom? } → { persona }
-GET    /api/splits                     { splits }: each split's waiting payments, with inReach and remind
+GET    /api/splits                     { splits }: every split with anything unpaid: its waiting payments (inReach, remind), items (leftCents), upcoming transactions, paidCents (phase 31)
+POST   /api/splits/:id/items           { occursAt, items (label needed), roundUp?, dryRun? } → { payments, later, labels }; works its unpaid payments out again from occursAt's period (phase 31)
+POST   /api/splits/:id/skip            { transactionId, dryRun? } → { payments, later, labels, skipped }; 409 for the last payment before an item is due, or a paid one (phase 31)
 POST   /api/splits/:id/add             adds its waiting payments that are in reach → { added, waiting? }; 409 if none are
 DELETE /api/splits/:id                 drops what it still has waiting
 GET    /api/bills-income

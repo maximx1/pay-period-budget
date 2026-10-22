@@ -28,6 +28,8 @@ const tx = (overrides: Partial<TransactionRecord>): TransactionRecord => ({
   occurrenceDate: null,
   importKey: null,
   categoryId: null,
+  splitId: null,
+  splitShares: null,
   createdAt: now,
   updatedAt: now,
   ...overrides,

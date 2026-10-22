@@ -251,7 +251,8 @@ describe("a dry run", () => {
     expect((await t.store.periods.listAll((await t.store.users.findByUsername("ann"))!.id)).at(-1)!.endDate < "2026-05-19").toBe(true);
 
     const real = await split(ann, { items: [item(100_000, "2026-06-01")] });
-    expect({ ...real, dryRun: true }).toEqual(preview);
+    // The split made is a new one each time.
+    expect({ ...real, dryRun: true, splitId: preview.splitId, waitingId: preview.waitingId }).toEqual(preview);
   });
 });
 

@@ -178,9 +178,16 @@ export type TransactionRecord = {
   importKey: string | null;
   /** The category it is filed under, or null. */
   categoryId: string | null;
+  /** The split that made it, or null. */
+  splitId: string | null;
+  /** With a split: what each of its items makes up of this payment. */
+  splitShares: StoredShare[] | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/** One item's part of a split payment, positive. */
+export type StoredShare = { itemId: string; cents: number };
 
 export type TransactionRecordPatch = Partial<
   Pick<
@@ -195,6 +202,7 @@ export type TransactionRecordPatch = Partial<
     | "billIncomeId"
     | "occurrenceDate"
     | "categoryId"
+    | "splitShares"
   >
 >;
 
@@ -210,6 +218,10 @@ export type TransactionSearch = {
 
 export interface TransactionRepo {
   findById(userId: string, id: string): Promise<TransactionRecord | null>;
+  /** One split's transactions, oldest first. */
+  listForSplit(userId: string, splitId: string): Promise<TransactionRecord[]>;
+  /** Every transaction some split of the user's made, oldest first. */
+  listInSplits(userId: string): Promise<TransactionRecord[]>;
   /** Transactions dated from `startDate` through `endDate` inclusive, in display order. */
   listInRange(userId: string, startDate: LocalDate, endDate: LocalDate): Promise<TransactionRecord[]>;
   /** Signed totals by status over the same range. */
@@ -387,6 +399,8 @@ export type SplitWaitingRecord = {
   note: string | null;
   billIncomeId: string | null;
   categoryId: string | null;
+  /** What each item of the split makes up of it; null for one waiting since before phase 31. */
+  shares: StoredShare[] | null;
   createdAt: Date;
 };
 
@@ -398,6 +412,53 @@ export interface SplitWaitingRepo {
   listSplit(userId: string, splitId: string): Promise<SplitWaitingRecord[]>;
   /** Removes these of the user's waiting payments. Returns how many there were. */
   deleteMany(userId: string, ids: string[]): Promise<number>;
+}
+
+export type SplitRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  kind: TransactionKind;
+  note: string | null;
+  billIncomeId: string | null;
+  categoryId: string | null;
+  finishEarly: boolean;
+  roundUp: boolean;
+  /** The pay periods (by seq) whose payment was skipped. */
+  skippedSeqs: number[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type SplitItemRecord = {
+  id: string;
+  userId: string;
+  splitId: string;
+  position: number;
+  /** Empty for the only item of a split. */
+  label: string;
+  /** Positive. */
+  amountCents: number;
+  dueDate: LocalDate;
+  /** Its first payment's date. */
+  startDate: LocalDate;
+  createdAt: Date;
+};
+
+export interface SplitRepo {
+  create(split: SplitRecord): Promise<void>;
+  /** Null if it doesn't exist or is someone else's. */
+  findById(userId: string, id: string): Promise<SplitRecord | null>;
+  /** The user's splits, oldest first. */
+  listForUser(userId: string): Promise<SplitRecord[]>;
+  update(userId: string, id: string, patch: Partial<Pick<SplitRecord, "roundUp" | "skippedSeqs">>, now: Date): Promise<void>;
+  createItems(items: SplitItemRecord[]): Promise<void>;
+  /** Changes an item's name: the only item of a split gets one when another joins it. */
+  renameItem(userId: string, id: string, label: string): Promise<void>;
+  /** One split's items by position. Empty if it has none, or is someone else's. */
+  listItems(userId: string, splitId: string): Promise<SplitItemRecord[]>;
+  /** Every item of the user's splits, by split, then position. */
+  listItemsForUser(userId: string): Promise<SplitItemRecord[]>;
 }
 
 export type TrackedBalanceRecord = {
@@ -457,6 +518,7 @@ export interface Repos {
   categories: CategoryRepo;
   categoryLimits: CategoryLimitRepo;
   splitWaiting: SplitWaitingRepo;
+  splits: SplitRepo;
   balances: BalanceRepo;
 }
 

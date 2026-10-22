@@ -12,6 +12,8 @@ period.
 
 It is a batch way of making normal transactions. Nothing ties them together afterwards
 unless they are tied to a bill or income, which is optional, as on the "Type it in" tab.
+(Since [phase 31](phase-31-split-changes.md) the split is kept and its transactions point at
+it, so it can be added to, have a payment skipped, and round its payments up to $50.)
 
 ## How it works
 

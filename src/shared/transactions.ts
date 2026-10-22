@@ -92,6 +92,8 @@ export type Transaction = {
   importKey: string | null;
   /** The category it is filed under, or null. */
   categoryId: string | null;
+  /** The split that made it, or null. Absent from servers older than phase 31. */
+  splitId?: string | null;
 };
 
 /** The most days one request for transactions by date may cover, counting both ends. */

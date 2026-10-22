@@ -21,16 +21,18 @@ type SplitItemsProps = {
   previewErrors: Record<string, string>;
   /** The transaction's name, which becomes the first item's when a second is added. */
   name: string;
+  /** Every item is named, even one alone: they join a split that already has some. */
+  alwaysNamed?: boolean;
 };
 
 /** The amounts to split, each with the date it is due by. Several are each named, for the note. */
-export function SplitItems({ control, register, setValue, errors, previewErrors, name }: SplitItemsProps) {
+export function SplitItems({ control, register, setValue, errors, previewErrors, name, alwaysNamed = false }: SplitItemsProps) {
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
-  const several = fields.length > 1;
+  const several = fields.length > 1 || alwaysNamed;
 
   function addAnother() {
     // With one item its name is the transaction's; with two, each needs its own.
-    if (fields.length === 1 && !fields[0]!.label && name.trim()) {
+    if (!alwaysNamed && fields.length === 1 && !fields[0]!.label && name.trim()) {
       setValue("items.0.label", name.trim().slice(0, MAX_SPLIT_LABEL));
     }
     append(emptySplitItem, { focusName: `items.${fields.length}.label` });
@@ -72,10 +74,12 @@ export function SplitItems({ control, register, setValue, errors, previewErrors,
                   {...register(`items.${index}.label`)}
                 />
               </div>
-              {/* Lined up with the field, below its label. */}
-              <IconButton label={`Remove item ${index + 1}`} className="mt-6.5" onClick={() => remove(index)}>
-                <X className="size-5" aria-hidden />
-              </IconButton>
+              {fields.length > 1 && (
+                // Lined up with the field, below its label.
+                <IconButton label={`Remove item ${index + 1}`} className="mt-6.5" onClick={() => remove(index)}>
+                  <X className="size-5" aria-hidden />
+                </IconButton>
+              )}
             </div>
             {amountAndDate}
           </div>
@@ -93,7 +97,9 @@ export function SplitItems({ control, register, setValue, errors, previewErrors,
 
 type SplitPreviewProps = {
   /** The latest plan worked out, or undefined while there is none. */
-  plan: TransactionSplitResponse | undefined;
+  plan: Pick<TransactionSplitResponse, "payments" | "later"> | undefined;
+  /** Says what the list is, in place of how many transactions it makes. */
+  heading?: string;
   /** Why the plan can't be worked out, when the fields don't already say. */
   problem: string | null;
   /** The plan was refused over something a field now points out. */
@@ -104,7 +110,7 @@ type SplitPreviewProps = {
 };
 
 /** The transactions the split will make, as the form stands. */
-export function SplitPreview({ plan, problem, blocked, loading, labels }: SplitPreviewProps) {
+export function SplitPreview({ plan, heading, problem, blocked, loading, labels }: SplitPreviewProps) {
   if (problem) return <Alert>{problem}</Alert>;
   if (!plan) {
     return (
@@ -124,9 +130,10 @@ export function SplitPreview({ plan, problem, blocked, loading, labels }: SplitP
   return (
     <section aria-label="Transactions it makes" aria-busy={loading} className="flex flex-col gap-2">
       <h3 className="text-sm font-medium text-fg">
-        {payments.length === 1
-          ? `1 transaction, ${formatLongDate(first)}`
-          : `${payments.length} transactions, ${formatDateRange(first, last)}`}
+        {heading ??
+          (payments.length === 1
+            ? `1 transaction, ${formatLongDate(first)}`
+            : `${payments.length} transactions, ${formatDateRange(first, last)}`)}
       </h3>
       <PaymentList payments={payments} labels={labels} firstYear={first.slice(0, 4)} />
       {later.length > 0 && (
@@ -152,7 +159,8 @@ type PaymentListProps = {
   muted?: boolean;
 };
 
-function PaymentList({ payments, labels, firstYear, muted }: PaymentListProps) {
+/** Payments a split makes, each with its date, amount and (with several items) what each makes up of it. */
+export function PaymentList({ payments, labels, firstYear, muted }: PaymentListProps) {
   return (
     <ol className={cn("divide-y divide-border rounded-xl border border-border", muted && "border-dashed")}>
       {payments.map((payment) => (

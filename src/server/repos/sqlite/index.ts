@@ -11,6 +11,7 @@ import { createCategoryLimitRepo } from "./categoryLimits.ts";
 import { createScheduleRepo } from "./schedules.ts";
 import { createSessionRepo } from "./sessions.ts";
 import { createSettingsRepo } from "./settings.ts";
+import { createSplitRepo } from "./splits.ts";
 import { createSplitWaitingRepo } from "./splitWaiting.ts";
 import { createTransactionRepo } from "./transactions.ts";
 import { createUserRepo } from "./users.ts";
@@ -28,6 +29,7 @@ function createRepos(db: Db): Repos {
     categories: createCategoryRepo(db),
     categoryLimits: createCategoryLimitRepo(db),
     splitWaiting: createSplitWaitingRepo(db),
+    splits: createSplitRepo(db),
     balances: createBalanceRepo(db),
   };
 }

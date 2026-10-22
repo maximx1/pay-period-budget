@@ -60,6 +60,20 @@ export function createTransactionRepo(db: Db): TransactionRepo {
         .limit(1);
       return row ?? null;
     },
+    async listForSplit(userId, splitId) {
+      return db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.splitId, splitId)))
+        .orderBy(asc(transactions.occursAt), asc(transactions.sortOrder));
+    },
+    async listInSplits(userId) {
+      return db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), isNotNull(transactions.splitId)))
+        .orderBy(asc(transactions.occursAt), asc(transactions.sortOrder));
+    },
     async listInRange(userId, startDate, endDate) {
       return db
         .select()

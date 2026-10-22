@@ -59,6 +59,7 @@ different app.
 | [28](phase-28-balances.md) | Balances: a bill or transfer can track what is owed or held, checked by hand now and then and estimated in between from its paid transactions, with an APR; a throttled, jittered queue of asks on the home screen (3 a day, with snooze) and a Balances page to go through them all | Built 2026-10-21. Not yet deployed; adds migration `0015`. MCP file rebuilt | n/a |
 | [29](phase-29-paydown-advice.md) | Advice split into Quick Questions (answered by the app itself, no model: four of today's questions, and where extra money should go: balanced, avalanche, snowball or savings, never taking a coming period below zero, with a quick add) and Smart Questions (the model, with a disclaimer) | Built 2026-10-21. Not yet deployed | n/a |
 | [30](phase-30-advice-talk.md) | "Talk it through": a conversation with the model about balancing paying down debt and saving | Built 2026-10-21. Not yet deployed | n/a |
+| [31](phase-31-split-changes.md) | Splits kept and changed: "Round up to the next $50" (each period's total), adding another purchase to a split, and skipping a payment, both working the unpaid payments out again | Built 2026-10-22. Not yet deployed; adds migration `0016`. Rebuild the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

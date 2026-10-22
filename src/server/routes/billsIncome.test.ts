@@ -400,6 +400,8 @@ describe("generated transactions stand on their own", () => {
       occurrenceDate: "2026-01-25",
       importKey: null,
       categoryId: null,
+      splitId: null,
+      splitShares: null,
       createdAt: t.clock.now(),
       updatedAt: t.clock.now(),
     };

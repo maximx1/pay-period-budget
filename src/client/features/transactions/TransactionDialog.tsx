@@ -1,13 +1,30 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Repeat, Search } from "lucide-react";
+import { Repeat, Search, Split } from "lucide-react";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, type FieldPath, type UseFormRegisterReturn, type UseFormSetError, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { z } from "zod";
 import type { PeriodView } from "../../../shared/budget.ts";
-import { atStartOfDay, dateOf, formatDateRange, formatDay, formatLongDate, isLocalDate, isLocalDateTime, nowIn } from "../../../shared/dates.ts";
+import {
+  atStartOfDay,
+  dateOf,
+  formatDateRange,
+  formatDay,
+  formatLongDate,
+  isLocalDate,
+  isLocalDateTime,
+  type LocalDateTime,
+  nowIn,
+} from "../../../shared/dates.ts";
 import { centsToInput, formatCents, parseMoneyInput } from "../../../shared/money.ts";
-import { laterTotal, MAX_SPLIT_LABEL, type TransactionSplitInput, type TransactionSplitResponse } from "../../../shared/split.ts";
+import {
+  laterTotal,
+  MAX_SPLIT_LABEL,
+  type SplitAddInput,
+  type SplitSummary,
+  type TransactionSplitInput,
+  type TransactionSplitResponse,
+} from "../../../shared/split.ts";
 import {
   MAX_TRANSACTION_CENTS,
   type Transaction,
@@ -27,6 +44,8 @@ import { applyApiError } from "../auth/formErrors.ts";
 import { billOrIncomeDetailPath, useBillsIncome, useCreateBillOrIncome } from "../billsIncome/api.ts";
 import { useCategories, useCreateCategory } from "../categories/api.ts";
 import { ScreenshotPicker } from "../scan/ScreenshotPicker.tsx";
+import { useAddToSplit, useAddToSplitPreview, useWaitingSplits } from "../splits/api.ts";
+import { SkipPayment } from "../splits/SkipPayment.tsx";
 import { useCreateTransaction, useDeleteTransaction, useSplitPreview, useSplitTransaction, useUpdateTransaction } from "./api.ts";
 import { SplitItems, SplitPreview } from "./SplitFields.tsx";
 
@@ -59,6 +78,10 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   ),
   /** When splitting: each item ends in the pay period before the one it is due in. */
   finishEarly: z.boolean(),
+  /** When splitting: each pay period's payment rounds up to a multiple of $50. */
+  roundUp: z.boolean(),
+  /** When splitting: every item needs a name, even one alone (it joins a split that has some). */
+  named: z.boolean(),
   note: z.string().max(500, "Keep the note under 500 characters"),
   paid: z.boolean(),
   /** The bill or income it belongs to; empty for none. */
@@ -71,14 +94,14 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   newCategory: z.string(),
   /** The name of a transfer made as this is saved. */
   newTransfer: z.string(),
-}).superRefine(({ split, amount, items, categoryId, newCategory, billIncomeId, newTransfer }, context) => {
+}).superRefine(({ split, named: allNamed, amount, items, categoryId, newCategory, billIncomeId, newTransfer }, context) => {
   if (!split && parseAmount(amount) === null) context.addIssue({ code: "custom", path: ["amount"], message: AMOUNT_HINT });
   if (split) {
     for (const [index, item] of items.entries()) {
       const at = (field: string, message: string) => context.addIssue({ code: "custom", path: ["items", index, field], message });
       if (parseAmount(item.amount) === null) at("amount", AMOUNT_HINT);
       if (!isLocalDate(item.dueDate)) at("dueDate", "Enter the date it's due by");
-      if (items.length > 1 && !item.label.trim()) at("label", "Say what this one is");
+      if ((items.length > 1 || allNamed) && !item.label.trim()) at("label", "Say what this one is");
     }
   }
 
@@ -119,6 +142,67 @@ type TransactionDialogProps = {
   onScan?: (files: File[]) => void;
 };
 
+/**
+ * New items default to right now when looking at the current period, otherwise to the
+ * first day of the period on screen (adding to a past or future period is deliberate).
+ */
+function defaultOccursAtFor(view: PeriodView, timezone: string): LocalDateTime {
+  const now = nowIn(timezone, new Date());
+  const { startDate, endDate } = view.period;
+  return startDate <= dateOf(now) && dateOf(now) <= endDate ? now : atStartOfDay(startDate);
+}
+
+/** Puts the server's complaints about split items ("items.0.dueDate") on their fields. Returns whether there were any. */
+function applySplitItemErrors(error: unknown, setError: UseFormSetError<FormValues>): boolean {
+  let onItems = false;
+  for (const [path, message] of Object.entries(error instanceof ApiError ? (error.fields ?? {}) : {})) {
+    const match = /^items\.(\d+)\.(amountCents|dueDate|label)$/.exec(path);
+    if (!match) continue;
+    const field = match[2] === "amountCents" ? "amount" : (match[2] as "dueDate" | "label");
+    setError(`items.${Number(match[1])}.${field}`, { message });
+    onItems = true;
+  }
+  return onItems;
+}
+
+/** The items as the server takes them, or null while any amount or due date isn't filled in properly. */
+function splitItemsOf(items: FormValues["items"], labels: readonly string[]) {
+  const parsed = items.map((item, index) => ({ label: labels[index] ?? "", amountCents: parseAmount(item.amount), dueDate: item.dueDate }));
+  if (parsed.some((item) => item.amountCents === null || !isLocalDate(item.dueDate))) return null;
+  return parsed.map((item) => ({ ...item, amountCents: item.amountCents! }));
+}
+
+/**
+ * Where a dry-run preview that follows the form stands: it is current once the form has
+ * stayed the same for the debounce and the answer for it has come back. A refusal is either
+ * about fields (`errors`) or about the whole (`problem`).
+ */
+function previewState<T>(previewKey: string | null, settledKey: string | null, preview: { data?: T; error: unknown; isError: boolean; isFetching: boolean }) {
+  const current = previewKey !== null && settledKey === previewKey && !preview.isFetching;
+  const failure = current && preview.error instanceof ApiError ? preview.error : null;
+  const errors = failure?.fields ?? {};
+  const problem =
+    failure && !failure.fields ? failure.message : current && preview.isError && !failure ? "Couldn't work out the transactions. Try again." : null;
+  return { current, errors, problem, plan: previewKey === null || failure ? undefined : preview.data };
+}
+
+/** A ticked-or-not option with a line saying what it does. */
+function OptionCheckbox({ label, description, registration }: { label: string; description: string; registration: UseFormRegisterReturn }) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5">
+      <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-primary" {...registration} />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-sm font-medium text-fg">{label}</span>
+        <span className="text-sm text-muted">{description}</span>
+      </span>
+    </label>
+  );
+}
+
+const ROUND_UP_LABEL = "Round up to the next $50";
+const ROUND_UP_HINT =
+  "Each pay period's payment rounds up to a multiple of $50. The extra pays it off sooner, so the last payments shrink or drop off.";
+
 const addTabs = [
   { value: "type", label: "Type it in" },
   { value: "screenshots", label: "Screenshots" },
@@ -127,12 +211,20 @@ const addTabs = [
 type AddTab = (typeof addTabs)[number]["value"];
 
 export function TransactionDialog({ open, onClose, transaction, onScan, ...rest }: TransactionDialogProps) {
+  // Editing a split's payment can turn into adding to that split.
+  const [joining, setJoining] = useState<SplitSummary | null>(null);
+  const close = () => {
+    setJoining(null);
+    onClose();
+  };
   return (
-    <Dialog open={open} onClose={onClose} title={transaction ? "Edit transaction" : "Add transaction"}>
-      {transaction ? (
-        <TransactionForm onClose={onClose} transaction={transaction} {...rest} />
+    <Dialog open={open} onClose={close} title={joining ? `Add to ${joining.name}` : transaction ? "Edit transaction" : "Add transaction"}>
+      {joining ? (
+        <AddToSplitForm split={joining} defaultOccursAt={defaultOccursAtFor(rest.view, rest.timezone)} onClose={close} />
+      ) : transaction ? (
+        <TransactionForm onClose={close} transaction={transaction} onAddToSplit={setJoining} {...rest} />
       ) : (
-        <AddTabs onScan={onScan} onClose={onClose} {...rest} />
+        <AddTabs onScan={onScan} onClose={close} {...rest} />
       )}
     </Dialog>
   );
@@ -159,9 +251,11 @@ function AddTabs({ onScan, ...rest }: Omit<TransactionDialogProps, "open" | "tra
 type TransactionFormProps = Omit<TransactionDialogProps, "open" | "onScan"> & {
   /** Several amounts with due dates, spread over the pay periods before them. Only when adding. */
   split?: boolean;
+  /** When editing a split's payment: asks to add more to that split instead. */
+  onAddToSplit?: (split: SplitSummary) => void;
 };
 
-function TransactionForm({ onClose, view, timezone, transaction, onFindLike, split = false }: TransactionFormProps) {
+function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onAddToSplit, split = false }: TransactionFormProps) {
   const toast = useToast();
   const create = useCreateTransaction();
   const splitter = useSplitTransaction();
@@ -170,12 +264,12 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
   const [formError, setFormError] = useState<string | null>(null);
   const [showNote, setShowNote] = useState(Boolean(transaction?.note));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingSkip, setConfirmingSkip] = useState(false);
+  const defaultOccursAt = defaultOccursAtFor(view, timezone);
 
-  // New items default to right now when looking at the current period, otherwise to the
-  // first day of the period on screen (adding to a past or future period is deliberate).
-  const now = nowIn(timezone, new Date());
-  const { startDate, endDate } = view.period;
-  const defaultOccursAt = startDate <= dateOf(now) && dateOf(now) <= endDate ? now : atStartOfDay(startDate);
+  // The split this payment belongs to, while it has something left to pay.
+  const splits = useWaitingSplits();
+  const splitOf = transaction?.splitId ? splits.data?.find((entry) => entry.id === transaction.splitId) : undefined;
 
   const {
     register,
@@ -195,6 +289,8 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
           amount: centsToInput(transaction.amountCents),
           items: [],
           finishEarly: false,
+          roundUp: false,
+          named: false,
           kind: transaction.kind,
           occursAt: transaction.occursAt,
           note: transaction.note ?? "",
@@ -211,6 +307,8 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
           amount: "",
           items: [{ label: "", amount: "", dueDate: "" }],
           finishEarly: false,
+          roundUp: false,
+          named: false,
           kind: "expense",
           occursAt: defaultOccursAt,
           note: "",
@@ -309,16 +407,12 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
       : undefined;
 
   // Splitting: what it would make, worked out by the server as the form changes.
-  const [watchedName, watchedOccursAt, watchedItems, finishEarly, watchedNote] = watch(["name", "occursAt", "items", "finishEarly", "note"]);
+  const [watchedName, watchedOccursAt, watchedItems, finishEarly, roundUp, watchedNote] = watch(["name", "occursAt", "items", "finishEarly", "roundUp", "note"]);
   const splitLabels = watchedItems.length > 1 ? watchedItems.map((item, index) => item.label.trim() || `Item ${index + 1}`) : [];
   const previewInput = ((): Omit<TransactionSplitInput, "dryRun"> | null => {
     if (!split || !isLocalDateTime(watchedOccursAt)) return null;
-    const items = watchedItems.map((item, index) => ({
-      label: splitLabels[index] ?? "",
-      amountCents: parseAmount(item.amount),
-      dueDate: item.dueDate,
-    }));
-    if (items.some((item) => item.amountCents === null || !isLocalDate(item.dueDate))) return null;
+    const items = splitItemsOf(watchedItems, splitLabels);
+    if (!items) return null;
     return {
       // What it is called and tied to change nothing about the plan.
       name: watchedName.trim() || "Split",
@@ -326,17 +420,14 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
       occursAt: watchedOccursAt,
       note: watchedNote,
       finishEarly,
-      items: items.map((item) => ({ ...item, amountCents: item.amountCents! })),
+      roundUp,
+      items,
     };
   })();
   const previewKey = previewInput && JSON.stringify(previewInput);
   const settledKey = useDebouncedValue(previewKey, 300);
   const preview = useSplitPreview(settledKey === null ? null : (JSON.parse(settledKey) as Omit<TransactionSplitInput, "dryRun">));
-  const previewCurrent = previewKey !== null && settledKey === previewKey && !preview.isFetching;
-  const previewFailure = previewCurrent && preview.error instanceof ApiError ? preview.error : null;
-  const previewErrors = previewFailure?.fields ?? {};
-  const previewProblem = previewFailure && !previewFailure.fields ? previewFailure.message : previewCurrent && preview.isError && !previewFailure ? "Couldn't work out the transactions. Try again." : null;
-  const plan = previewKey === null || previewFailure ? undefined : preview.data;
+  const { current: previewCurrent, errors: previewErrors, problem: previewProblem, plan } = previewState(previewKey, settledKey, preview);
 
   function finish({ period, countedToward }: TransactionResponse) {
     onClose();
@@ -367,7 +458,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
     );
   }
 
-  async function saveSplit(values: Pick<FormValues, "name" | "kind" | "occursAt" | "note" | "items" | "finishEarly">, links: Pick<TransactionSplitInput, "billIncomeId" | "categoryId">) {
+  async function saveSplit(values: Pick<FormValues, "name" | "kind" | "occursAt" | "note" | "items" | "finishEarly" | "roundUp">, links: Pick<TransactionSplitInput, "billIncomeId" | "categoryId">) {
     const { items } = values;
     try {
       finishSplit(
@@ -377,6 +468,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
           occursAt: values.occursAt,
           note: values.note,
           finishEarly: values.finishEarly,
+          roundUp: values.roundUp,
           ...links,
           items: items.map((item) => ({
             label: items.length > 1 ? item.label.trim() : "",
@@ -386,20 +478,13 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
         }),
       );
     } catch (error) {
-      let onItems = false;
-      for (const [path, message] of Object.entries(error instanceof ApiError ? (error.fields ?? {}) : {})) {
-        const match = /^items\.(\d+)\.(amountCents|dueDate|label)$/.exec(path);
-        if (!match) continue;
-        const field = match[2] === "amountCents" ? "amount" : (match[2] as "dueDate" | "label");
-        setError(`items.${Number(match[1])}.${field}`, { message });
-        onItems = true;
-      }
+      const onItems = applySplitItemErrors(error, setError);
       const message = applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "categoryId"]);
       setFormError(onItems ? null : message);
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer, items, finishEarly }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer, items, finishEarly, roundUp }) => {
     setFormError(null);
     if (transferMode && billIncomeId === "") {
       setError("billIncomeId", { message: "Choose the account it moved between, or make a new one" });
@@ -449,7 +534,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
     }
     if (split) {
       await saveSplit(
-        { name, kind, occursAt, note, items, finishEarly },
+        { name, kind, occursAt, note, items, finishEarly, roundUp },
         { billIncomeId: tiedTo, ...(categories.data && { categoryId: filedUnder }) },
       );
       return;
@@ -591,15 +676,14 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
             previewErrors={previewErrors}
             name={watchedName}
           />
-          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5">
-            <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-primary" {...register("finishEarly")} />
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-fg">Finish a pay period early</span>
-              <span className="text-sm text-muted">
-                Each one is paid off by the period before the one it's due in, instead of in that period.
-              </span>
-            </span>
-          </label>
+          <div className="flex flex-col">
+            <OptionCheckbox
+              label="Finish a pay period early"
+              description="Each one is paid off by the period before the one it's due in, instead of in that period."
+              registration={register("finishEarly")}
+            />
+            <OptionCheckbox label={ROUND_UP_LABEL} description={ROUND_UP_HINT} registration={register("roundUp")} />
+          </div>
         </>
       )}
 
@@ -664,6 +748,15 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
         </button>
       )}
 
+      {transaction && splitOf && (
+        <SplitPanel
+          split={splitOf}
+          canSkip={transaction.status === "upcoming" && !confirmingSkip}
+          onSkip={() => setConfirmingSkip(true)}
+          onAddTo={onAddToSplit && (() => onAddToSplit(splitOf))}
+        />
+      )}
+
       {transaction && onFindLike && (
         <button
           type="button"
@@ -706,7 +799,9 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
         </label>
       )}
 
-      {confirmingDelete ? (
+      {confirmingSkip && transaction && splitOf ? (
+        <SkipPayment splitId={splitOf.id} transaction={transaction} onDone={onClose} onCancel={() => setConfirmingSkip(false)} />
+      ) : confirmingDelete ? (
         <DialogActions>
           <p className="self-center text-sm font-medium text-fg sm:mr-auto">Delete this transaction?</p>
           <Button variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={remove.isPending}>
@@ -731,6 +826,201 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, spl
           </Button>
         </DialogActions>
       )}
+    </form>
+  );
+}
+
+type SplitPanelProps = {
+  split: SplitSummary;
+  /** Offer to skip this payment: it is unpaid, and not already being asked about. */
+  canSkip: boolean;
+  onSkip: () => void;
+  onAddTo?: () => void;
+};
+
+/** When editing a split's payment: which split it is, what is left of it, and what can be done to it. */
+function SplitPanel({ split, canSkip, onSkip, onAddTo }: SplitPanelProps) {
+  const left = (split.items ?? []).reduce((sum, item) => sum + item.leftCents, 0);
+  const count = (split.upcoming?.length ?? 0) + split.payments.length;
+  return (
+    <section aria-label="Split" className="flex flex-col gap-2 rounded-xl border border-border p-3">
+      <div className="flex items-start gap-2">
+        <Split className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+        <div className="min-w-0">
+          <p className="text-sm font-medium break-words text-fg">Part of the split {split.name}</p>
+          <p className="text-sm text-muted">
+            {formatCents(left)} left in {count === 1 ? "1 payment" : `${count} payments`}
+            {split.roundUp && ", rounded up to $50"}
+          </p>
+        </div>
+      </div>
+      {split.editable ? (
+        <div className="flex flex-wrap gap-2">
+          {canSkip && (
+            <Button variant="secondary" onClick={onSkip}>
+              Skip this payment
+            </Button>
+          )}
+          {onAddTo && (
+            <Button variant="secondary" onClick={onAddTo}>
+              Add to this split
+            </Button>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">It was made before splits could be changed, so it can't be added to.</p>
+      )}
+    </section>
+  );
+}
+
+type AddToSplitFormProps = {
+  split: SplitSummary;
+  /** Where the new items' first payment goes unless changed. */
+  defaultOccursAt: LocalDateTime;
+  onClose: () => void;
+};
+
+/**
+ * More for a split to pay, such as another purchase on the same plan: the new items, from a
+ * first payment on, with the split's unpaid payments from there worked out again with them.
+ */
+export function AddToSplitForm({ split, defaultOccursAt, onClose }: AddToSplitFormProps) {
+  const toast = useToast();
+  const adder = useAddToSplit();
+  const [formError, setFormError] = useState<string | null>(null);
+  const {
+    register,
+    control,
+    handleSubmit,
+    setError,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      // Only the split's items, first payment and rounding are asked for; the rest is the split's own.
+      name: split.name,
+      split: true,
+      named: true,
+      amount: "",
+      items: [{ label: "", amount: "", dueDate: "" }],
+      finishEarly: split.finishEarly ?? false,
+      roundUp: split.roundUp ?? false,
+      kind: split.kind ?? "expense",
+      occursAt: defaultOccursAt,
+      note: "",
+      paid: false,
+      billIncomeId: "",
+      countsToward: "",
+      categoryId: "",
+      newCategory: "",
+      newTransfer: "",
+    },
+  });
+
+  const existing = split.items ?? [];
+  const [watchedOccursAt, watchedItems, roundUp] = watch(["occursAt", "items", "roundUp"]);
+  const newLabels = watchedItems.map((item) => item.label.trim());
+  const previewInput = ((): { splitId: string; input: Omit<SplitAddInput, "dryRun"> } | null => {
+    if (!isLocalDateTime(watchedOccursAt)) return null;
+    const items = splitItemsOf(watchedItems, newLabels.map((label, index) => label || `New item ${index + 1}`));
+    return items && { splitId: split.id, input: { occursAt: watchedOccursAt, roundUp, items } };
+  })();
+  const previewKey = previewInput && JSON.stringify(previewInput);
+  const settledKey = useDebouncedValue(previewKey, 300);
+  const preview = useAddToSplitPreview(settledKey === null ? null : (JSON.parse(settledKey) as NonNullable<typeof previewInput>));
+  const { current, errors: previewErrors, problem, plan } = previewState(previewKey, settledKey, preview);
+
+  const onSubmit = handleSubmit(async ({ occursAt, items, roundUp: rounding }) => {
+    setFormError(null);
+    try {
+      const { payments, later } = await adder.mutateAsync({
+        splitId: split.id,
+        input: {
+          occursAt,
+          roundUp: rounding,
+          items: items.map((item) => ({ label: item.label.trim(), amountCents: parseAmount(item.amount) ?? 0, dueDate: item.dueDate })),
+        },
+      });
+      onClose();
+      const names = items.map((item) => item.label.trim()).join(" and ");
+      const count = payments.length + later.length;
+      toast(
+        payments.length === 0
+          ? `Added ${names} to ${split.name}`
+          : `Added ${names} to ${split.name}: ${count === 1 ? "1 payment" : `${count} payments`} from ${formatLongDate(dateOf(payments[0]!.occursAt))}`,
+      );
+    } catch (error) {
+      const onItems = applySplitItemErrors(error, setError);
+      const message = applyApiError(error, setError, ["occursAt"]);
+      setFormError(onItems ? null : message);
+    }
+  });
+
+  const first = plan?.payments[0];
+  return (
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      {formError && <Alert>{formError}</Alert>}
+
+      <section aria-label="Already in it" className="flex flex-col gap-1.5">
+        <h3 className="text-sm font-medium text-fg">Already in it</h3>
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {existing.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
+              <span className="min-w-0 break-words text-fg">
+                {item.label || split.name} <span className="text-muted">· due {formatDay(item.dueDate)}</span>
+              </span>
+              <span className="text-muted tabular-nums">
+                {formatCents(item.leftCents)} left of {formatCents(item.amountCents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <TextField
+        label="First payment"
+        type="datetime-local"
+        hint="The new items start in this pay period. The split's unpaid payments from here on are worked out again."
+        error={errors.occursAt?.message ?? previewErrors.occursAt}
+        data-autofocus
+        {...register("occursAt")}
+      />
+
+      <SplitItems
+        control={control}
+        register={register}
+        setValue={setValue}
+        errors={errors}
+        previewErrors={previewErrors}
+        name={split.name}
+        alwaysNamed
+      />
+      <OptionCheckbox label={ROUND_UP_LABEL} description={ROUND_UP_HINT} registration={register("roundUp")} />
+
+      <SplitPreview
+        plan={plan}
+        heading={
+          first
+            ? `${plan.payments.length === 1 ? "Its 1 payment" : `Its ${plan.payments.length} payments`} from ${formatLongDate(dateOf(first.occursAt))}`
+            : undefined
+        }
+        problem={problem}
+        blocked={Object.keys(previewErrors).length > 0}
+        loading={previewKey !== null && !current}
+        labels={plan?.labels ?? []}
+      />
+
+      <DialogActions>
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={adder.isPending}>
+          Add
+        </Button>
+      </DialogActions>
     </form>
   );
 }
