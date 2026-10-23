@@ -8,6 +8,7 @@ export const TRANSACTION_STATUSES = ["upcoming", "paid"] as const;
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 
 export const MAX_TRANSACTION_CENTS = 100_000_000; // $1,000,000.00
+export const LATE_NEEDS_ITEM_MESSAGE = "Only a payment tied to a bill or income can be late";
 
 const nameSchema = z.string().trim().min(1, "Enter a name").max(100, "Keep the name under 100 characters");
 const amountSchema = z
@@ -40,6 +41,8 @@ export const transactionInputSchema = z.object({
   countsToward: idSchema.optional(),
   /** The category to file it under, if any. */
   categoryId: idSchema.nullable().optional(),
+  /** A late payment for its item's due date before it. Needs a bill or income to be tied to. */
+  latePayment: z.boolean().optional(),
 });
 export type TransactionInput = z.output<typeof transactionInputSchema>;
 
@@ -56,6 +59,8 @@ export const transactionPatchSchema = z
     billIncomeId: idSchema.nullable().optional(),
     /** Files it under a category; null files it under none. */
     categoryId: idSchema.nullable().optional(),
+    /** Marks it a late payment, or not. Untying it from its item clears this. */
+    latePayment: z.boolean().optional(),
   })
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "Nothing to change");
 export type TransactionPatch = z.output<typeof transactionPatchSchema>;
@@ -94,6 +99,11 @@ export type Transaction = {
   categoryId: string | null;
   /** The split that made it, or null. Absent from servers older than phase 31. */
   splitId?: string | null;
+  /**
+   * A late payment: it pays its item's due date before it, not the next one. Only ever true
+   * when tied to an item. Absent from servers older than phase 33.
+   */
+  latePayment?: boolean;
 };
 
 /** The most days one request for transactions by date may cover, counting both ends. */

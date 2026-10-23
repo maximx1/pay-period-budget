@@ -182,6 +182,8 @@ export type TransactionRecord = {
   splitId: string | null;
   /** With a split: what each of its items makes up of this payment. */
   splitShares: StoredShare[] | null;
+  /** A payment toward its item's due date before it, not the next one. */
+  latePayment: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -203,6 +205,7 @@ export type TransactionRecordPatch = Partial<
     | "occurrenceDate"
     | "categoryId"
     | "splitShares"
+    | "latePayment"
   >
 >;
 

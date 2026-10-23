@@ -30,6 +30,7 @@ const tx = (overrides: Partial<TransactionRecord>): TransactionRecord => ({
   categoryId: null,
   splitId: null,
   splitShares: null,
+  latePayment: false,
   createdAt: now,
   updatedAt: now,
   ...overrides,

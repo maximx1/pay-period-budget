@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `late_payment` integer DEFAULT false NOT NULL;

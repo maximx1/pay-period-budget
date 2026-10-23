@@ -10,7 +10,7 @@ import type {
   TransactionSearchQuery,
   TransactionSearchResponse,
 } from "../../shared/transactions.ts";
-import { NO_CATEGORY } from "../../shared/transactions.ts";
+import { LATE_NEEDS_ITEM_MESSAGE, NO_CATEGORY } from "../../shared/transactions.ts";
 import { AppError } from "../lib/errors.ts";
 import type { DataStore, PeriodRecord, Repos, TransactionRecord } from "../repos/types.ts";
 import { applyLeftoverDelta } from "./carry.ts";
@@ -100,6 +100,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           categoryId: input.categoryId,
         });
         if ("problems" in link) throw linkError(link.problems);
+        if (input.latePayment && link.billIncomeId === null) throw linkError({ latePayment: LATE_NEEDS_ITEM_MESSAGE });
 
         const period = await periodFor(repos, userId, input.occursAt);
         const createdAt = now();
@@ -119,6 +120,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           categoryId: link.categoryId,
           splitId: null,
           splitShares: null,
+          latePayment: input.latePayment ?? false,
           createdAt,
           updatedAt: createdAt,
         });
@@ -145,6 +147,7 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           // Only a real change of status touches the paid timestamp.
           paidAt: status === before.status ? before.paidAt : status === "paid" ? updatedAt : null,
           note: patch.note === undefined ? before.note : patch.note || null,
+          latePayment: patch.latePayment ?? before.latePayment,
           updatedAt,
         };
         if (patch.billIncomeId !== undefined && patch.billIncomeId !== before.billIncomeId) {
@@ -154,6 +157,11 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
           // Moved to another item it is no longer the occurrence its first item scheduled.
           // Untied, it keeps the date: that is still what it was.
           if (link.billIncomeId !== null) after.occurrenceDate = null;
+        }
+        // Late is late for an item's due date; with no item there is nothing to be late for.
+        if (after.billIncomeId === null) {
+          if (patch.latePayment) throw linkError({ latePayment: LATE_NEEDS_ITEM_MESSAGE });
+          after.latePayment = false;
         }
         if (patch.categoryId !== undefined && patch.categoryId !== before.categoryId) {
           // Unknown and someone else's are refused in the same words.
@@ -169,11 +177,12 @@ export function createTransactionService(deps: { store: DataStore; periods: Peri
         const newPeriod =
           oldPeriod && after.occursAt === before.occursAt ? oldPeriod : await periodFor(repos, userId, after.occursAt);
 
-        const { name, amountCents, occursAt, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId } = after;
+        const { name, amountCents, occursAt, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId, latePayment } =
+          after;
         await repos.transactions.update(
           userId,
           id,
-          { name, amountCents, occursAt, status, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId },
+          { name, amountCents, occursAt, status, paidAt, note, sortOrder, billIncomeId, occurrenceDate, categoryId, latePayment },
           updatedAt,
         );
 

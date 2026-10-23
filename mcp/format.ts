@@ -18,6 +18,7 @@ export function transactionLine(transaction: Transaction): string {
   const origin = [
     transaction.billIncomeId &&
       `${transaction.occurrenceDate ? "generated from" : "tied to"} bill or income ${transaction.billIncomeId}`,
+    transaction.latePayment && "late payment, for the due date before it",
     transaction.importKey && `imported as "${transaction.importKey}"`,
     transaction.categoryId && `category ${transaction.categoryId}`,
   ].filter(Boolean);

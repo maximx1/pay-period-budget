@@ -1,6 +1,6 @@
 import { canHaveDueDate } from "../../shared/billsIncome.ts";
 import { addDays, dateOf } from "../../shared/dates.ts";
-import { type DueNotice, type DueRule, dueChecksBetween, uncoveredDue } from "../../shared/dueDates.ts";
+import { type DueNotice, type DuePayment, type DueRule, dueChecksBetween, uncoveredDue } from "../../shared/dueDates.ts";
 import type { BillOrIncomeRecord, PeriodRecord, Repos } from "../repos/types.ts";
 
 // The days in a period a bill or transfer is normally due with nothing set to pay it by
@@ -32,11 +32,12 @@ export async function dueNoticesIn(repos: Repos, period: PeriodRecord): Promise<
   const from = addDays(previous[0] ?? period.startDate, 1);
   const to = addDays(next.at(-1) ?? period.endDate, -1);
   const ids = [...new Set(checks.map(({ item }) => item.id))];
-  const payments = new Map<string, string[]>();
+  const payments = new Map<string, DuePayment[]>();
   for (const record of await repos.transactions.listForBillsIncomeInRange(period.userId, ids, from, to)) {
     // Money brought back from a transfer, or a refund on a bill, pays nothing.
     if (record.billIncomeId === null || record.amountCents >= 0) continue;
-    payments.set(record.billIncomeId, [...(payments.get(record.billIncomeId) ?? []), dateOf(record.occursAt)]);
+    const payment = { date: dateOf(record.occursAt), late: record.latePayment };
+    payments.set(record.billIncomeId, [...(payments.get(record.billIncomeId) ?? []), payment]);
   }
 
   return checks

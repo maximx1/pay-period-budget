@@ -49,6 +49,7 @@ export async function materializeInPeriod(
         categoryId: item.categoryId,
         splitId: null,
         splitShares: null,
+        latePayment: false,
         createdAt: now,
         updatedAt: now,
       }));

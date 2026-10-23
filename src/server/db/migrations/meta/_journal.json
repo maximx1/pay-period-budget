@@ -127,6 +127,13 @@
       "when": 1792719761189,
       "tag": "0017_balance_check_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792763445275,
+      "tag": "0018_transaction_late_payment",
+      "breakpoints": true
     }
   ]
 }

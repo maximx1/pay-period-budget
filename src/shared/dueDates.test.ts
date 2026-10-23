@@ -4,7 +4,9 @@ import {
   type DueCheck,
   dueChecksBetween,
   type DueNotice,
+  dueDatesAround,
   dueNoticeMessage,
+  type DuePayment,
   type DueRule,
   nextDueOn,
   uncoveredDue,
@@ -76,6 +78,9 @@ describe("dueChecksBetween", () => {
 describe("uncoveredDue", () => {
   const check: DueCheck = { dueDate: "2026-02-20", previous: "2026-01-20", next: "2026-03-20" };
 
+  // A date ending in "!" is a payment marked late.
+  const payment = (text: string): DuePayment => ({ date: text.replace("!", ""), late: text.endsWith("!") });
+
   it.each<[string, string[], ReturnType<typeof uncoveredDue>]>([
     ["covered by a payment in the cycle", ["2026-02-13"], null],
     ["covered by one on the day it is due", ["2026-02-20"], null],
@@ -85,8 +90,24 @@ describe("uncoveredDue", () => {
     ["nothing at all", [], { dueDate: "2026-02-20", lateDate: null }],
     ["late: the first payment after it is due", ["2026-03-06", "2026-02-27"], { dueDate: "2026-02-20", lateDate: "2026-02-27" }],
     ["one on the next due date is that one's, not a late one", ["2026-03-20"], { dueDate: "2026-02-20", lateDate: null }],
+    // A payment marked late paid the due date before it, so it covers nothing in its own cycle.
+    ["not covered by one marked late for the due date before", ["2026-01-30!"], { dueDate: "2026-02-20", lateDate: null }],
+    ["covered by an ordinary one beside one marked late", ["2026-01-30!", "2026-02-13"], null],
+    ["one marked late after it is due is still named as late", ["2026-02-27!"], { dueDate: "2026-02-20", lateDate: "2026-02-27" }],
   ])("%s", (_, payments, expected) => {
-    expect(uncoveredDue(check, payments)).toEqual(expected);
+    expect(uncoveredDue(check, payments.map(payment))).toEqual(expected);
+  });
+});
+
+describe("dueDatesAround", () => {
+  it.each<[string, DueRule, string, ReturnType<typeof dueDatesAround>]>([
+    ["between two", rule(), "2026-02-13", { before: "2026-01-20", next: "2026-02-20" }],
+    ["on a due date, that one is next", rule(), "2026-02-20", { before: "2026-01-20", next: "2026-02-20" }],
+    ["the day after one, that one is before", rule(), "2026-02-21", { before: "2026-02-20", next: "2026-03-20" }],
+    ["nothing before the first", rule(), "2026-01-10", { before: null, next: "2026-01-20" }],
+    ["nothing next once it has ended", rule({ endDate: "2026-02-28" }), "2026-03-05", { before: "2026-02-20", next: null }],
+  ])("%s", (_, dueRule, date, expected) => {
+    expect(dueDatesAround(dueRule, date)).toEqual(expected);
   });
 });
 

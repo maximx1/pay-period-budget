@@ -486,6 +486,12 @@ no due date, and then the unit and interval mean nothing. Decided 2026-10-20 (de
   next due date is reported as late. It still covers that next due date too: a payment is
   not matched to one due date, only looked for in each cycle. (So paying on the 25th for a
   bill due on the 20th warns once, then reads as paying early for the next month.)
+- **Marked late** (`latePayment` on the transaction, phase 33). The user can say a payment
+  was late: it paid the due date before it (the last one strictly before its date), so it
+  covers nothing. In D's cycle it is skipped when looking for cover, and is still named as
+  `lateDate` for the D it came after. Only a transaction tied to an item can be marked;
+  asking for it on an untied one is a field error on `latePayment`, and untying one clears
+  it. The dialog offers it for money out toward an item with a due date.
 - **Notices.** `PeriodView.dueNotices` lists every due date inside the period that is not
   covered, by date and then name, with `lateDate` or null. They are worked out on read
   (`dueNoticesIn`); nothing is stored. The wording is `dueNoticeMessage` in

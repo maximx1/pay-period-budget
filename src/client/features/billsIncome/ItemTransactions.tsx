@@ -60,6 +60,7 @@ export function ItemTransactionList({ transactions, periods, today, onNavigate }
               <span className="block truncate font-medium text-fg">{transaction.name}</span>
               <span className="block truncate text-sm text-muted">
                 {formatLongDate(date)} · {paid ? "Paid" : "Upcoming"}
+                {transaction.latePayment ? " · Late payment" : ""}
                 {transaction.note ? ` · ${transaction.note}` : ""}
               </span>
             </span>

@@ -22,7 +22,7 @@ export function TransactionRow({ transaction, categoryName, onToggle, onEdit, re
   const income = amountCents > 0;
   // Midnight means "no particular time", which is how bills arrive.
   const time = occursAt.endsWith("T00:00") ? null : formatTime(occursAt);
-  const details = [categoryName, time, note].filter(Boolean).join(" · ");
+  const details = [categoryName, time, transaction.latePayment && "Late payment", note].filter(Boolean).join(" · ");
 
   return (
     <li className="flex items-center gap-1 pr-2 pl-1">

@@ -17,5 +17,6 @@ export function toTransaction(record: TransactionRecord): Transaction {
     importKey: record.importKey,
     categoryId: record.categoryId,
     splitId: record.splitId,
+    latePayment: record.latePayment,
   };
 }

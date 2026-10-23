@@ -11,11 +11,13 @@ import {
   formatDateRange,
   formatDay,
   formatLongDate,
+  formatMonthDay,
   isLocalDate,
   isLocalDateTime,
   type LocalDateTime,
   nowIn,
 } from "../../../shared/dates.ts";
+import { dueDatesAround } from "../../../shared/dueDates.ts";
 import { centsToInput, formatCents, parseMoneyInput } from "../../../shared/money.ts";
 import {
   laterTotal,
@@ -94,6 +96,8 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   newCategory: z.string(),
   /** The name of a transfer made as this is saved. */
   newTransfer: z.string(),
+  /** Paid late, for its item's due date before it. Used only while the item has a due date. */
+  latePayment: z.boolean(),
 }).superRefine(({ split, named: allNamed, amount, items, categoryId, newCategory, billIncomeId, newTransfer }, context) => {
   if (!split && parseAmount(amount) === null) context.addIssue({ code: "custom", path: ["amount"], message: AMOUNT_HINT });
   if (split) {
@@ -300,6 +304,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
           categoryId: transaction.categoryId ?? "",
           newCategory: "",
           newTransfer: "",
+          latePayment: transaction.latePayment ?? false,
         }
       : {
           name: "",
@@ -318,6 +323,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
           categoryId: "",
           newCategory: "",
           newTransfer: "",
+          latePayment: false,
         },
   });
 
@@ -397,6 +403,19 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
     if (getValues("categoryId") === "" && item.categoryId) setValue("categoryId", item.categoryId);
   }
   const itemField = register("billIncomeId");
+
+  // Money out toward something with a due date may say it paid the one before, not the next.
+  const chosenItem = choices.find((choice) => choice.id === chosenId);
+  const watchedDate = dateOf(watch("occursAt"));
+  const lateRule =
+    !split && chosenKind === "expense" && chosenItem?.dueDate
+      ? { unit: chosenItem.dueUnit, interval: chosenItem.dueInterval, date: chosenItem.dueDate, endDate: chosenItem.endDate }
+      : null;
+  const around = lateRule && isLocalDate(watchedDate) ? dueDatesAround(lateRule, watchedDate) : null;
+  const lateHint =
+    around?.before && around.next
+      ? `It paid what was due ${formatMonthDay(around.before)}, so it doesn't count toward ${formatMonthDay(around.next)}.`
+      : "It paid the due date before it, so it doesn't count toward the next one.";
   const chosen = choices.find((choice) => choice.id === chosenId);
   // Says which way this one counts, so that what the money is then spent on is not tied here by mistake.
   const transferHint =
@@ -484,13 +503,15 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
     }
   }
 
-  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer, items, finishEarly, roundUp }) => {
+  const onSubmit = handleSubmit(async ({ name, amount, kind, occursAt, note, paid, billIncomeId, countsToward, categoryId, newCategory, newTransfer, items, finishEarly, roundUp, latePayment }) => {
     setFormError(null);
     if (transferMode && billIncomeId === "") {
       setError("billIncomeId", { message: "Choose the account it moved between, or make a new one" });
       return;
     }
     const amountCents = parseAmount(amount) ?? 0;
+    // Hidden once the item has no due date, or the money comes in: then it is not late.
+    const late = lateRule !== null && latePayment;
     let tiedTo = billIncomeId === "" ? null : billIncomeId;
     if (billIncomeId === NEW_TRANSFER) {
       try {
@@ -553,6 +574,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
                 note,
                 ...(tiedTo !== transaction.billIncomeId && { billIncomeId: tiedTo }),
                 ...(filedUnder !== transaction.categoryId && { categoryId: filedUnder }),
+                ...(late !== (transaction.latePayment ?? false) && { latePayment: late }),
               },
             })
           : await create.mutateAsync({
@@ -567,6 +589,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
               // Until then it is left to the server, which files it where its bill or income is.
               ...(categories.data && { categoryId: filedUnder }),
               ...(countsToward !== "" && payable.some((entry) => entry.id === countsToward) && { countsToward }),
+              ...(late && { latePayment: true }),
             }),
       );
     } catch (error) {
@@ -574,7 +597,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
         setError("amount", { message: error.fields.amountCents });
       }
       setFormError(
-        applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "countsToward", "categoryId"]),
+        applyApiError(error, setError, ["name", "occursAt", "note", "billIncomeId", "countsToward", "categoryId", "latePayment"]),
       );
     }
   });
@@ -699,6 +722,10 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
             choose(event.target.value);
           }}
         />
+      )}
+
+      {lateRule && (
+        <OptionCheckbox label="Late payment" description={lateHint} registration={register("latePayment")} />
       )}
 
       {payable.length > 0 && (
@@ -917,6 +944,7 @@ export function AddToSplitForm({ split, defaultOccursAt, onClose }: AddToSplitFo
       categoryId: "",
       newCategory: "",
       newTransfer: "",
+      latePayment: false,
     },
   });
 

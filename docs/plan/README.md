@@ -61,6 +61,7 @@ different app.
 | [30](phase-30-advice-talk.md) | "Talk it through": a conversation with the model about balancing paying down debt and saving | Built 2026-10-21. Not yet deployed | n/a |
 | [31](phase-31-split-changes.md) | Splits kept and changed: "Round up to the next $50" (each period's total), adding another purchase to a split, and skipping a payment, both working the unpaid payments out again | Built 2026-10-22. Not yet deployed; adds migration `0016`. Rebuild the Android app with it | n/a |
 | [32](phase-32-balance-parts.md) | A balance in parts: a student loan's sub-loans, each with its own balance and APR, under one payment that is shared out by balance; each part its own debt in Advice | Built 2026-10-22. Not yet deployed; adds migration `0017`. MCP file rebuilt; rebuild the Android app with it | n/a |
+| [33](phase-33-late-payments.md) | Marking a payment late: it paid its bill's due date before it, so it no longer covers the next one, and that one warns | Built 2026-10-23. Not yet deployed; adds migration `0018`. MCP file rebuilt; rebuild the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 
@@ -263,7 +264,9 @@ unless marked otherwise.
     The pay period a due date falls in warns when nothing tied to the item is dated in the
     cycle up to it, and names the payment when it comes after. Amounts are not compared.
     The schedule's own date field is now labelled "First date", so that "due date" means
-    only this. See "Due dates" in `domain.md` and `phase-25-due-dates.md`.
+    only this. See "Due dates" in `domain.md` and `phase-25-due-dates.md`. Since
+    2026-10-23 a payment can be marked late, for the due date before it; it then covers
+    nothing (`phase-33-late-payments.md`).
 17. **Low balance warnings look ahead from today** (decided 2026-10-20 on the owner's
     request: "a warning that a future period is getting close to being low ... and a more
     emergency message that a future period is below 0", default $200 and five periods, up

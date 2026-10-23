@@ -34,7 +34,22 @@ export function nextDueOn(rule: DueRule, onOrAfter: LocalDate): LocalDate | null
   return nextOccurrence(toRecurrence(rule), onOrAfter);
 }
 
-const toRecurrence = ({ unit, interval, date, endDate }: DueRule): Recurrence => ({
+/**
+ * The due dates either side of a payment on `date`: the last one before it, which a late
+ * payment pays, and the first on or after it, which an ordinary one pays. Either is null
+ * when there is none (before the first, or after the item ends).
+ */
+export function dueDatesAround(rule: DueRule, date: LocalDate): { before: LocalDate | null; next: LocalDate | null } {
+  const next = nextOccurrence({ ...toRecurrence(rule), endDate: null }, date) ?? date;
+  const { previous } = neighbouringOccurrences(rule.unit, rule.interval, rule.date, next);
+  const ended = (day: LocalDate) => rule.endDate !== null && day > rule.endDate;
+  return {
+    before: previous < rule.date || ended(previous) ? null : previous,
+    next: ended(next) ? null : next,
+  };
+}
+
+const toRecurrence =({ unit, interval, date, endDate }: DueRule): Recurrence => ({
   unit,
   interval,
   firstDueDate: date,
@@ -70,17 +85,26 @@ export type DueNotice = {
 };
 
 /**
+ * One of the item's transactions in its own direction (money out for a bill or a
+ * transfer); the amount does not matter. `late` when the user marked it a late payment for
+ * the due date before it.
+ */
+export type DuePayment = { date: LocalDate; late: boolean };
+
+/**
  * Whether a due date is covered: some payment toward the item, paid or upcoming, dated
- * after the due date before it and on or before this one. `paymentDates` are the dates of
- * the item's transactions in its own direction (money out for a bill or a transfer); the
- * amounts do not matter. Null when it is covered.
+ * after the due date before it and on or before this one, and not marked late (a late one
+ * paid the due date before it). Null when it is covered.
  */
 export function uncoveredDue(
   check: DueCheck,
-  paymentDates: LocalDate[],
+  payments: DuePayment[],
 ): Pick<DueNotice, "dueDate" | "lateDate"> | null {
-  if (paymentDates.some((date) => check.previous < date && date <= check.dueDate)) return null;
-  const late = paymentDates.filter((date) => check.dueDate < date && date < check.next).sort();
+  if (payments.some(({ date, late }) => !late && check.previous < date && date <= check.dueDate)) return null;
+  const late = payments
+    .map(({ date }) => date)
+    .filter((date) => check.dueDate < date && date < check.next)
+    .sort();
   return { dueDate: check.dueDate, lateDate: late[0] ?? null };
 }
 

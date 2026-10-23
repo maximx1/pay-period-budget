@@ -255,6 +255,8 @@ export const transactions = sqliteTable(
     splitId: text("split_id").references(() => splits.id, { onDelete: "set null" }),
     /** With a split: what each of its items makes up of this payment, as JSON. */
     splitShares: text("split_shares", { mode: "json" }).$type<StoredShare[]>(),
+    /** A payment toward its item's due date before it, not the next one (phase 33). */
+    latePayment: integer("late_payment", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

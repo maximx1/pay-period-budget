@@ -321,6 +321,7 @@ export function createImportService(deps: { store: DataStore; periods: PeriodSer
         categoryId: linkedTo.get(index)?.categoryId ?? null,
         splitId: options.split?.id ?? null,
         splitShares: options.split?.shares(index) ?? null,
+        latePayment: false,
         createdAt,
         updatedAt: createdAt,
       };

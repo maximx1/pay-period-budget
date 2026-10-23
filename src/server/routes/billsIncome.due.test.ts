@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PeriodView } from "../../shared/budget.ts";
 import { DUE_ONLY_FOR_MONEY_OUT_MESSAGE, type BillOrIncome } from "../../shared/billsIncome.ts";
-import type { Transaction } from "../../shared/transactions.ts";
+import { LATE_NEEDS_ITEM_MESSAGE, type Transaction } from "../../shared/transactions.ts";
 import { createTestApp, type TestApp } from "../testing.ts";
 
 // The test clock starts at 2026-01-15T12:00Z. Biweekly from 2025-12-16, generated through
@@ -182,5 +182,63 @@ describe("the pay period a due date falls in", () => {
     await addItem(ann, card());
     const bob = await signUp("bob");
     expect(await noticesOn("2026-01-20", bob)).toEqual([]);
+  });
+});
+
+describe("a payment marked late", () => {
+  it("pays the due date before it, so the next one warns", async () => {
+    const item = await addItem(ann, card());
+    const payment = await pay(ann, item, "2026-01-23");
+    // Unmarked, Jan 23 is late for Jan 20 and counts toward Feb 20.
+    expect(await noticesOn("2026-02-20")).toEqual([]);
+
+    const marked = await ann.patch(`/api/transactions/${payment.id}`, { latePayment: true });
+    expect(marked.status).toBe(200);
+    expect((await marked.json()).transaction.latePayment).toBe(true);
+    expect(await noticesOn("2026-02-20")).toEqual([
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-02-20", lateDate: null },
+    ]);
+    // Jan 20 still names it as late.
+    expect(await noticesOn("2026-01-20")).toEqual([
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: "2026-01-23" },
+    ]);
+
+    await ann.patch(`/api/transactions/${payment.id}`, { latePayment: false });
+    expect(await noticesOn("2026-02-20")).toEqual([]);
+  });
+
+  it("can be marked when it is added", async () => {
+    const item = await addItem(ann, card());
+    const payment = await pay(ann, item, "2026-01-23", { latePayment: true });
+    expect(payment.latePayment).toBe(true);
+    expect(await noticesOn("2026-02-20")).toHaveLength(1);
+  });
+
+  it("is not late unless it is tied to an item", async () => {
+    const untied = await ann.post("/api/transactions", {
+      name: "Card payment",
+      amountCents: 25_000,
+      kind: "expense",
+      occursAt: "2026-01-23T09:00",
+      latePayment: true,
+    });
+    expect(untied.status).toBe(400);
+    expect((await untied.json()).error.fields).toEqual({ latePayment: LATE_NEEDS_ITEM_MESSAGE });
+
+    const item = await addItem(ann, card());
+    const payment = await pay(ann, item, "2026-01-23", { latePayment: true });
+    const unmarked = await ann.patch(`/api/transactions/${payment.id}`, { billIncomeId: null });
+    expect((await unmarked.json()).transaction.latePayment).toBe(false);
+    const refused = await ann.patch(`/api/transactions/${payment.id}`, { latePayment: true });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error.fields).toEqual({ latePayment: LATE_NEEDS_ITEM_MESSAGE });
+  });
+
+  it("cannot be marked on another user's payment", async () => {
+    const item = await addItem(ann, card());
+    const payment = await pay(ann, item, "2026-01-23");
+    const bob = await signUp("bob");
+    expect((await bob.patch(`/api/transactions/${payment.id}`, { latePayment: true })).status).toBe(404);
+    expect(await noticesOn("2026-02-20")).toEqual([]);
   });
 });

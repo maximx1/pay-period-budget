@@ -402,6 +402,7 @@ describe("generated transactions stand on their own", () => {
       categoryId: null,
       splitId: null,
       splitShares: null,
+      latePayment: false,
       createdAt: t.clock.now(),
       updatedAt: t.clock.now(),
     };

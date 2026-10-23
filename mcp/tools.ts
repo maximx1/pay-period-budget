@@ -106,6 +106,9 @@ const AMOUNT_RULE = "A positive whole number of cents ($54.12 is 5412); `kind` s
 const DATE_TIME_RULE =
   'Local date and time as "YYYY-MM-DDTHH:mm" in the budget\'s own time zone. Use T00:00 when only the date is known.';
 
+const LATE_PAYMENT_RULE =
+  "Optional. True marks a payment toward a bill or transfer as late: it paid that item's due date before it, so it " +
+  "does not count toward the next one, and the period holding the next one warns if nothing else pays it. Needs billIncomeId.";
 const transactionFields = transactionInputSchema.shape;
 const patchFields = transactionPatchSchema.shape;
 const billOrIncomeFields = billOrIncomeInputSchema.shape;
@@ -437,6 +440,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
           `${CATEGORY_ID_RULE} Files the transaction under it. Left out, a transaction tied to a bill or income takes ` +
             "that item's category, if it has one; null files it under none.",
         ),
+        latePayment: transactionFields.latePayment.describe(LATE_PAYMENT_RULE),
       },
       readOnly: false,
       async run(input) {
@@ -467,6 +471,7 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
         status: patchFields.status.describe('"paid" once the money has moved, "upcoming" if it has not.'),
         billIncomeId: patchFields.billIncomeId.describe(`${BILL_INCOME_ID_RULE} Ties it to that item; null unties it.`),
         categoryId: patchFields.categoryId.describe(`${CATEGORY_ID_RULE} Files it under that category; null files it under none.`),
+        latePayment: patchFields.latePayment.describe(`${LATE_PAYMENT_RULE} False unmarks it.`),
       },
       readOnly: false,
       async run({ id, ...patch }) {
