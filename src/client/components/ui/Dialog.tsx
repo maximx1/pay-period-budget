@@ -6,7 +6,7 @@ import { useModal } from "./useModal.ts";
 
 type DialogProps = {
   open: boolean;
-  /** Called for Escape, a backdrop click and the close button. */
+  /** Called for Escape, the close button and a backdrop click (until something inside is edited). */
   onClose: () => void;
   title: string;
   /**
