@@ -2,24 +2,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { z } from "zod";
-import { localDateSchema } from "../../../shared/budget.ts";
 import { isLocalDate, todayIn } from "../../../shared/dates.ts";
-import { centsToInput, parseMoneyInput } from "../../../shared/money.ts";
-import { describeDue, DUE_UNITS, type DueUnit } from "../../../shared/dueDates.ts";
-import { describeRecurrence, RECURRENCE_UNITS, type RecurrenceUnit } from "../../../shared/recurrence.ts";
+import { centsToInput } from "../../../shared/money.ts";
+import { describeDue, type DueUnit } from "../../../shared/dueDates.ts";
+import { describeRecurrence, type RecurrenceUnit } from "../../../shared/recurrence.ts";
 import {
-  BILL_OR_INCOME_KINDS,
   canHaveDueDate,
-  END_BEFORE_START_MESSAGE,
-  MAX_OPENING_CENTS,
-  MAX_RECURRENCE_INTERVAL,
   type BillOrIncomeInput,
-  type BillOrIncomeKind,
   type BillOrIncome,
   type BillOrIncomePreview,
 } from "../../../shared/billsIncome.ts";
-import { MAX_TRANSACTION_CENTS } from "../../../shared/transactions.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Dialog, DialogActions } from "../../components/ui/Dialog.tsx";
@@ -40,88 +32,7 @@ import {
   useBillOrIncomePreview,
   useUpdateBillOrIncome,
 } from "./api.ts";
-
-const parseAmount = (text: string) => {
-  const cents = parseMoneyInput(text);
-  return cents !== null && cents > 0 && cents <= MAX_TRANSACTION_CENTS ? cents : null;
-};
-
-/** A transfer's starting balance: empty for none, and a minus for money owed. */
-const parseOpening = (text: string) => {
-  if (text.trim() === "") return 0;
-  const cents = parseMoneyInput(text, { allowNegative: true });
-  return cents !== null && Math.abs(cents) <= MAX_OPENING_CENTS ? cents : null;
-};
-
-const parseInterval = (text: string) => {
-  const value = Number(text);
-  return /^\d+$/.test(text.trim()) && value >= 1 && value <= MAX_RECURRENCE_INTERVAL ? value : null;
-};
-
-const formSchema = z
-  .object({
-    name: z.string().trim().min(1, "Enter a name").max(80, "Keep the name under 80 characters"),
-    kind: z.enum(BILL_OR_INCOME_KINDS),
-    amount: z.string(),
-    opening: z.string().refine((text) => parseOpening(text) !== null, "Enter an amount like 2500.00, or -2500.00 if it is owed"),
-    recurrenceUnit: z.enum(RECURRENCE_UNITS),
-    recurrenceInterval: z.string().refine((text) => parseInterval(text) !== null, `1 to ${MAX_RECURRENCE_INTERVAL}`),
-    firstDueDate: localDateSchema,
-    /** Empty means it never ends. */
-    endDate: z.string().refine((text) => text === "" || isLocalDate(text), "Enter a valid date"),
-    description: z.string().max(2000, "Keep the description under 2,000 characters"),
-    /** The category its entries are filed under; empty for none. */
-    categoryId: z.string(),
-    /** Whether to warn when nothing is set to pay it by its due date. Ignored for an income. */
-    hasDue: z.boolean(),
-    dueDate: z.string(),
-    dueUnit: z.enum(DUE_UNITS),
-    dueInterval: z.string(),
-  })
-  // Something with no schedule need not have a usual amount; anything that repeats must.
-  .refine(
-    (values) =>
-      parseAmount(values.amount) !== null || (values.recurrenceUnit === "none" && values.amount.trim() === ""),
-    { path: ["amount"], message: "Enter an amount like 60.00" },
-  )
-  .refine(
-    (values) => values.recurrenceUnit === "none" || values.endDate === "" || values.endDate >= values.firstDueDate,
-    { path: ["endDate"], message: END_BEFORE_START_MESSAGE },
-  )
-  .refine((values) => !tracksDue(values) || isLocalDate(values.dueDate), { path: ["dueDate"], message: "Enter a valid date" })
-  .refine((values) => !tracksDue(values) || parseInterval(values.dueInterval) !== null, {
-    path: ["dueInterval"],
-    message: `1 to ${MAX_RECURRENCE_INTERVAL}`,
-  });
-type FormValues = z.infer<typeof formSchema>;
-
-/** A due date is asked for only on something paid out, and only once the box is ticked. */
-function tracksDue(values: { hasDue: boolean; kind: BillOrIncomeKind }): boolean {
-  return values.hasDue && canHaveDueDate(values.kind);
-}
-
-const toInput = (values: FormValues): BillOrIncomeInput => {
-  const noSchedule = values.recurrenceUnit === "none";
-  return {
-    name: values.name.trim(),
-    kind: values.kind,
-    defaultAmountCents: parseAmount(values.amount) ?? 0,
-    // Only a transfer has a balance to start from.
-    openingCents: values.kind === "transfer" ? (parseOpening(values.opening) ?? 0) : 0,
-    recurrenceUnit: values.recurrenceUnit,
-    // A pay-period item, or one with no schedule, has no interval to speak of; store the neutral value.
-    recurrenceInterval:
-      values.recurrenceUnit === "period" || noSchedule ? 1 : (parseInterval(values.recurrenceInterval) ?? 1),
-    // With no schedule there is no first due date to give, and no end to a schedule either.
-    firstDueDate: noSchedule ? undefined : values.firstDueDate,
-    endDate: noSchedule || values.endDate === "" ? null : values.endDate,
-    description: values.description.trim(),
-    categoryId: values.categoryId === "" ? null : values.categoryId,
-    dueDate: tracksDue(values) ? values.dueDate : null,
-    dueUnit: values.dueUnit,
-    dueInterval: parseInterval(values.dueInterval) ?? 1,
-  };
-};
+import { formSchema, hasInterval, parseInterval, toInput, type FormValues } from "./form.ts";
 
 const kindOptions = [
   { value: "expense", label: "Bill" },
@@ -274,8 +185,7 @@ function BillOrIncomeForm({ onClose, item, timezone }: Omit<BillOrIncomeDialogPr
   // Entries it adds from now on follow a change of category by themselves; whether the
   // transactions already tied to it should follow is asked.
   const categoryChanged = item !== undefined && values.categoryId !== (item.categoryId ?? "");
-  // Neither has a number of weeks or months to ask for.
-  const noInterval = everyPeriod || noSchedule;
+  const noInterval = !hasInterval(values.recurrenceUnit);
 
   const showDue = canHaveDueDate(values.kind);
   const dueInterval = parseInterval(values.dueInterval);
