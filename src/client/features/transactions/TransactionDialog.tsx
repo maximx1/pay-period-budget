@@ -118,6 +118,8 @@ const formSchema = transactionInputSchema.pick({ name: true, kind: true, occursA
   if (billIncomeId === NEW_TRANSFER) named(newTransfer, "newTransfer", "transfer", 80);
 });
 export type FormValues = z.infer<typeof formSchema>;
+/** What a new transaction can start with in place of the blanks. */
+export type TransactionPrefill = Partial<Pick<FormValues, "name" | "amount" | "kind" | "occursAt" | "billIncomeId" | "categoryId">>;
 
 // A transfer is not a third way for money to move: it is money sent to, or brought back
 // from, one of the owner's other accounts, saved as an expense or income tied to that transfer.
@@ -140,6 +142,8 @@ type TransactionDialogProps = {
   timezone: string;
   /** Present when editing; absent when adding. */
   transaction?: Transaction;
+  /** When adding: starting values for the "Type it in" form, such as a bill's payment. */
+  prefill?: TransactionPrefill;
   /** Asks for a search for other transactions like the one being edited. */
   onFindLike?: (transaction: Transaction) => void;
   /** When adding: offers a second tab that picks screenshots to import from, and hands them here. */
@@ -259,7 +263,7 @@ type TransactionFormProps = Omit<TransactionDialogProps, "open" | "onScan"> & {
   onAddToSplit?: (split: SplitSummary) => void;
 };
 
-function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onAddToSplit, split = false }: TransactionFormProps) {
+function TransactionForm({ onClose, view, timezone, transaction, prefill, onFindLike, onAddToSplit, split = false }: TransactionFormProps) {
   const toast = useToast();
   const create = useCreateTransaction();
   const splitter = useSplitTransaction();
@@ -324,6 +328,7 @@ function TransactionForm({ onClose, view, timezone, transaction, onFindLike, onA
           newCategory: "",
           newTransfer: "",
           latePayment: false,
+          ...(!split && prefill),
         },
   });
 

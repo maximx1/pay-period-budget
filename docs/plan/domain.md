@@ -492,8 +492,16 @@ no due date, and then the unit and interval mean nothing. Decided 2026-10-20 (de
   `lateDate` for the D it came after. Only a transaction tied to an item can be marked;
   asking for it on an untied one is a field error on `latePayment`, and untying one clears
   it. The dialog offers it for money out toward an item with a due date.
+- **Soon** (phase 34). From `DUE_SOON_DAYS` (3) days before a due date through the day
+  itself, its notice is `urgent` and drawn in red, worded with how soon ("in 2 days",
+  "tomorrow", "today"). A due date covered only by upcoming payments, none marked paid,
+  says nothing until then; once it is soon it gets a notice too, with `unpaidDate` (the
+  earliest such payment): "its payment on Nov 2 isn't marked paid yet". Once the day has
+  passed, a covered one says nothing more and an uncovered one is an ordinary past-tense
+  warning.
 - **Notices.** `PeriodView.dueNotices` lists every due date inside the period that is not
-  covered, by date and then name, with `lateDate` or null. They are worked out on read
+  covered, or is soon with nothing toward it marked paid, by date and then name, with
+  `lateDate` or null. They are worked out on read
   (`dueNoticesIn`); nothing is stored. The wording is `dueNoticeMessage` in
   `src/shared/dueDates.ts`, past tense once the day has gone by. The home screen shows them
   above the category-limit warnings; the MCP period report has a `DUE:` line for each.

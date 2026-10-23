@@ -5,7 +5,8 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import type { PeriodView } from "../../../shared/budget.ts";
 import { overLimitMessage } from "../../../shared/categories.ts";
 import { dueNoticeMessage } from "../../../shared/dueDates.ts";
-import { dateOf, formatDay, isLocalDate, type LocalDate, todayIn } from "../../../shared/dates.ts";
+import { atStartOfDay, dateOf, formatDay, isLocalDate, type LocalDate, todayIn } from "../../../shared/dates.ts";
+import { centsToInput } from "../../../shared/money.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
@@ -17,6 +18,7 @@ import { ApiError } from "../../lib/api.ts";
 import { cn } from "../../lib/cn.ts";
 import { APP_NAME } from "../../lib/useDocumentTitle.ts";
 import { useSwipe } from "../../lib/useSwipe.ts";
+import { useBillsIncome } from "../billsIncome/api.ts";
 import { useBudget } from "../budget/api.ts";
 import { useCategories } from "../categories/api.ts";
 import { useBalanceOutlook, usePeriodView } from "../periods/api.ts";
@@ -34,7 +36,7 @@ import { useReorderTransactions, useSetTransactionStatus } from "../transactions
 import { mergeOrder } from "../transactions/optimistic.ts";
 import { PeriodFilterBar } from "../transactions/PeriodFilterBar.tsx";
 import { isFiltering, matchesPeriodFilter, NO_FILTER, type PeriodFilter } from "../transactions/periodFilter.ts";
-import { TransactionDialog } from "../transactions/TransactionDialog.tsx";
+import { TransactionDialog, type TransactionPrefill } from "../transactions/TransactionDialog.tsx";
 import { TransactionSection } from "../transactions/TransactionSection.tsx";
 import { WaitingSplitsReminder } from "../splits/WaitingSplitsReminder.tsx";
 import { BalanceAsksCard } from "../balances/BalanceAsksCard.tsx";
@@ -132,7 +134,9 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
   const setStatus = useSetTransactionStatus();
   const reorderTransactions = useReorderTransactions();
   // `transaction` is kept after closing so the dialog doesn't change its title while it fades out.
-  const [dialog, setDialog] = useState<{ open: boolean; transaction?: Transaction }>({ open: false });
+  const [dialog, setDialog] = useState<{ open: boolean; transaction?: Transaction; prefill?: TransactionPrefill }>({
+    open: false,
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // `start` is what the search opens already looking for, e.g. a transaction's name.
@@ -168,12 +172,33 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
     return message ? [{ categoryId: limit.categoryId, message }] : [];
   });
 
-  // And one for each day a bill is due that nothing is set to pay by then. A server older
-  // than the app (the phone carries its own copy) sends none.
-  const dueNotices = (view.dueNotices ?? []).map((notice) => ({
-    key: `${notice.billIncomeId}:${notice.dueDate}`,
-    message: dueNoticeMessage(notice, today),
-  }));
+  // And one for each day a bill is due that nothing is set to pay by then, or that is soon
+  // with its payment not marked paid: red when it is soon. A server older than the app (the
+  // phone carries its own copy) sends none, or none of the newer fields.
+  const billsIncome = useBillsIncome();
+  const dueNotices = (view.dueNotices ?? []).map((notice) => {
+    const item = billsIncome.data?.find((entry) => entry.id === notice.billIncomeId);
+    // With nothing set to pay it, offer to add the payment: tied to it, on the day it is due
+    // (or today, once that has passed), for its usual amount, filed where it files things.
+    const prefill: TransactionPrefill | null =
+      item && !notice.unpaidDate && notice.lateDate === null
+        ? {
+            name: item.name,
+            kind: "expense",
+            amount: item.defaultAmountCents > 0 ? centsToInput(item.defaultAmountCents) : "",
+            occursAt: atStartOfDay(notice.dueDate < today ? today : notice.dueDate),
+            billIncomeId: item.id,
+            categoryId: item.categoryId ?? "",
+          }
+        : null;
+    return {
+      key: `${notice.billIncomeId}:${notice.dueDate}`,
+      message: dueNoticeMessage(notice, today),
+      urgent: notice.urgent ?? false,
+      name: notice.name,
+      prefill,
+    };
+  });
 
   // The coming periods set to end low or below zero, warned about on the current period only.
   const outlook = useBalanceOutlook(view.period.isCurrent).data;
@@ -235,9 +260,20 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
           {(outlookWarns || overLimits.length > 0 || dueNotices.length > 0) && (
             <div className="mb-4 flex flex-col gap-2">
               {outlookWarns && outlook && <OutlookWarnings outlook={outlook} />}
-              {dueNotices.map(({ key, message }) => (
-                <Alert key={key} tone="warning">
-                  {message}
+              {dueNotices.map(({ key, message, urgent, name, prefill }) => (
+                <Alert key={key} tone={urgent ? "danger" : "warning"}>
+                  <p>{message}</p>
+                  {prefill && (
+                    <Button
+                      variant="secondary"
+                      className="mt-2"
+                      aria-label={`Add a payment for ${name}`}
+                      onClick={() => setDialog({ open: true, prefill })}
+                    >
+                      <Plus className="size-4" aria-hidden />
+                      Add payment
+                    </Button>
+                  )}
                 </Alert>
               ))}
               {overLimits.map(({ categoryId, message }) => (
@@ -291,6 +327,7 @@ function LoadedPeriod({ view, timezone, soughtDay }: LoadedPeriodProps) {
         view={view}
         timezone={timezone}
         transaction={dialog.transaction}
+        prefill={dialog.prefill}
         onFindLike={(transaction) => {
           setDialog((current) => ({ ...current, open: false }));
           openTransactionSearch({ text: transaction.name });

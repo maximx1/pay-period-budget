@@ -120,10 +120,10 @@ describe("the pay period a due date falls in", () => {
   it("warns when nothing is set to pay it", async () => {
     const item = await addItem(ann, card());
     expect(await noticesOn("2026-01-20")).toEqual([
-      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: null },
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: null, unpaidDate: null, urgent: false },
     ]);
     expect(await noticesOn("2026-02-20")).toEqual([
-      { billIncomeId: item.id, name: "Visa", dueDate: "2026-02-20", lateDate: null },
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-02-20", lateDate: null, unpaidDate: null, urgent: false },
     ]);
     // Neither the period before the first due date nor one with no due date in it warns.
     expect(await noticesOn("2026-01-05")).toEqual([]);
@@ -148,7 +148,7 @@ describe("the pay period a due date falls in", () => {
     const item = await addItem(ann, card());
     await pay(ann, item, "2026-01-23");
     expect(await noticesOn("2026-01-20")).toEqual([
-      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: "2026-01-23" },
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: "2026-01-23", unpaidDate: null, urgent: false },
     ]);
   });
 
@@ -196,11 +196,11 @@ describe("a payment marked late", () => {
     expect(marked.status).toBe(200);
     expect((await marked.json()).transaction.latePayment).toBe(true);
     expect(await noticesOn("2026-02-20")).toEqual([
-      { billIncomeId: item.id, name: "Visa", dueDate: "2026-02-20", lateDate: null },
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-02-20", lateDate: null, unpaidDate: null, urgent: false },
     ]);
     // Jan 20 still names it as late.
     expect(await noticesOn("2026-01-20")).toEqual([
-      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: "2026-01-23" },
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: "2026-01-23", unpaidDate: null, urgent: false },
     ]);
 
     await ann.patch(`/api/transactions/${payment.id}`, { latePayment: false });
@@ -240,5 +240,33 @@ describe("a payment marked late", () => {
     const bob = await signUp("bob");
     expect((await bob.patch(`/api/transactions/${payment.id}`, { latePayment: true })).status).toBe(404);
     expect(await noticesOn("2026-02-20")).toEqual([]);
+  });
+});
+
+describe("a due date close at hand", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it("warns urgently from three days before when nothing is set to pay it", async () => {
+    const item = await addItem(ann, card());
+    // Jan 15 is five days out: an ordinary warning.
+    expect(await noticesOn("2026-01-20")).toEqual([
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: null, unpaidDate: null, urgent: false },
+    ]);
+    t.clock.advance(2 * DAY); // Jan 17
+    expect((await noticesOn("2026-01-20"))[0]).toMatchObject({ urgent: true });
+  });
+
+  it("warns urgently when its payment is set but not marked paid", async () => {
+    const item = await addItem(ann, card());
+    const payment = await pay(ann, item, "2026-01-19");
+    expect(await noticesOn("2026-01-20")).toEqual([]);
+
+    t.clock.advance(3 * DAY); // Jan 18
+    expect(await noticesOn("2026-01-20")).toEqual([
+      { billIncomeId: item.id, name: "Visa", dueDate: "2026-01-20", lateDate: null, unpaidDate: "2026-01-19", urgent: true },
+    ]);
+
+    expect((await ann.patch(`/api/transactions/${payment.id}`, { status: "paid" })).status).toBe(200);
+    expect(await noticesOn("2026-01-20")).toEqual([]);
   });
 });

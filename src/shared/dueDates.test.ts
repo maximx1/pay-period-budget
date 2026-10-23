@@ -5,11 +5,11 @@ import {
   dueChecksBetween,
   type DueNotice,
   dueDatesAround,
+  dueNoticeFor,
   dueNoticeMessage,
   type DuePayment,
   type DueRule,
   nextDueOn,
-  uncoveredDue,
 } from "./dueDates.ts";
 
 const rule = (overrides: Partial<DueRule> = {}): DueRule => ({
@@ -75,27 +75,42 @@ describe("dueChecksBetween", () => {
   });
 });
 
-describe("uncoveredDue", () => {
+describe("dueNoticeFor", () => {
   const check: DueCheck = { dueDate: "2026-02-20", previous: "2026-01-20", next: "2026-03-20" };
+  // A date ending in "!" is a payment marked late; one ending in "+" is marked paid.
+  const payment = (text: string): DuePayment => ({
+    date: text.replace(/[!+]/g, ""),
+    late: text.includes("!"),
+    paid: text.includes("+"),
+  });
+  const far = "2026-02-01";
+  const none = (overrides = {}) => ({ dueDate: "2026-02-20", lateDate: null, unpaidDate: null, urgent: false, ...overrides });
 
-  // A date ending in "!" is a payment marked late.
-  const payment = (text: string): DuePayment => ({ date: text.replace("!", ""), late: text.endsWith("!") });
-
-  it.each<[string, string[], ReturnType<typeof uncoveredDue>]>([
-    ["covered by a payment in the cycle", ["2026-02-13"], null],
-    ["covered by one on the day it is due", ["2026-02-20"], null],
-    ["covered by one the day after the due date before", ["2026-01-21"], null],
-    ["covered when one of several is in the cycle", ["2026-01-10", "2026-02-01", "2026-02-25"], null],
-    ["not covered by one on the due date before: that paid the last one", ["2026-01-20"], { dueDate: "2026-02-20", lateDate: null }],
-    ["nothing at all", [], { dueDate: "2026-02-20", lateDate: null }],
-    ["late: the first payment after it is due", ["2026-03-06", "2026-02-27"], { dueDate: "2026-02-20", lateDate: "2026-02-27" }],
-    ["one on the next due date is that one's, not a late one", ["2026-03-20"], { dueDate: "2026-02-20", lateDate: null }],
+  it.each<[string, string[], string, ReturnType<typeof dueNoticeFor>]>([
+    ["covered by a paid payment in the cycle", ["2026-02-13+"], far, null],
+    ["covered by an upcoming one, while it is far off", ["2026-02-13"], far, null],
+    ["covered by one on the day it is due", ["2026-02-20+"], far, null],
+    ["covered by one the day after the due date before", ["2026-01-21+"], far, null],
+    ["covered when one of several is in the cycle", ["2026-01-10+", "2026-02-01+", "2026-02-25"], far, null],
+    ["not covered by one on the due date before: that paid the last one", ["2026-01-20+"], far, none()],
+    ["nothing at all", [], far, none()],
+    ["late: the first payment after it is due", ["2026-03-06", "2026-02-27"], far, none({ lateDate: "2026-02-27" })],
+    ["one on the next due date is that one's, not a late one", ["2026-03-20"], far, none()],
     // A payment marked late paid the due date before it, so it covers nothing in its own cycle.
-    ["not covered by one marked late for the due date before", ["2026-01-30!"], { dueDate: "2026-02-20", lateDate: null }],
-    ["covered by an ordinary one beside one marked late", ["2026-01-30!", "2026-02-13"], null],
-    ["one marked late after it is due is still named as late", ["2026-02-27!"], { dueDate: "2026-02-20", lateDate: "2026-02-27" }],
-  ])("%s", (_, payments, expected) => {
-    expect(uncoveredDue(check, payments.map(payment))).toEqual(expected);
+    ["not covered by one marked late for the due date before", ["2026-01-30!+"], far, none()],
+    ["covered by an ordinary one beside one marked late", ["2026-01-30!+", "2026-02-13+"], far, null],
+    ["one marked late after it is due is still named as late", ["2026-02-27!"], far, none({ lateDate: "2026-02-27" })],
+    // Soon: from three days before through the day itself.
+    ["urgent three days out with nothing set", [], "2026-02-17", none({ urgent: true })],
+    ["not urgent four days out", [], "2026-02-16", none()],
+    ["urgent on the day", [], "2026-02-20", none({ urgent: true })],
+    ["not urgent once it has passed", [], "2026-02-21", none()],
+    ["soon, with its payment set but not marked paid", ["2026-02-19"], "2026-02-18", none({ unpaidDate: "2026-02-19", urgent: true })],
+    ["names the earliest of several unpaid ones", ["2026-02-19", "2026-02-10"], "2026-02-18", none({ unpaidDate: "2026-02-10", urgent: true })],
+    ["soon, but one of them is marked paid", ["2026-02-10+", "2026-02-19"], "2026-02-18", null],
+    ["an unpaid one that has passed says nothing more", ["2026-02-19"], "2026-02-21", null],
+  ])("%s", (_, payments, today, expected) => {
+    expect(dueNoticeFor(check, payments.map(payment), today)).toEqual(expected);
   });
 });
 
@@ -112,21 +127,31 @@ describe("dueDatesAround", () => {
 });
 
 describe("dueNoticeMessage", () => {
-  const notice = (lateDate: string | null): DueNotice => ({
+  const notice = (lateDate: string | null, unpaidDate: string | null = null): DueNotice => ({
     billIncomeId: "card",
     name: "Visa",
     dueDate: "2026-02-20",
     lateDate,
+    unpaidDate,
   });
 
-  it.each<[string, string | null, string, string]>([
-    ["nothing set, still to come", null, "2026-02-15", "Visa is due Feb 20, and nothing is set to pay it by then."],
-    ["nothing set, on the day", null, "2026-02-20", "Visa is due Feb 20, and nothing is set to pay it by then."],
-    ["nothing set, passed", null, "2026-02-21", "Visa was due Feb 20, and nothing was set to pay it by then."],
-    ["late, still to come", "2026-02-27", "2026-02-15", "Visa is due Feb 20, but its payment is set for Feb 27."],
-    ["late, passed", "2026-02-27", "2026-03-01", "Visa was due Feb 20, but its payment was dated Feb 27."],
-  ])("%s", (_, lateDate, today, expected) => {
-    expect(dueNoticeMessage(notice(lateDate), today)).toBe(expected);
+  it.each<[string, DueNotice, string, string]>([
+    ["nothing set, still to come", notice(null), "2026-02-15", "Visa is due Feb 20, and nothing is set to pay it by then."],
+    ["nothing set, soon", notice(null), "2026-02-17", "Visa is due Feb 20, in 3 days, and nothing is set to pay it by then."],
+    ["nothing set, tomorrow", notice(null), "2026-02-19", "Visa is due Feb 20, tomorrow, and nothing is set to pay it by then."],
+    ["nothing set, on the day", notice(null), "2026-02-20", "Visa is due Feb 20, today, and nothing is set to pay it by then."],
+    ["nothing set, passed", notice(null), "2026-02-21", "Visa was due Feb 20, and nothing was set to pay it by then."],
+    ["late, still to come", notice("2026-02-27"), "2026-02-15", "Visa is due Feb 20, but its payment is set for Feb 27."],
+    ["late, soon", notice("2026-02-27"), "2026-02-18", "Visa is due Feb 20, in 2 days, but its payment is set for Feb 27."],
+    ["late, passed", notice("2026-02-27"), "2026-03-01", "Visa was due Feb 20, but its payment was dated Feb 27."],
+    [
+      "set but not marked paid, soon",
+      notice(null, "2026-02-19"),
+      "2026-02-18",
+      "Visa is due Feb 20, in 2 days, and its payment on Feb 19 isn't marked paid yet.",
+    ],
+  ])("%s", (_, given, today, expected) => {
+    expect(dueNoticeMessage(given, today)).toBe(expected);
   });
 });
 

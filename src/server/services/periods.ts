@@ -213,7 +213,7 @@ export function createPeriodService(deps: {
       },
       transactions: records.map(toTransaction),
       categoryLimits: await limitsWithSpending(repos, period, records),
-      dueNotices: await dueNoticesIn(repos, period),
+      dueNotices: await dueNoticesIn(repos, period, today),
       nav: {
         prevId: prev?.id ?? null,
         canAddPrevious,

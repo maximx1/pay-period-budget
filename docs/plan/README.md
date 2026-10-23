@@ -62,6 +62,7 @@ different app.
 | [31](phase-31-split-changes.md) | Splits kept and changed: "Round up to the next $50" (each period's total), adding another purchase to a split, and skipping a payment, both working the unpaid payments out again | Built 2026-10-22. Not yet deployed; adds migration `0016`. Rebuild the Android app with it | n/a |
 | [32](phase-32-balance-parts.md) | A balance in parts: a student loan's sub-loans, each with its own balance and APR, under one payment that is shared out by balance; each part its own debt in Advice | Built 2026-10-22. Not yet deployed; adds migration `0017`. MCP file rebuilt; rebuild the Android app with it | n/a |
 | [33](phase-33-late-payments.md) | Marking a payment late: it paid its bill's due date before it, so it no longer covers the next one, and that one warns | Built 2026-10-23. Not yet deployed; adds migration `0018`. MCP file rebuilt; rebuild the Android app with it | n/a |
+| [34](phase-34-due-soon.md) | Due date warnings: an "Add payment" button that opens the add dialog filled in for the bill, and a red warning from three days before a due date while nothing toward it is marked paid | Built 2026-10-23. Not yet deployed. MCP file rebuilt; rebuild the Android app with it | n/a |
 | Deployment | Docker Compose packaging and [docs/deploy.md](../deploy.md) | Done, not yet run on a server | n/a |
 | [Later](backlog.md) | Accounts (savings, payees), Google sign-in, passkeys, more schedules, iOS | Not planned in detail | n/a |
 

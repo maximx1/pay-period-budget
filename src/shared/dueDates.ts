@@ -1,4 +1,4 @@
-import { type LocalDate, formatMonthDay } from "./dates.ts";
+import { diffDays, type LocalDate, formatMonthDay } from "./dates.ts";
 import {
   describeRecurrence,
   neighbouringOccurrences,
@@ -73,15 +73,26 @@ export function dueChecksBetween(rule: DueRule, from: LocalDate, to: LocalDate):
   }));
 }
 
+/** How many days ahead a due date counts as soon: from then through the day itself it is urgent. */
+export const DUE_SOON_DAYS = 3;
+
 /**
- * A day a bill is due that nothing is set to pay by then. `lateDate` is the first payment
- * toward it after that day and before the next due date, or null when there is none either.
+ * Something to say about a day a bill is due: nothing is set to pay it by then (with
+ * `lateDate`, the first payment toward it after that day and before the next due date, or
+ * null when there is none either), or it is soon and what pays it is not marked paid yet.
  */
 export type DueNotice = {
   billIncomeId: string;
   name: string;
   dueDate: LocalDate;
   lateDate: LocalDate | null;
+  /**
+   * Set when a payment is set to pay it but none is marked paid, and it is soon: that
+   * payment's date. Absent from servers older than phase 34.
+   */
+  unpaidDate?: LocalDate | null;
+  /** It is due within DUE_SOON_DAYS days, or today. Absent from servers older than phase 34. */
+  urgent?: boolean;
 };
 
 /**
@@ -89,35 +100,61 @@ export type DueNotice = {
  * transfer); the amount does not matter. `late` when the user marked it a late payment for
  * the due date before it.
  */
-export type DuePayment = { date: LocalDate; late: boolean };
+export type DuePayment = { date: LocalDate; late: boolean; paid: boolean };
+
+/** Whether a due date is close enough to say so urgently: today, or within DUE_SOON_DAYS. */
+export function isDueSoon(dueDate: LocalDate, today: LocalDate): boolean {
+  const days = diffDays(today, dueDate);
+  return days >= 0 && days <= DUE_SOON_DAYS;
+}
 
 /**
- * Whether a due date is covered: some payment toward the item, paid or upcoming, dated
- * after the due date before it and on or before this one, and not marked late (a late one
- * paid the due date before it). Null when it is covered.
+ * What to say about a due date, or null when nothing needs saying. It is covered by a
+ * payment toward the item, paid or upcoming, dated after the due date before it and on or
+ * before this one, and not marked late (a late one paid the due date before it). Covered
+ * by something marked paid, all is well. Covered only by upcoming ones, all is well too
+ * until it is soon; then it says the payment isn't marked paid yet.
  */
-export function uncoveredDue(
+export function dueNoticeFor(
   check: DueCheck,
   payments: DuePayment[],
-): Pick<DueNotice, "dueDate" | "lateDate"> | null {
-  if (payments.some(({ date, late }) => !late && check.previous < date && date <= check.dueDate)) return null;
+  today: LocalDate,
+): Pick<DueNotice, "dueDate" | "lateDate" | "unpaidDate" | "urgent"> | null {
+  const urgent = isDueSoon(check.dueDate, today);
+  const covering = payments
+    .filter(({ date, late }) => !late && check.previous < date && date <= check.dueDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (covering.some(({ paid }) => paid)) return null;
+  if (covering.length > 0) {
+    return urgent ? { dueDate: check.dueDate, lateDate: null, unpaidDate: covering[0]!.date, urgent } : null;
+  }
   const late = payments
     .map(({ date }) => date)
     .filter((date) => check.dueDate < date && date < check.next)
     .sort();
-  return { dueDate: check.dueDate, lateDate: late[0] ?? null };
+  return { dueDate: check.dueDate, lateDate: late[0] ?? null, unpaidDate: null, urgent };
 }
 
-/** What to tell the user about a due date nothing is set to pay. Past tense once it has passed. */
-export function dueNoticeMessage({ name, dueDate, lateDate }: DueNotice, today: LocalDate): string {
+/** "today", "tomorrow" or "in 3 days". */
+function howSoon(dueDate: LocalDate, today: LocalDate): string {
+  const days = diffDays(today, dueDate);
+  return days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+}
+
+/** What to tell the user about a due date. Past tense once it has passed; says how soon when it is. */
+export function dueNoticeMessage({ name, dueDate, lateDate, unpaidDate }: DueNotice, today: LocalDate): string {
   const due = formatMonthDay(dueDate);
   const passed = dueDate < today;
+  const when = isDueSoon(dueDate, today) ? `${due}, ${howSoon(dueDate, today)}` : due;
+  if (unpaidDate) {
+    return `${name} is due ${when}, and its payment on ${formatMonthDay(unpaidDate)} isn't marked paid yet.`;
+  }
   if (lateDate === null) {
     return passed
       ? `${name} was due ${due}, and nothing was set to pay it by then.`
-      : `${name} is due ${due}, and nothing is set to pay it by then.`;
+      : `${name} is due ${when}, and nothing is set to pay it by then.`;
   }
   return passed
     ? `${name} was due ${due}, but its payment was dated ${formatMonthDay(lateDate)}.`
-    : `${name} is due ${due}, but its payment is set for ${formatMonthDay(lateDate)}.`;
+    : `${name} is due ${when}, but its payment is set for ${formatMonthDay(lateDate)}.`;
 }

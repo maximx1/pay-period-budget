@@ -65,13 +65,17 @@ export function limitLines(limits: PeriodCategoryLimit[]): string[] {
   ];
 }
 
-/** A line for each day in the period a bill is due with nothing set to pay it by then. */
+/**
+ * A line for each day in the period a bill is due with nothing set to pay it by then, or
+ * due soon with its payment not marked paid. URGENT when it is due within a few days.
+ */
 export function dueLines(notices: DueNotice[]): string[] {
-  return notices.map(
-    ({ name, dueDate, lateDate, billIncomeId }) =>
-      `DUE: ${name} is due ${dueDate} and nothing tied to it is dated on or before then` +
-      `${lateDate ? `; its next payment is dated ${lateDate}, after it is due` : ""} | bill or income ${billIncomeId}`,
-  );
+  return notices.map(({ name, dueDate, lateDate, unpaidDate, urgent, billIncomeId }) => {
+    const what = unpaidDate
+      ? `its payment dated ${unpaidDate} is not marked paid yet`
+      : `nothing tied to it is dated on or before then${lateDate ? `; its next payment is dated ${lateDate}, after it is due` : ""}`;
+    return `${urgent ? "DUE (URGENT)" : "DUE"}: ${name} is due ${dueDate} and ${what} | bill or income ${billIncomeId}`;
+  });
 }
 
 export function periodReport({ period, totals, transactions, categoryLimits, dueNotices }: PeriodView): string {
