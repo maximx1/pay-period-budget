@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { nowIn } from "../../../shared/dates.ts";
+import { planKey } from "../../../shared/paydown.ts";
 import { centsToInput, formatCents, parseMoneyInput } from "../../../shared/money.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
@@ -12,7 +13,8 @@ import { useBudget } from "../budget/api.ts";
 import { useImportTransactions } from "../transactions/api.ts";
 import { adviceKeys } from "./api.ts";
 
-export type QuickAddItem = { billIncomeId: string; name: string; amountCents: number };
+/** `partId` for a payment toward one part of a balance in parts: a payment to its bill all the same. */
+export type QuickAddItem = { billIncomeId: string; partId?: string; name: string; amountCents: number };
 
 type QuickAddDialogProps = {
   open: boolean;
@@ -96,7 +98,7 @@ function QuickAddForm({ onClose, items, categoryIds }: Omit<QuickAddDialogProps,
       <p className="text-sm text-muted">Each is added to today's pay period as a payment to that item.</p>
       <ul className="flex flex-col gap-3">
         {rows.map((row, index) => (
-          <li key={row.billIncomeId} className="grid grid-cols-[auto_1fr] items-start gap-3">
+          <li key={planKey(row)} className="grid grid-cols-[auto_1fr] items-start gap-3">
             <input
               type="checkbox"
               className="mt-3 size-5 accent-primary"

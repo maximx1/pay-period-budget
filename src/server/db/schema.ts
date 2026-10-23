@@ -418,3 +418,35 @@ export const balanceChecks = sqliteTable(
   },
   (t) => [index("balance_checks_item_as_of_idx").on(t.billIncomeId, t.asOf)],
 );
+
+/**
+ * One part of a check on a balance in parts (phase 32): a student loan's sub-loans, say.
+ * `part_id` is the part's own id, the same in every check it is in. The check's own
+ * balance and rate are these added up and balance-weighted.
+ */
+export const balanceCheckParts = sqliteTable(
+  "balance_check_parts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    billIncomeId: text("bill_income_id")
+      .notNull()
+      .references(() => billsIncome.id, { onDelete: "cascade" }),
+    checkId: text("check_id")
+      .notNull()
+      .references(() => balanceChecks.id, { onDelete: "cascade" }),
+    partId: text("part_id").notNull(),
+    position: integer("position").notNull(),
+    name: text("name").notNull(),
+    /** Signed: below zero is owed. */
+    balanceCents: integer("balance_cents").notNull(),
+    /** Basis points. Null: no rate given. */
+    aprBps: integer("apr_bps"),
+  },
+  (t) => [
+    uniqueIndex("balance_check_parts_check_part_unique").on(t.checkId, t.partId),
+    index("balance_check_parts_item_idx").on(t.billIncomeId),
+  ],
+);

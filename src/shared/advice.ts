@@ -162,7 +162,8 @@ export type AdviceQuestionsResponse = {
 };
 
 /** Payments a Smart answer suggests, checked against the tracked balances, for quick add. */
-export type AdvicePlan = { items: Array<{ billIncomeId: string; name: string; amountCents: number }> };
+/** `partId` for a payment toward one part of a balance in parts: still a payment to its bill. */
+export type AdvicePlan = { items: Array<{ billIncomeId: string; partId?: string; name: string; amountCents: number }> };
 
 export type AdviceAnswerResponse = {
   questionId: string;

@@ -8,7 +8,6 @@ import type { BudgetResponse, PeriodListResponse, PeriodView } from "../src/shar
 import type { BalanceOutlook } from "../src/shared/outlook.ts";
 import {
   type BalanceHistoryResponse,
-  balanceCheckInputSchema,
   type BalancesResponse,
   formatApr,
   type TrackedBalance,
@@ -577,35 +576,60 @@ export function createTools({ api, readFile, now }: ToolDeps): Tool[] {
       title: "Record a balance",
       description:
         "Records what a bill or transfer's own account says its balance is, for example read off a statement. Starts tracking " +
-        "its balance if it isn't tracked yet. Only a bill or a transfer can have one, not an income. Owed is negative.",
+        "its balance if it isn't tracked yet. Only a bill or a transfer can have one, not an income. Owed is negative. " +
+        "A balance in parts (a student loan's sub-loans under one payment, each with its own balance and APR) is recorded " +
+        "with `parts` instead of `balanceCents`, listing every part each time; once in parts, a check needs them, or " +
+        "`parts: []` with `balanceCents` to stop splitting it.",
       inputSchema: {
         id: z.string().min(1).describe(BILL_INCOME_ID_RULE),
-        balanceCents: balanceCheckInputSchema.shape.balanceCents.describe(
-          "Signed whole cents: negative for money owed ($8,450.00 owed is -845000), positive for money held.",
-        ),
+        balanceCents: z
+          .number()
+          .int()
+          .optional()
+          .describe("Signed whole cents: negative for money owed ($8,450.00 owed is -845000), positive for money held. Left out with parts."),
+        parts: z
+          .array(
+            z.object({
+              id: z.string().optional().describe("The part id list_balances shows, for a part the balance has; left out for a new part."),
+              name: z.string().describe('Its name, as the lender shows it: "1-01".'),
+              balanceCents: z.number().int().describe("Signed whole cents, like balanceCents."),
+              aprBps: z.number().int().min(0).nullable().optional().describe("Basis points; null for none. Left out: its last rate."),
+            }),
+          )
+          .optional()
+          .describe("Every part with its balance, all owed or all held. The total is them added up."),
         aprBps: z
           .number()
           .int()
           .min(0)
           .nullable()
           .optional()
-          .describe("The APR in basis points (24.99% is 2499); null for none. Left out, the last check's rate carries on."),
+          .describe("The APR in basis points (24.99% is 2499); null for none. Left out, the last check's rate carries on. Not with parts."),
         asOf: z
           .string()
           .optional()
           .describe('When the balance was this, "YYYY-MM-DDTHH:mm" in the budget\'s time zone; never later than now. Left out: now.'),
       },
       readOnly: false,
-      async run({ id, balanceCents, aprBps, asOf }) {
+      async run({ id, balanceCents, parts, aprBps, asOf }) {
         const { balances } = await api.get<BalancesResponse>("/api/balances");
         const tracked = balances.some((balance) => balance.billIncomeId === id);
         const path = `/api/balances/${encodeURIComponent(id)}`;
-        const body = { balanceCents, ...(aprBps !== undefined && { aprBps }), ...(asOf && { asOf }) };
+        const body = {
+          ...(balanceCents !== undefined && { balanceCents }),
+          ...(parts !== undefined && { parts }),
+          ...(aprBps !== undefined && { aprBps }),
+          ...(asOf && { asOf }),
+        };
         const { balance } = await api.post<TrackedBalanceResponse>(tracked ? `${path}/checks` : path, body);
         const { checks } = await api.get<BalanceHistoryResponse>(path);
-        return [`${tracked ? "Recorded" : "Started tracking, with"} a check of ${money(balanceCents)}.`, balanceLine(balance), `${plural(checks.length, "check")} so far.`].join(
-          "\n",
-        );
+        return [
+          // From what was sent: a check dated before the last isn't the one the balance shows.
+          `${tracked ? "Recorded" : "Started tracking, with"} a check of ${money(balanceCents ?? (parts ?? []).reduce((sum, part) => sum + part.balanceCents, 0))}` +
+            `${parts && parts.length > 0 ? ` in ${plural(parts.length, "part")}` : ""}.`,
+          balanceLine(balance),
+          `${plural(checks.length, "check")} so far.`,
+        ].join("\n");
       },
     }),
 
@@ -1161,8 +1185,16 @@ function balanceLine(balance: TrackedBalance): string {
     balance.sinceCount > 0
       ? `estimated: checked at ${money(check.balanceCents)} on ${check.asOf}, then ${plural(balance.sinceCount, "paid transaction")}`
       : `checked on ${check.asOf}`,
-    check.aprBps === null ? "no APR given" : `APR ${formatApr(check.aprBps)}`,
+    check.aprBps === null ? "no APR given" : `APR ${formatApr(check.aprBps)}${balance.parts.length > 0 ? " (blended)" : ""}`,
     balance.due ? "DUE for a check" : `next check around ${balance.nextCheckOn}`,
     `id ${balance.billIncomeId}`,
-  ].join(" | ");
+  ]
+    .join(" | ")
+    .concat(
+      // In parts: each its own line, a payment shared over them by their balances.
+      ...balance.parts.map(
+        (part) =>
+          `\n  - part ${part.name}: ${money(part.estimateCents)}, ${part.aprBps === null ? "no APR given" : `APR ${formatApr(part.aprBps)}`}, part id ${part.id}`,
+      ),
+    );
 }

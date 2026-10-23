@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ExtraMoneyFacts } from "../../../shared/advice.ts";
 import { formatDateRange } from "../../../shared/dates.ts";
 import { formatCents, parseMoneyInput } from "../../../shared/money.ts";
-import { describeMonths, makePlan, type PlanStrategy, PLAN_STRATEGIES, safeToSpare, STRATEGY_LABELS } from "../../../shared/paydown.ts";
+import { describeMonths, makePlan, type PlanStrategy, PLAN_STRATEGIES, planKey, safeToSpare, STRATEGY_LABELS } from "../../../shared/paydown.ts";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
@@ -100,7 +100,7 @@ export function ExtraMoneyCard({ extra, amount }: { extra: ExtraMoneyFacts; amou
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {plan.lines.map((line) => (
-                <li key={line.billIncomeId} className="flex flex-col gap-0.5 py-2">
+                <li key={planKey(line)} className="flex flex-col gap-0.5 py-2">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 font-medium break-words text-fg">{line.name}</span>
                     <span className="shrink-0 font-semibold tabular-nums text-fg">{formatCents(line.amountCents)}</span>
@@ -128,7 +128,7 @@ export function ExtraMoneyCard({ extra, amount }: { extra: ExtraMoneyFacts; amou
           <QuickAddDialog
             open={adding}
             onClose={() => setAdding(false)}
-            items={plan.lines.map(({ billIncomeId, name, amountCents }) => ({ billIncomeId, name, amountCents }))}
+            items={plan.lines.map(({ billIncomeId, partId, name, amountCents }) => ({ billIncomeId, partId, name, amountCents }))}
             categoryIds={extra.categoryIds}
           />
         </>

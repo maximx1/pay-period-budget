@@ -431,6 +431,30 @@ describe("balances", () => {
   });
 });
 
+describe("a balance in parts", () => {
+  it("records every part, and lists each with its share of what has been paid", async () => {
+    const loan = (await (await session.post("/api/bills-income", { name: "Student loan", kind: "expense", defaultAmountCents: 0, recurrenceUnit: "none" })).json()).item;
+    const started = await call("record_balance_check", {
+      id: loan.id,
+      parts: [
+        { name: "1-01", balanceCents: -300_000, aprBps: 450 },
+        { name: "1-02", balanceCents: -100_000, aprBps: 850 },
+      ],
+    });
+    expect(started.split("\n")[0]).toBe("Started tracking, with a check of -$4,000.00 (-400000 cents) in 2 parts.");
+
+    await session.post("/api/transactions", { name: "Payment", amountCents: 40_000, kind: "expense", occursAt: "2026-01-16T00:00", paid: true, billIncomeId: loan.id });
+    const listed = (await call("list_balances")).split("\n");
+    expect(listed[1]).toContain("| APR 5.5% (blended) |");
+    expect(listed.slice(2).map((line) => line.replace(/, part id [\w-]+$/, ""))).toEqual([
+      "  - part 1-01: -$2,700.00 (-270000 cents), APR 4.5%",
+      "  - part 1-02: -$900.00 (-90000 cents), APR 8.5%",
+    ]);
+
+    await expect(call("record_balance_check", { id: loan.id, balanceCents: -1 })).rejects.toMatchObject({ fields: { parts: expect.any(String) } });
+  });
+});
+
 describe("bills and income", () => {
   const rent = { name: "Rent", kind: "expense", defaultAmountCents: 90_000, recurrenceUnit: "month", firstDueDate: "2026-01-25" };
   const idIn = (text: string) => /\| id ([\w-]+)/.exec(text)![1]!;

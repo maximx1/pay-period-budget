@@ -11,11 +11,11 @@ import { useBalanceLooksRight, useCheckBalance, useSnoozeBalance } from "./api.t
 import {
   applyBalanceErrors,
   BalanceFields,
-  balanceFieldDefaults,
   balanceFieldsInput,
   type BalanceFormValues,
   balanceFormSchema,
-  useFollowRate,
+  checkDefaults,
+  useFollowRates,
 } from "./BalanceFields.tsx";
 
 const SNOOZES = [
@@ -28,7 +28,9 @@ const SNOOZES = [
 export function estimateLine(balance: TrackedBalance): string {
   const checked = `checked ${formatDay(dateOf(balance.lastCheck.asOf))}`;
   const rate = balance.lastCheck.aprBps === null ? "" : ` · ${formatApr(balance.lastCheck.aprBps)}`;
-  return `${balance.sinceCount > 0 ? "Estimated " : ""}${shownBalance(balance.estimateCents)} · ${checked}${rate}`;
+  // A rate over parts is their blend: the count says so.
+  const parts = balance.parts.length > 0 ? ` · ${balance.parts.length} parts` : "";
+  return `${balance.sinceCount > 0 ? "Estimated " : ""}${shownBalance(balance.estimateCents)} · ${checked}${rate}${parts}`;
 }
 
 /**
@@ -44,9 +46,9 @@ export function CheckBalanceRow({ balance, onOpen }: { balance: TrackedBalance; 
   const busy = check.isPending || looksRight.isPending || snooze.isPending;
   const form = useForm<BalanceFormValues>({
     resolver: zodResolver(balanceFormSchema),
-    defaultValues: balanceFieldDefaults(balance.estimateCents, balance.lastCheck.aprBps, false),
+    defaultValues: checkDefaults(balance),
   });
-  useFollowRate(form, balance.lastCheck.aprBps);
+  useFollowRates(form, balance);
 
   const failed = (error: unknown) => {
     if (!applyBalanceErrors(error, form)) {

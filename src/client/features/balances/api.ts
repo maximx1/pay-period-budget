@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BalanceCheckInput,
   BalanceHistoryResponse,
+  BalancePartPatch,
   BalanceSettings,
   BalancesResponse,
   TrackBalanceInput,
@@ -85,6 +86,15 @@ export function useUpdateTrackedBalance() {
   return useMutation({
     mutationFn: ({ billIncomeId, patch }: { billIncomeId: string; patch: TrackedBalancePatch }) =>
       api.patch<TrackedBalanceResponse>(path(billIncomeId), patch),
+    onSuccess: useRefresh(),
+  });
+}
+
+/** One part of the last check, renamed or given a new rate in place. */
+export function useUpdateBalancePart() {
+  return useMutation({
+    mutationFn: ({ billIncomeId, partId, patch }: { billIncomeId: string; partId: string; patch: BalancePartPatch }) =>
+      api.patch<TrackedBalanceResponse>(path(billIncomeId, `/parts/${encodeURIComponent(partId)}`), patch),
     onSuccess: useRefresh(),
   });
 }

@@ -288,6 +288,35 @@ describe("quick questions", () => {
     expect((await (await bob.get("/api/advice/quick")).json()).extra).toMatchObject({ debts: [], savings: [] });
     expect((await t.client().get("/api/advice/quick")).status).toBe(401);
   });
+
+  it("count each part of a balance in parts as a debt, with its share of the one payment", async () => {
+    t = await createTestApp({});
+    const ann = await signUp("ann");
+    const loan = (
+      await (
+        await ann.post("/api/bills-income", {
+          name: "Student loan",
+          kind: "expense",
+          defaultAmountCents: 40_000,
+          recurrenceUnit: "month",
+          firstDueDate: "2026-02-20",
+        })
+      ).json()
+    ).item.id as string;
+    const tracked = await ann.post(`/api/balances/${loan}`, {
+      parts: [
+        { name: "1-01", balanceCents: -300_000, aprBps: 450 },
+        { name: "1-02", balanceCents: -100_000, aprBps: 680 },
+      ],
+    });
+    const [first, second] = (await tracked.json()).balance.parts;
+
+    const { extra } = await (await ann.get("/api/advice/quick")).json();
+    expect(extra.debts).toEqual([
+      { billIncomeId: loan, partId: first.id, name: "Student loan: 1-01", owedCents: 300_000, aprBps: 450, monthlyPaymentCents: 30_000 },
+      { billIncomeId: loan, partId: second.id, name: "Student loan: 1-02", owedCents: 100_000, aprBps: 680, monthlyPaymentCents: 10_000 },
+    ]);
+  });
 });
 
 describe("questions about extra money", () => {

@@ -531,6 +531,36 @@ On screen the page is "Balances"; never "accounts" (decision 11).
   today's asks on today's period only; the Balances page lists every due one.
 - The test app's random is fixed at 0.5: every next check is exactly its interval away.
 
+### Balances in parts (phase 32)
+
+A student loan made of sub-loans, each with its own balance and APR, under one payment.
+
+- **Parts belong to checks** (`balance_check_parts`). A check has parts or not; each part
+  row has the part's own id (`part_id`, the same from check to check), name, position,
+  balance and APR. The latest check's parts are the balance's parts now.
+- On a check with parts, `balance_checks.balance_cents` is them added up and `apr_bps` their
+  rate weighted by balance among those with one (`blendedAprBps`; null when none has one),
+  so the estimate and everything else reading a check is unchanged.
+- **A check with parts** lists every part (1 to 20): `{ id?, name, balanceCents, aprBps? }`,
+  names unique, all owed or all held, no `balanceCents` or `aprBps` beside them. An `id` is
+  one of the item's parts from any earlier check; left out, a new part. A part's rate left
+  out is its rate from the latest check it was in. A part left out of a check is gone from
+  then on. Once the last check has parts, a check without them is a field error on `parts`
+  unless it says `parts: []`, which ends the splitting; starting to track is never refused
+  this way. "Looks right" records each part at its estimate.
+- **The estimate in parts**: the whole is estimated as before; what it has moved since the
+  check is shared over the parts in proportion to their balances at the check, in whole
+  cents adding up exactly (largest remainder, ties to the earlier part; all at zero:
+  evenly) (`shareOverParts`). A payment meant for one part is shared out all the same until
+  the next check. Interest a month is each part's at its own rate, added up.
+- **Changing a part in place**: `PATCH /api/balances/:billIncomeId/parts/:partId { name?,
+  aprBps? }` changes the latest check's part and its blended rate; not a check. The whole's
+  `aprBps` patch is a field error on a balance in parts.
+- **In Advice** each part is a debt or saving of its own (`partId` set, named "Loan: 1-01"),
+  its usual payment the bill's times its share of the balance. Plans key items by
+  `planKey` (the part's id, else the bill's). A payment toward a part is still a
+  transaction tied to the bill.
+
 ### Where extra money goes (phase 29)
 
 The plans in `src/shared/paydown.ts`, worked out by the page as the amount changes and by

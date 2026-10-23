@@ -1,6 +1,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import {
   balanceCheckInputSchema,
+  balancePartPatchSchema,
   balanceSettingsSchema,
   type BalanceHistoryResponse,
   type BalancesResponse,
@@ -55,6 +56,12 @@ export function balanceRoutes(deps: { balances: BalanceService; authed: Middlewa
     const input = await parseJson(c, balanceCheckInputSchema);
     const balance = await balances.check(c.var.user.id, c.req.param("billIncomeId"), input);
     return c.json<TrackedBalanceResponse>({ balance }, 201);
+  });
+
+  routes.patch("/:billIncomeId/parts/:partId", async (c) => {
+    const patch = await parseJson(c, balancePartPatchSchema);
+    const balance = await balances.updatePart(c.var.user.id, c.req.param("billIncomeId"), c.req.param("partId"), patch);
+    return c.json<TrackedBalanceResponse>({ balance });
   });
 
   routes.delete("/:billIncomeId/checks/:checkId", async (c) => {

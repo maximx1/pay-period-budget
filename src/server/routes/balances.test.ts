@@ -285,6 +285,168 @@ describe("asking for checks", () => {
   });
 });
 
+describe("a balance in parts", () => {
+  const parts = (balance: TrackedBalance) => balance.parts.map(({ name, estimateCents, aprBps }) => [name, estimateCents, aprBps]);
+
+  it("adds its parts up, and shares a payment out over them by balance", async () => {
+    const loan = await addItem(ann, "Student loan");
+    const started = await track(ann, loan.id, {
+      parts: [
+        { name: "1-01", balanceCents: -1_200_000, aprBps: 600 },
+        { name: "1-02", balanceCents: -600_000, aprBps: 300 },
+        { name: "1-03", balanceCents: -200_000 },
+      ],
+    });
+    expect(started).toMatchObject({
+      estimateCents: -2_000_000,
+      // Weighted by balance among the parts with a rate: (12,000 x 6% + 6,000 x 3%) / 18,000.
+      lastCheck: { balanceCents: -2_000_000, aprBps: 500 },
+      // Each part's own: $60 and $15; 1-03 has no rate.
+      monthlyInterestCents: 7_500,
+    });
+    expect(parts(started)).toEqual([
+      ["1-01", -1_200_000, 600],
+      ["1-02", -600_000, 300],
+      ["1-03", -200_000, null],
+    ]);
+
+    await pay(ann, loan.id, "2026-01-16", 50_000);
+    const { balance, checks } = await history(ann, loan.id);
+    expect(balance.estimateCents).toBe(-1_950_000);
+    // $500 over 60%, 30% and 10% of it.
+    expect(parts(balance)).toEqual([
+      ["1-01", -1_170_000, 600],
+      ["1-02", -585_000, 300],
+      ["1-03", -195_000, null],
+    ]);
+    expect(balance.monthlyInterestCents).toBe(5_850 + 1_463);
+    expect(checks[0]!.parts.map((part) => [part.name, part.balanceCents])).toEqual([
+      ["1-01", -1_200_000],
+      ["1-02", -600_000],
+      ["1-03", -200_000],
+    ]);
+  });
+
+  it("keeps each part from check to check by its id, its rate carrying on when left out", async () => {
+    const loan = await addItem(ann, "Student loan");
+    const started = await track(ann, loan.id, {
+      parts: [
+        { name: "1-01", balanceCents: -100_000, aprBps: 600 },
+        { name: "1-02", balanceCents: -50_000, aprBps: 300 },
+      ],
+    });
+    const [first, second] = started.parts;
+    t.clock.advance(DAY);
+
+    // 1-02 is paid off and left out; 1-01 is renamed and keeps its rate; a new part joins.
+    let response = await ann.post(`/api/balances/${loan.id}/checks`, {
+      parts: [
+        { id: first!.id, name: "Subsidized", balanceCents: -90_000 },
+        { name: "Unsubsidized", balanceCents: -40_000, aprBps: 450 },
+      ],
+    });
+    expect(response.status).toBe(201);
+    const balance: TrackedBalance = (await response.json()).balance;
+    expect(balance.parts.map(({ id, name, aprBps }) => [id, name, aprBps])).toEqual([
+      [first!.id, "Subsidized", 600],
+      [expect.any(String), "Unsubsidized", 450],
+    ]);
+    expect(balance.parts[1]!.id).not.toBe(second!.id);
+    expect(balance.estimateCents).toBe(-130_000);
+
+    // A part from an earlier check can come back by its id, with its rate from then.
+    t.clock.advance(DAY);
+    response = await ann.post(`/api/balances/${loan.id}/checks`, {
+      parts: [{ id: second!.id, name: "1-02", balanceCents: -10_000 }],
+    });
+    expect((await response.json()).balance.parts).toMatchObject([{ id: second!.id, aprBps: 300 }]);
+
+    response = await ann.post(`/api/balances/${loan.id}/checks`, { parts: [{ id: "nope", name: "X", balanceCents: -1 }] });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toEqual({ "parts.0.id": "No such part" });
+    response = await ann.post(`/api/balances/${loan.id}/checks`, {
+      parts: [
+        { id: second!.id, name: "A", balanceCents: -1 },
+        { id: second!.id, name: "B", balanceCents: -1 },
+      ],
+    });
+    expect((await response.json()).error.fields).toEqual({ parts: "A part is listed twice" });
+  });
+
+  it("takes a check without parts only when told, and can be split up later", async () => {
+    const card = await addItem(ann, "Loan");
+    await track(ann, card.id, { balanceCents: -300_000, aprBps: 500 });
+    t.clock.advance(DAY);
+    let response = await ann.post(`/api/balances/${card.id}/checks`, {
+      parts: [
+        { name: "A", balanceCents: -200_000, aprBps: 500 },
+        { name: "B", balanceCents: -100_000, aprBps: 500 },
+      ],
+    });
+    expect((await response.json()).balance.parts).toHaveLength(2);
+
+    response = await ann.post(`/api/balances/${card.id}/checks`, { balanceCents: -290_000 });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("parts");
+
+    response = await ann.post(`/api/balances/${card.id}/checks`, { balanceCents: -290_000, parts: [] });
+    expect((await response.json()).balance).toMatchObject({ estimateCents: -290_000, parts: [], lastCheck: { aprBps: 500 } });
+  });
+
+  it("records every part at its estimate when it looks right", async () => {
+    const loan = await addItem(ann, "Student loan");
+    await track(ann, loan.id, {
+      parts: [
+        { name: "A", balanceCents: -300_000, aprBps: 400 },
+        { name: "B", balanceCents: -100_000, aprBps: 800 },
+      ],
+    });
+    await pay(ann, loan.id, "2026-01-16", 40_000);
+    t.clock.advance(DAY);
+    const response = await ann.post(`/api/balances/${loan.id}/looks-right`);
+    expect(response.status).toBe(201);
+    const balance: TrackedBalance = (await response.json()).balance;
+    expect(balance).toMatchObject({ estimateCents: -360_000, sinceCount: 0, lastCheck: { balanceCents: -360_000, aprBps: 500 } });
+    expect(parts(balance)).toEqual([
+      ["A", -270_000, 400],
+      ["B", -90_000, 800],
+    ]);
+  });
+
+  it("renames a part or changes its rate in place, and refuses a rate for the whole", async () => {
+    const loan = await addItem(ann, "Student loan");
+    const started = await track(ann, loan.id, {
+      parts: [
+        { name: "A", balanceCents: -300_000, aprBps: 400 },
+        { name: "B", balanceCents: -100_000, aprBps: 400 },
+      ],
+    });
+    const b = started.parts[1]!;
+
+    let response = await ann.patch(`/api/balances/${loan.id}/parts/${b.id}`, { name: "Unsub", aprBps: 800 });
+    expect(response.status).toBe(200);
+    expect((await response.json()).balance).toMatchObject({
+      lastCheck: { id: started.lastCheck.id, aprBps: 500 },
+      parts: [{ name: "A" }, { id: b.id, name: "Unsub", aprBps: 800 }],
+      nextCheckOn: started.nextCheckOn,
+    });
+    expect((await history(ann, loan.id)).checks).toHaveLength(1);
+
+    response = await ann.patch(`/api/balances/${loan.id}/parts/${b.id}`, { name: "a" });
+    expect((await response.json()).error.fields).toEqual({ name: "Another part has this name" });
+    expect((await ann.patch(`/api/balances/${loan.id}/parts/nope`, { aprBps: 1 })).status).toBe(404);
+    response = await ann.patch(`/api/balances/${loan.id}`, { aprBps: 100 });
+    expect((await response.json()).error.fields).toEqual({ aprBps: "Change each part's rate instead" });
+  });
+
+  it("starts again from one figure after tracking stopped, whatever the old checks had", async () => {
+    const loan = await addItem(ann, "Student loan");
+    await track(ann, loan.id, { parts: [{ name: "A", balanceCents: -100 }] });
+    expect((await ann.delete(`/api/balances/${loan.id}`)).status).toBe(204);
+    expect(await track(ann, loan.id, { balanceCents: -90 })).toMatchObject({ estimateCents: -90, parts: [] });
+  });
+});
+
 describe("another user", () => {
   it("can't see, track, check, snooze or stop someone else's balance", async () => {
     const loan = await addItem(ann, "Ann's loan");
@@ -297,6 +459,7 @@ describe("another user", () => {
       await bob.post(`/api/balances/${loan.id}`, { balanceCents: 0 }),
       await bob.patch(`/api/balances/${loan.id}`, { checkEveryDays: 14 }),
       await bob.patch(`/api/balances/${loan.id}`, { aprBps: 999 }),
+      await bob.patch(`/api/balances/${loan.id}/parts/${lastCheck.id}`, { aprBps: 999 }),
       await bob.post(`/api/balances/${loan.id}/checks`, { balanceCents: 0 }),
       await bob.post(`/api/balances/${loan.id}/looks-right`),
       await bob.post(`/api/balances/${loan.id}/snooze`, { days: 1 }),

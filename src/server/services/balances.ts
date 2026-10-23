@@ -1,15 +1,19 @@
 import { randomUUID } from "node:crypto";
 import {
   asksFor,
+  blendedAprBps,
   canTrackBalance,
   type BalanceCheck,
   type BalanceCheckInput,
+  type BalancePartPatch,
   type BalanceHistoryResponse,
   type BalanceSettings,
   type BalancesResponse,
   type CheckEveryDays,
   monthlyInterestCents,
   nextCheckOn,
+  partsInterestCents,
+  shareOverParts,
   TRACK_ONLY_MONEY_OUT_MESSAGE,
   type TrackBalanceInput,
   type TrackedBalance,
@@ -18,6 +22,7 @@ import {
 import { addDays, dateOf, type LocalDate, type LocalDateTime, nowIn } from "../../shared/dates.ts";
 import { AppError } from "../lib/errors.ts";
 import type {
+  BalanceCheckPartRecord,
   BalanceCheckRecord,
   BillOrIncomeRecord,
   DataStore,
@@ -41,20 +46,47 @@ const invalid = (fields: Record<string, string>) => new AppError(400, "validatio
  * paid transaction tied to the item dated after it. Money sent to it (an expense, negative)
  * raises it; money taken from it lowers it. Null when it has never been checked.
  */
-export async function estimateFor(
-  repos: Repos,
-  userId: string,
-  billIncomeId: string,
-): Promise<{ estimateCents: number; last: BalanceCheckRecord; since: TransactionRecord[]; checks: BalanceCheckRecord[] } | null> {
+export async function estimateFor(repos: Repos, userId: string, billIncomeId: string): Promise<Estimate | null> {
   const checks = await repos.balances.listChecks(userId, billIncomeId);
   const last = checks[0];
   if (!last) return null;
   const since = await repos.transactions.listPaidForBillOrIncomeAfter(userId, billIncomeId, last.asOf);
   const estimateCents = since.reduce((sum, transaction) => sum - transaction.amountCents, last.balanceCents);
-  return { estimateCents, last, since, checks };
+  const partsByCheck = new Map<string, BalanceCheckPartRecord[]>();
+  for (const part of await repos.balances.listCheckParts(userId, billIncomeId)) {
+    partsByCheck.set(part.checkId, [...(partsByCheck.get(part.checkId) ?? []), part]);
+  }
+  // Phase 32: what has moved the whole is shared over its parts by their balances at the check.
+  const lastParts = partsByCheck.get(last.id) ?? [];
+  const shares = shareOverParts(
+    lastParts.map((part) => part.balanceCents),
+    estimateCents - last.balanceCents,
+  );
+  const parts = lastParts.map((part, index) => ({ part, estimateCents: part.balanceCents + shares[index]! }));
+  return { estimateCents, last, since, checks, partsByCheck, parts };
 }
 
-const toCheck = ({ id, balanceCents, aprBps, asOf }: BalanceCheckRecord): BalanceCheck => ({ id, balanceCents, aprBps, asOf });
+type Estimate = {
+  estimateCents: number;
+  last: BalanceCheckRecord;
+  since: TransactionRecord[];
+  /** Newest first. */
+  checks: BalanceCheckRecord[];
+  partsByCheck: Map<string, BalanceCheckPartRecord[]>;
+  /** The last check's parts, each with its share of the estimate. Empty when not in parts. */
+  parts: Array<{ part: BalanceCheckPartRecord; estimateCents: number }>;
+};
+
+const toCheck = ({ id, balanceCents, aprBps, asOf }: BalanceCheckRecord, parts: BalanceCheckPartRecord[] = []): BalanceCheck => ({
+  id,
+  balanceCents,
+  aprBps,
+  asOf,
+  parts: parts.map((part) => ({ id: part.partId, name: part.name, balanceCents: part.balanceCents, aprBps: part.aprBps })),
+});
+
+/** A part of a check about to be recorded. */
+type NewPart = { partId: string; name: string; balanceCents: number; aprBps: number | null };
 
 export function createBalanceService(deps: {
   store: DataStore;
@@ -80,10 +112,17 @@ export function createBalanceService(deps: {
     record: TrackedBalanceRecord,
     item: BillOrIncomeRecord,
     today: LocalDate,
-  ): Promise<{ balance: TrackedBalance; estimate: NonNullable<Awaited<ReturnType<typeof estimateFor>>> }> {
+  ): Promise<{ balance: TrackedBalance; estimate: Estimate }> {
     const estimate = await estimateFor(repos, record.userId, record.billIncomeId);
     // Tracking always starts with a check, and the last one can't be deleted while tracked.
     if (!estimate) throw new Error(`Tracked balance ${record.billIncomeId} has no check`);
+    const parts = estimate.parts.map(({ part, estimateCents }) => ({
+      id: part.partId,
+      name: part.name,
+      estimateCents,
+      aprBps: part.aprBps,
+      monthlyInterestCents: monthlyInterestCents(estimateCents, part.aprBps),
+    }));
     return {
       estimate,
       balance: {
@@ -91,9 +130,11 @@ export function createBalanceService(deps: {
         name: item.name,
         kind: item.kind,
         estimateCents: estimate.estimateCents,
-        lastCheck: toCheck(estimate.last),
+        lastCheck: toCheck(estimate.last, estimate.partsByCheck.get(estimate.last.id)),
         sinceCount: estimate.since.length,
-        monthlyInterestCents: monthlyInterestCents(estimate.estimateCents, estimate.last.aprBps),
+        monthlyInterestCents:
+          parts.length > 0 ? partsInterestCents(parts) : monthlyInterestCents(estimate.estimateCents, estimate.last.aprBps),
+        parts,
         checkEveryDays: record.checkEveryDays as CheckEveryDays | null,
         nextCheckOn: record.nextCheckOn,
         due: record.nextCheckOn <= today,
@@ -123,17 +164,70 @@ export function createBalanceService(deps: {
     return input.asOf;
   }
 
-  /** Records a check and sets when to ask next, counting it toward today's asks. */
+  /**
+   * What a check's input comes to: its balance and rate, and its parts (null when not in
+   * parts). A part's id must be one of the balance's; a rate left out carries on, from the
+   * last check for the whole and from the part's latest check for a part. A balance whose
+   * last check has parts takes a check without them only when told (`parts: []`).
+   */
+  async function checkOf(
+    repos: Repos,
+    userId: string,
+    billIncomeId: string,
+    input: BalanceCheckInput,
+  ): Promise<{ balanceCents: number; aprBps: number | null; parts: NewPart[] | null }> {
+    const checks = await repos.balances.listChecks(userId, billIncomeId);
+    const last = checks[0];
+    const known = await repos.balances.listCheckParts(userId, billIncomeId);
+    if (!input.parts || input.parts.length === 0) {
+      if (!input.parts && last && known.some((part) => part.checkId === last.id)) {
+        throw invalid({ parts: "Give every part's balance, or an empty list of parts to stop splitting it" });
+      }
+      return {
+        balanceCents: input.balanceCents!,
+        aprBps: input.aprBps === undefined ? (last?.aprBps ?? null) : input.aprBps,
+        parts: null,
+      };
+    }
+    // Each part as it was in the latest check it is in.
+    const rank = new Map(checks.map((check, index) => [check.id, index]));
+    const latest = new Map<string, BalanceCheckPartRecord>();
+    for (const part of known) {
+      const seen = latest.get(part.partId);
+      if (!seen || rank.get(part.checkId)! < rank.get(seen.checkId)!) latest.set(part.partId, part);
+    }
+    const fields: Record<string, string> = {};
+    const parts = input.parts.map((part, index): NewPart => {
+      if (part.id !== undefined && !latest.has(part.id)) fields[`parts.${index}.id`] = "No such part";
+      const before = part.id === undefined ? undefined : latest.get(part.id);
+      return {
+        partId: part.id ?? randomUUID(),
+        name: part.name,
+        balanceCents: part.balanceCents,
+        aprBps: part.aprBps === undefined ? (before?.aprBps ?? null) : part.aprBps,
+      };
+    });
+    if (new Set(parts.map((part) => part.partId)).size < parts.length) fields.parts = "A part is listed twice";
+    if (Object.keys(fields).length > 0) throw invalid(fields);
+    return { balanceCents: parts.reduce((sum, part) => sum + part.balanceCents, 0), aprBps: blendedAprBps(parts), parts };
+  }
+
+  /** Records a check, with its parts if it has any, and sets when to ask next, counting it toward today's asks. */
   async function record(
     repos: Repos,
     userId: string,
     tracked: TrackedBalanceRecord,
-    check: { balanceCents: number; aprBps: number | null; asOf: LocalDateTime },
+    check: { balanceCents: number; aprBps: number | null; asOf: LocalDateTime; parts: NewPart[] | null },
     defaultEvery: number,
     today: LocalDate,
   ): Promise<void> {
     const createdAt = now();
-    await repos.balances.addCheck({ id: randomUUID(), userId, billIncomeId: tracked.billIncomeId, ...check, createdAt });
+    const { parts, ...fields } = check;
+    const checkId = randomUUID();
+    await repos.balances.addCheck({ id: checkId, userId, billIncomeId: tracked.billIncomeId, ...fields, createdAt });
+    await repos.balances.addCheckParts(
+      (parts ?? []).map((part, position) => ({ id: randomUUID(), userId, billIncomeId: tracked.billIncomeId, checkId, position, ...part })),
+    );
     await repos.balances.updateTracked(
       userId,
       tracked.billIncomeId,
@@ -180,7 +274,7 @@ export function createBalanceService(deps: {
       const { balance, estimate } = await toBalance(store, tracked, item, await periods.today(store, userId));
       return {
         balance,
-        checks: estimate.checks.map(toCheck),
+        checks: estimate.checks.map((check) => toCheck(check, estimate.partsByCheck.get(check.id))),
         since: estimate.since.map(({ id, name, amountCents, occursAt }) => ({ id, name, amountCents, occursAt })),
       };
     },
@@ -204,37 +298,70 @@ export function createBalanceService(deps: {
           createdAt,
           updatedAt: createdAt,
         };
+        // Starting again from one figure is no slip, whatever the old checks had: no parts is `[]`.
+        const check = {
+          ...(await checkOf(repos, userId, billIncomeId, { ...input, parts: input.parts ?? [] })),
+          asOf: asOfOf(input, settings.timezone),
+        };
         await repos.balances.track(row);
-        const check = { balanceCents: input.balanceCents, aprBps: input.aprBps ?? null, asOf: asOfOf(input, settings.timezone) };
         await record(repos, userId, row, check, settings.checkEveryDays, today);
         return one(repos, userId, billIncomeId);
       });
     },
 
-    /** A balance read off the account. A rate left out carries on from the last check. */
+    /** A balance read off the account, or each of its parts'. A rate left out carries on. */
     check(userId: string, billIncomeId: string, input: BalanceCheckInput): Promise<TrackedBalance> {
       return store.transaction(async (repos) => {
         const { tracked } = await loadTracked(repos, userId, billIncomeId);
         const settings = await settingsOf(repos, userId);
-        const last = (await repos.balances.listChecks(userId, billIncomeId))[0];
+        const check = { ...(await checkOf(repos, userId, billIncomeId, input)), asOf: asOfOf(input, settings.timezone) };
+        await record(repos, userId, tracked, check, settings.checkEveryDays, await periods.today(repos, userId));
+        return one(repos, userId, billIncomeId);
+      });
+    },
+
+    /** The estimate is right: recorded as a check as of now, at the same rate; in parts, each at its estimate. */
+    looksRight(userId: string, billIncomeId: string): Promise<TrackedBalance> {
+      return store.transaction(async (repos) => {
+        const { tracked } = await loadTracked(repos, userId, billIncomeId);
+        const settings = await settingsOf(repos, userId);
+        const estimate = (await estimateFor(repos, userId, billIncomeId))!;
+        const parts = estimate.parts.map(({ part, estimateCents }) => ({
+          partId: part.partId,
+          name: part.name,
+          balanceCents: estimateCents,
+          aprBps: part.aprBps,
+        }));
         const check = {
-          balanceCents: input.balanceCents,
-          aprBps: input.aprBps === undefined ? (last?.aprBps ?? null) : input.aprBps,
-          asOf: asOfOf(input, settings.timezone),
+          balanceCents: estimate.estimateCents,
+          aprBps: parts.length > 0 ? blendedAprBps(parts) : estimate.last.aprBps,
+          asOf: nowIn(settings.timezone, now()),
+          parts: parts.length > 0 ? parts : null,
         };
         await record(repos, userId, tracked, check, settings.checkEveryDays, await periods.today(repos, userId));
         return one(repos, userId, billIncomeId);
       });
     },
 
-    /** The estimate is right: recorded as a check as of now, at the same rate. */
-    looksRight(userId: string, billIncomeId: string): Promise<TrackedBalance> {
+    /** One part of the last check, renamed or given a new rate in place. Not a check: the asking stays as it was. */
+    updatePart(userId: string, billIncomeId: string, partId: string, patch: BalancePartPatch): Promise<TrackedBalance> {
       return store.transaction(async (repos) => {
-        const { tracked } = await loadTracked(repos, userId, billIncomeId);
-        const settings = await settingsOf(repos, userId);
-        const estimate = (await estimateFor(repos, userId, billIncomeId))!;
-        const check = { balanceCents: estimate.estimateCents, aprBps: estimate.last.aprBps, asOf: nowIn(settings.timezone, now()) };
-        await record(repos, userId, tracked, check, settings.checkEveryDays, await periods.today(repos, userId));
+        await loadTracked(repos, userId, billIncomeId);
+        const last = (await repos.balances.listChecks(userId, billIncomeId))[0]!;
+        const parts = (await repos.balances.listCheckParts(userId, billIncomeId)).filter((part) => part.checkId === last.id);
+        const part = parts.find((candidate) => candidate.partId === partId);
+        if (!part) throw new AppError(404, "not_found", "No such part");
+        if (
+          patch.name !== undefined &&
+          parts.some((other) => other !== part && other.name.toLowerCase() === patch.name!.toLowerCase())
+        ) {
+          throw invalid({ name: "Another part has this name" });
+        }
+        await repos.balances.updateCheckPart(userId, part.id, patch);
+        if (patch.aprBps !== undefined) {
+          const rates = parts.map((other) => (other === part ? { ...other, aprBps: patch.aprBps! } : other));
+          await repos.balances.updateCheck(userId, last.id, { aprBps: blendedAprBps(rates) });
+        }
         return one(repos, userId, billIncomeId);
       });
     },
@@ -278,7 +405,12 @@ export function createBalanceService(deps: {
             now(),
           );
         }
-        if (patch.aprBps !== undefined) await repos.balances.updateCheck(userId, last.id, { aprBps: patch.aprBps });
+        if (patch.aprBps !== undefined) {
+          if ((await repos.balances.listCheckParts(userId, billIncomeId)).some((part) => part.checkId === last.id)) {
+            throw invalid({ aprBps: "Change each part's rate instead" });
+          }
+          await repos.balances.updateCheck(userId, last.id, { aprBps: patch.aprBps });
+        }
         return one(repos, userId, billIncomeId);
       });
     },

@@ -1,11 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { balanceChecks, trackedBalances } from "../../db/schema.ts";
+import { balanceCheckParts, balanceChecks, trackedBalances } from "../../db/schema.ts";
 import type { BalanceRepo } from "../types.ts";
 
 export function createBalanceRepo(db: Db): BalanceRepo {
   const tracked = trackedBalances;
   const checks = balanceChecks;
+  const parts = balanceCheckParts;
   const trackedRow = (userId: string, billIncomeId: string) =>
     and(eq(tracked.userId, userId), eq(tracked.billIncomeId, billIncomeId));
 
@@ -59,6 +60,22 @@ export function createBalanceRepo(db: Db): BalanceRepo {
     },
     async deleteCheck(userId, id) {
       await db.delete(checks).where(and(eq(checks.userId, userId), eq(checks.id, id)));
+    },
+    async addCheckParts(rows) {
+      if (rows.length > 0) await db.insert(parts).values(rows);
+    },
+    async listCheckParts(userId, billIncomeId) {
+      return db
+        .select()
+        .from(parts)
+        .where(and(eq(parts.userId, userId), eq(parts.billIncomeId, billIncomeId)))
+        .orderBy(asc(parts.checkId), asc(parts.position));
+    },
+    async updateCheckPart(userId, id, patch) {
+      await db
+        .update(parts)
+        .set(patch)
+        .where(and(eq(parts.userId, userId), eq(parts.id, id)));
     },
   };
 }

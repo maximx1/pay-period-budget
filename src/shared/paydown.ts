@@ -4,9 +4,11 @@ import { formatCents } from "./money.ts";
 // Where extra money should go (phase 29): plans worked out the same way on the Advice page
 // (instantly, as the amount changes) and on the server (as facts for a model). Pure.
 
-/** A tracked balance below zero, as money owed. */
+/** A tracked balance below zero, as money owed; or one part of one (phase 32). */
 export type Debt = {
   billIncomeId: string;
+  /** Set for a part of a balance in parts: each part is a debt of its own. */
+  partId?: string;
   name: string;
   /** Positive. */
   owedCents: number;
@@ -15,9 +17,10 @@ export type Debt = {
   monthlyPaymentCents: number | null;
 };
 
-/** A tracked balance at or above zero. */
+/** A tracked balance at or above zero; or one part of one. */
 export type Saving = {
   billIncomeId: string;
+  partId?: string;
   name: string;
   heldCents: number;
   aprBps: number | null;
@@ -43,6 +46,7 @@ export type Payoff = {
 
 export type PlanLine = {
   billIncomeId: string;
+  partId?: string;
   name: string;
   kind: "debt" | "savings";
   amountCents: number;
@@ -59,6 +63,9 @@ export type Plan = {
   /** What nothing could take: every debt cleared and no savings to put it in. */
   unplacedCents: number;
 };
+
+/** What tells debts and savings apart in a plan: a part's id, or else its bill's. */
+export const planKey = (item: { billIncomeId: string; partId?: string }): string => item.partId ?? item.billIncomeId;
 
 /** High interest goes before savings in the balanced plan. */
 export const HIGH_APR_BPS = 800;
@@ -129,13 +136,13 @@ function pourIntoDebts(cents: number, debts: readonly Debt[], into: Allocation, 
   let left = cents;
   debts.forEach((debt, index) => {
     if (left <= 0) return;
-    const already = into.get(debt.billIncomeId)?.cents ?? 0;
+    const already = into.get(planKey(debt))?.cents ?? 0;
     const take = Math.min(left, debt.owedCents - already);
     if (take <= 0) return;
-    const entry = into.get(debt.billIncomeId) ?? { cents: 0, reasons: [] };
+    const entry = into.get(planKey(debt)) ?? { cents: 0, reasons: [] };
     entry.cents += take;
     entry.reasons.push(reasonOf(debt, index));
-    into.set(debt.billIncomeId, entry);
+    into.set(planKey(debt), entry);
     left -= take;
   });
   return left;
@@ -165,7 +172,7 @@ export function splitOverSavings(cents: number, savings: readonly Saving[]): Map
   for (let i = 0; left > 0; i = (i + 1) % count, left--) level[i]! += 1;
   sorted.forEach((saving, i) => {
     const share = level[i]! - saving.heldCents;
-    if (share > 0) shares.set(saving.billIncomeId, share);
+    if (share > 0) shares.set(planKey(saving), share);
   });
   return shares;
 }
@@ -217,7 +224,7 @@ export function makePlan(
     const costly = byRateDebts.filter((debt) => (debt.aprBps ?? 0) >= HIGH_APR_BPS);
     left = pourIntoDebts(left, costly, toDebts, (debt) => `${formatApr(debt.aprBps!)} APR: high interest goes first`);
     // 3. Half and half: savings, and the highest-rate debt still owing.
-    const owing = byRateDebts.filter((debt) => (toDebts.get(debt.billIncomeId)?.cents ?? 0) < debt.owedCents);
+    const owing = byRateDebts.filter((debt) => (toDebts.get(planKey(debt))?.cents ?? 0) < debt.owedCents);
     const half = savings.length > 0 && owing.length > 0 ? Math.floor(left / 2) : savings.length > 0 ? left : 0;
     if (half > 0) left -= half - saveInto(half, "half of what was left, to savings");
     left = pourIntoDebts(left, owing, toDebts, () => "the rest, to the highest rate still owing");
@@ -227,11 +234,12 @@ export function makePlan(
 
   const lines: PlanLine[] = [];
   for (const debt of debts) {
-    const entry = toDebts.get(debt.billIncomeId);
+    const entry = toDebts.get(planKey(debt));
     if (!entry) continue;
     const clears = entry.cents === debt.owedCents;
     lines.push({
       billIncomeId: debt.billIncomeId,
+      ...(debt.partId && { partId: debt.partId }),
       name: debt.name,
       kind: "debt",
       amountCents: entry.cents,
@@ -240,9 +248,9 @@ export function makePlan(
     });
   }
   for (const saving of savings) {
-    const entry = toSavings.get(saving.billIncomeId);
+    const entry = toSavings.get(planKey(saving));
     if (entry) {
-      lines.push({ billIncomeId: saving.billIncomeId, name: saving.name, kind: "savings", amountCents: entry.cents, reason: entry.reasons.join("; "), payoff: null });
+      lines.push({ billIncomeId: saving.billIncomeId, ...(saving.partId && { partId: saving.partId }), name: saving.name, kind: "savings", amountCents: entry.cents, reason: entry.reasons.join("; "), payoff: null });
     }
   }
   lines.sort((a, b) => b.amountCents - a.amountCents);

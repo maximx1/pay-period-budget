@@ -135,11 +135,26 @@ export function createAdviceService(deps: {
     const savings: Saving[] = [];
     for (const balance of (await balances.list(userId)).balances) {
       if (balance.archived) continue;
-      const base = { billIncomeId: balance.billIncomeId, name: balance.name, aprBps: balance.lastCheck.aprBps };
-      if (balance.estimateCents < 0) {
-        debts.push({ ...base, owedCents: -balance.estimateCents, monthlyPaymentCents: monthly.get(balance.billIncomeId) ?? null });
-      } else {
-        savings.push({ ...base, heldCents: balance.estimateCents });
+      const payment = monthly.get(balance.billIncomeId) ?? null;
+      // A balance in parts is a debt (or saving) per part, each with its share of the one
+      // payment by its share of the balance, as payments are shared out between checks.
+      const entries =
+        balance.parts.length === 0
+          ? [{ name: balance.name, cents: balance.estimateCents, aprBps: balance.lastCheck.aprBps, payment }]
+          : balance.parts.map((part) => ({
+              partId: part.id,
+              name: `${balance.name}: ${part.name}`,
+              cents: part.estimateCents,
+              aprBps: part.aprBps,
+              payment:
+                payment === null || balance.estimateCents === 0
+                  ? payment
+                  : Math.round((payment * part.estimateCents) / balance.estimateCents),
+            }));
+      for (const { cents, payment: share, ...entry } of entries) {
+        const base = { billIncomeId: balance.billIncomeId, ...entry };
+        if (cents < 0) debts.push({ ...base, owedCents: -cents, monthlyPaymentCents: share });
+        else savings.push({ ...base, heldCents: cents });
       }
     }
     const past = inputs.report.periods.filter((entry) => !entry.isCurrent && !entry.isFuture);

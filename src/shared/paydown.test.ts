@@ -130,6 +130,32 @@ describe("makePlan", () => {
   });
 });
 
+describe("a balance in parts", () => {
+  // One student loan in three parts: one bill, three debts.
+  const part = (partId: string, owedCents: number, aprBps: number): Debt => ({
+    billIncomeId: "student",
+    partId,
+    name: `Student: ${partId}`,
+    owedCents,
+    aprBps,
+    monthlyPaymentCents: null,
+  });
+
+  it("plans each part as a debt of its own", () => {
+    const parts = [part("1-01", 300_000, 450), part("1-02", 100_000, 680), part("1-03", 200_000, 550)];
+    const fastest = makePlan("fastest", 150_000, parts, [], 0);
+    expect(fastest.lines.map((line) => [line.billIncomeId, line.partId, line.amountCents])).toEqual([
+      ["student", "1-02", 100_000],
+      ["student", "1-03", 50_000],
+    ]);
+    const fewest = makePlan("fewest", 120_000, parts, [], 0);
+    expect(fewest.lines.map((line) => [line.partId, line.amountCents])).toEqual([
+      ["1-02", 100_000],
+      ["1-03", 20_000],
+    ]);
+  });
+});
+
 describe("describeMonths", () => {
   it.each([
     [null, "never at this payment"],

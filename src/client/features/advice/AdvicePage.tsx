@@ -186,7 +186,7 @@ function QuestionCard({ id, label, amountCents, extra, onTalk }: QuestionCardPro
           extra.debts,
           extra.savings,
           extra.monthlySpendCents,
-        ).lines.map(({ billIncomeId, name, amountCents: cents }) => ({ billIncomeId, name, amountCents: cents }))
+        ).lines.map(({ billIncomeId, partId, name, amountCents: cents }) => ({ billIncomeId, partId, name, amountCents: cents }))
       : [];
 
   return (

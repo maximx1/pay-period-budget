@@ -91,29 +91,125 @@ const checkEveryDaysSchema = z
   .number("Choose how often")
   .refine((days): days is CheckEveryDays => (CHECK_EVERY_DAYS as readonly number[]).includes(days), "Choose how often");
 
-export const balanceCheckInputSchema = z.object({
+// Parts (phase 32): a balance made of several, a student loan's sub-loans each with its own
+// balance and rate under one payment. See "Balances in parts" in docs/plan/domain.md.
+
+export const MAX_PARTS = 20;
+const partNameSchema = z.string("Give it a name").trim().min(1, "Give it a name").max(60, "Keep it to 60 characters");
+
+const partInputSchema = z.object({
+  /** One of the balance's parts, from an earlier check. Left out: a new part. */
+  id: z.string().min(1).optional(),
+  name: partNameSchema,
   /** Signed: below zero is owed. */
   balanceCents: balanceCentsSchema,
-  /** Null: no rate. Left out: the last check's rate carries on. */
+  /** Null: no rate. Left out: the part's last rate (none for a new one). */
   aprBps: aprBpsSchema.nullable().optional(),
+});
+export type BalancePartInput = z.output<typeof partInputSchema>;
+
+const checkFields = {
+  /** Signed: below zero is owed. Left out with parts: they are added up. */
+  balanceCents: balanceCentsSchema.optional(),
+  /** Null: no rate. Left out: the last check's rate carries on. Never with parts. */
+  aprBps: aprBpsSchema.nullable().optional(),
+  /** Every part, with its balance. Empty, with a balance: no longer in parts. */
+  parts: z.array(partInputSchema).max(MAX_PARTS, `At most ${MAX_PARTS} parts`).optional(),
   /** When the balance was this, in the budget's time zone. Left out: now. Never ahead of now. */
   asOf: z.string().refine(isLocalDateTime, "Enter a valid date and time").optional(),
-});
+};
+
+/** A check is a balance or its parts, never both; parts are named apart and all on one side of zero. */
+function checkRules(input: { balanceCents?: number; aprBps?: number | null; parts?: BalancePartInput[] }, ctx: z.RefinementCtx) {
+  const parts = input.parts ?? [];
+  if (parts.length === 0) {
+    if (input.balanceCents === undefined) ctx.addIssue({ code: "custom", path: ["balanceCents"], message: "Enter an amount" });
+    return;
+  }
+  if (input.balanceCents !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["balanceCents"], message: "Leave the total out: it is the parts added up" });
+  }
+  if (input.aprBps !== undefined) ctx.addIssue({ code: "custom", path: ["aprBps"], message: "Give each part its own rate" });
+  const seen = new Set<string>();
+  parts.forEach((part, index) => {
+    const key = part.name.toLowerCase();
+    if (seen.has(key)) ctx.addIssue({ code: "custom", path: ["parts", index, "name"], message: "Another part has this name" });
+    seen.add(key);
+  });
+  if (parts.some((part) => part.balanceCents < 0) && parts.some((part) => part.balanceCents > 0)) {
+    ctx.addIssue({ code: "custom", path: ["parts"], message: "Every part is owed, or every part is in it" });
+  }
+  if (Math.abs(parts.reduce((sum, part) => sum + part.balanceCents, 0)) > MAX_OPENING_CENTS) {
+    ctx.addIssue({ code: "custom", path: ["parts"], message: "That amount is too large" });
+  }
+}
+
+export const balanceCheckInputSchema = z.object(checkFields).superRefine(checkRules);
 export type BalanceCheckInput = z.output<typeof balanceCheckInputSchema>;
 
-export const trackBalanceInputSchema = balanceCheckInputSchema.extend({
-  /** Null or left out: the account's setting. */
-  checkEveryDays: checkEveryDaysSchema.nullable().optional(),
-});
+export const trackBalanceInputSchema = z
+  .object({
+    ...checkFields,
+    /** Null or left out: the account's setting. */
+    checkEveryDays: checkEveryDaysSchema.nullable().optional(),
+  })
+  .superRefine(checkRules);
 export type TrackBalanceInput = z.output<typeof trackBalanceInputSchema>;
 
 export const trackedBalancePatchSchema = z.object({
   /** Null: the account's setting. Left out: unchanged. */
   checkEveryDays: checkEveryDaysSchema.nullable().optional(),
-  /** The last check's rate, changed in place; null for none. Left out: unchanged. */
+  /** The last check's rate, changed in place; null for none. Left out: unchanged. Not for a balance in parts. */
   aprBps: aprBpsSchema.nullable().optional(),
 });
 export type TrackedBalancePatch = z.output<typeof trackedBalancePatchSchema>;
+
+/** One part of the last check, changed in place. */
+export const balancePartPatchSchema = z.object({
+  name: partNameSchema.optional(),
+  /** Null for none. */
+  aprBps: aprBpsSchema.nullable().optional(),
+});
+export type BalancePartPatch = z.output<typeof balancePartPatchSchema>;
+
+/**
+ * Shares out what a balance has moved since its check over its parts, in proportion to
+ * their balances then (by size), so the shares add up to `movedCents` exactly: whole cents
+ * by the largest remainder, ties to the earlier part. All at zero: evenly.
+ */
+export function shareOverParts(balancesCents: readonly number[], movedCents: number): number[] {
+  if (balancesCents.length === 0) return [];
+  const sizes = balancesCents.map((cents) => BigInt(Math.abs(cents)));
+  const weights = sizes.some((size) => size > 0n) ? sizes : sizes.map(() => 1n);
+  const whole = weights.reduce((sum, weight) => sum + weight, 0n);
+  const moved = BigInt(Math.abs(movedCents));
+  const shares = weights.map((weight) => (moved * weight) / whole);
+  const remainders = weights.map((weight, index) => ({ index, rest: (moved * weight) % whole }));
+  let left = Number(moved - shares.reduce((sum, share) => sum + share, 0n));
+  remainders.sort((a, b) => (a.rest === b.rest ? a.index - b.index : a.rest > b.rest ? -1 : 1));
+  for (const { index } of remainders) {
+    if (left <= 0) break;
+    shares[index]! += 1n;
+    left -= 1;
+  }
+  const sign = movedCents < 0 ? -1 : 1;
+  return shares.map((share) => sign * Number(share));
+}
+
+/** The parts' rate as one: weighted by balance among those with a rate. Null when none has one. */
+export function blendedAprBps(parts: ReadonlyArray<{ balanceCents: number; aprBps: number | null }>): number | null {
+  const rated = parts.filter((part): part is { balanceCents: number; aprBps: number } => part.aprBps !== null);
+  if (rated.length === 0) return null;
+  const weight = rated.reduce((sum, part) => sum + Math.abs(part.balanceCents), 0);
+  if (weight === 0) return Math.round(rated.reduce((sum, part) => sum + part.aprBps, 0) / rated.length);
+  return Math.round(rated.reduce((sum, part) => sum + Math.abs(part.balanceCents) * part.aprBps, 0) / weight);
+}
+
+/** About a month's interest over the parts, each at its own rate; null when none has a rate. */
+export function partsInterestCents(parts: ReadonlyArray<{ estimateCents: number; aprBps: number | null }>): number | null {
+  const charges = parts.map((part) => monthlyInterestCents(part.estimateCents, part.aprBps)).filter((cents) => cents !== null);
+  return charges.length === 0 ? null : charges.reduce((sum, cents) => sum + cents, 0);
+}
 
 export const snoozeInputSchema = z.object({
   days: z.number().refine((days) => (SNOOZE_DAYS as readonly number[]).includes(days), "Choose how long"),
@@ -129,12 +225,33 @@ export const balanceSettingsSchema = z.object({
 });
 export type BalanceSettings = z.output<typeof balanceSettingsSchema>;
 
-export type BalanceCheck = {
+export type BalanceCheckPart = {
+  /** The part's own id, the same in every check it is in. */
   id: string;
+  name: string;
   /** Signed: below zero is owed. */
   balanceCents: number;
   aprBps: number | null;
+};
+
+export type BalanceCheck = {
+  id: string;
+  /** Signed: below zero is owed. With parts, them added up. */
+  balanceCents: number;
+  /** With parts, their balance-weighted rate. */
+  aprBps: number | null;
   asOf: LocalDateTime;
+  /** Empty for a balance not in parts. */
+  parts: BalanceCheckPart[];
+};
+
+/** A part of a tracked balance now: its last check plus its share of what has moved the whole since. */
+export type TrackedBalancePart = {
+  id: string;
+  name: string;
+  estimateCents: number;
+  aprBps: number | null;
+  monthlyInterestCents: number | null;
 };
 
 export type TrackedBalance = {
@@ -146,8 +263,10 @@ export type TrackedBalance = {
   lastCheck: BalanceCheck;
   /** How many paid transactions since the last check the estimate counts. */
   sinceCount: number;
-  /** About a month's interest at the last check's APR, positive; null without one. */
+  /** About a month's interest at the last check's APR, positive; null without one. With parts, theirs added up. */
   monthlyInterestCents: number | null;
+  /** The last check's parts, as estimated now; empty for a balance not in parts. Their estimates add up to the whole's. */
+  parts: TrackedBalancePart[];
   /** The item's own interval; null follows the account's setting. */
   checkEveryDays: CheckEveryDays | null;
   nextCheckOn: LocalDate;

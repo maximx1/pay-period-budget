@@ -485,6 +485,21 @@ export type BalanceCheckRecord = {
   createdAt: Date;
 };
 
+/** One part of a check on a balance in parts. `partId` is the same in every check the part is in. */
+export type BalanceCheckPartRecord = {
+  id: string;
+  userId: string;
+  billIncomeId: string;
+  checkId: string;
+  partId: string;
+  position: number;
+  name: string;
+  /** Signed: below zero is owed. */
+  balanceCents: number;
+  /** Basis points; null for no rate. */
+  aprBps: number | null;
+};
+
 export interface BalanceRepo {
   /** Every item the user tracks a balance for. */
   listTracked(userId: string): Promise<TrackedBalanceRecord[]>;
@@ -504,7 +519,12 @@ export interface BalanceRepo {
   listChecks(userId: string, billIncomeId: string): Promise<BalanceCheckRecord[]>;
   findCheck(userId: string, id: string): Promise<BalanceCheckRecord | null>;
   updateCheck(userId: string, id: string, patch: Partial<Pick<BalanceCheckRecord, "aprBps">>): Promise<void>;
+  /** Deletes its parts with it. */
   deleteCheck(userId: string, id: string): Promise<void>;
+  addCheckParts(parts: BalanceCheckPartRecord[]): Promise<void>;
+  /** The parts of every check of an item, by check, then position. */
+  listCheckParts(userId: string, billIncomeId: string): Promise<BalanceCheckPartRecord[]>;
+  updateCheckPart(userId: string, id: string, patch: Partial<Pick<BalanceCheckPartRecord, "name" | "aprBps">>): Promise<void>;
 }
 
 export interface Repos {

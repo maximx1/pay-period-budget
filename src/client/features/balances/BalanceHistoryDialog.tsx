@@ -9,6 +9,7 @@ import {
   formatApr,
   parseAprInput,
   type TrackedBalance,
+  type TrackedBalancePart,
 } from "../../../shared/balances.ts";
 import { dateOf, formatDay, todayIn } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
@@ -31,18 +32,20 @@ import {
   useCheckBalance,
   useDeleteBalanceCheck,
   useStopTrackingBalance,
+  useUpdateBalancePart,
   useUpdateTrackedBalance,
 } from "./api.ts";
 import {
   applyBalanceErrors,
   aprInput,
   BalanceFields,
-  balanceFieldDefaults,
   balanceFieldsInput,
   balanceFieldsSchema,
   type BalanceFormValues,
   balanceFormSchema,
-  useFollowRate,
+  checkDefaults,
+  partFieldsSchema,
+  useFollowRates,
 } from "./BalanceFields.tsx";
 import { everyOptions } from "./TrackBalanceDialog.tsx";
 
@@ -101,6 +104,8 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
   const remove = useDeleteBalanceCheck();
   const [stopping, setStopping] = useState(false);
   const [changingRate, setChangingRate] = useState(false);
+  const [changingPart, setChangingPart] = useState<string | null>(null);
+  const inParts = balance.parts.length > 0;
   const rate = balance.lastCheck.aprBps;
   const interest = balance.monthlyInterestCents;
   // Oldest first along the bottom, then where the estimate has got to since.
@@ -117,9 +122,11 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
         <Figure wide label={balance.sinceCount > 0 ? "Estimated balance" : "Balance"} value={shownBalance(balance.estimateCents)} />
         <Figure label="Last checked" value={formatDay(dateOf(balance.lastCheck.asOf))} />
         <Figure
-          label="APR"
+          // Over parts it is their blend, weighted by balance; each part's own is changed below.
+          label={inParts ? "APR, blended" : "APR"}
           value={rate === null ? "None given" : formatApr(rate)}
           action={
+            !inParts &&
             !changingRate && (
               <IconButton label="Change the APR" onClick={() => setChangingRate(true)}>
                 <PencilLine className="size-4" aria-hidden />
@@ -135,6 +142,41 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
       </dl>
 
       {changingRate && <ChangeRate balance={balance} onDone={() => setChangingRate(false)} />}
+
+      {inParts && (
+        <section>
+          <h3 className="text-sm font-semibold text-fg">Parts</h3>
+          {balance.sinceCount > 0 && (
+            <p className="text-sm text-muted">Payments since the last check are shared over them by their balances.</p>
+          )}
+          <ul className="mt-1 flex flex-col divide-y divide-border text-sm">
+            {balance.parts.map((part) =>
+              changingPart === part.id ? (
+                <li key={part.id} className="py-2">
+                  <ChangePart balance={balance} part={part} onDone={() => setChangingPart(null)} />
+                </li>
+              ) : (
+                <li key={part.id} className="flex items-center gap-2 py-1">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 font-medium break-words text-fg">{part.name}</span>
+                      <span className="shrink-0 tabular-nums text-fg">{shownBalance(part.estimateCents)}</span>
+                    </div>
+                    <p className="text-muted">
+                      {part.aprBps === null ? "No APR given" : formatApr(part.aprBps)}
+                      {part.monthlyInterestCents !== null &&
+                        ` · about ${formatCents(part.monthlyInterestCents)} ${part.estimateCents < 0 ? "interest" : "earned"} a month`}
+                    </p>
+                  </div>
+                  <IconButton label={`Change ${part.name}`} onClick={() => setChangingPart(part.id)}>
+                    <PencilLine className="size-4" aria-hidden />
+                  </IconButton>
+                </li>
+              ),
+            )}
+          </ul>
+        </section>
+      )}
 
       <div className="flex flex-col gap-1">
         <SelectField
@@ -193,6 +235,7 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
               <span className="min-w-0 text-muted">
                 {formatDay(dateOf(check.asOf))}
                 {check.aprBps !== null && ` · ${formatApr(check.aprBps)}`}
+                {check.parts.length > 0 && ` · ${check.parts.length} parts`}
               </span>
               <span className="ml-auto shrink-0 tabular-nums text-fg">{shownBalance(check.balanceCents)}</span>
               {checks.length > 1 && (
@@ -304,6 +347,68 @@ function ChangeRate({ balance, onDone }: { balance: TrackedBalance; onDone: () =
   );
 }
 
+const partSchema = partFieldsSchema.pick({ name: true, apr: true });
+type PartValues = z.infer<typeof partSchema>;
+
+/** One part renamed or given a new rate, in place on the last check, as ChangeRate does for the whole. */
+function ChangePart({ balance, part, onDone }: { balance: TrackedBalance; part: TrackedBalancePart; onDone: () => void }) {
+  const toast = useToast();
+  const update = useUpdateBalancePart();
+  const form = useForm<PartValues>({ resolver: zodResolver(partSchema), defaultValues: { name: part.name, apr: aprInput(part.aprBps) } });
+  useEffect(() => form.setFocus("apr", { shouldSelect: true }), [form]);
+
+  const submit = form.handleSubmit((values) =>
+    update.mutate(
+      {
+        billIncomeId: balance.billIncomeId,
+        partId: part.id,
+        patch: { name: values.name, aprBps: values.apr.trim() === "" ? null : parseAprInput(values.apr) },
+      },
+      {
+        onSuccess: () => {
+          toast(`${values.name} changed.`);
+          onDone();
+        },
+        onError: (error) => {
+          const fields = error instanceof ApiError ? error.fields : undefined;
+          if (fields?.name) form.setError("name", { message: fields.name });
+          if (fields?.aprBps) form.setError("apr", { message: fields.aprBps });
+          if (!fields?.name && !fields?.aprBps) {
+            toast(error instanceof ApiError ? error.message : "Couldn't save that. Try again.", { variant: "error" });
+          }
+        },
+      },
+    ),
+  );
+
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-start gap-3">
+        <TextField label="Name" autoComplete="off" error={form.formState.errors.name?.message} {...form.register("name")} />
+        <TextField
+          label="APR"
+          inputMode="decimal"
+          autoComplete="off"
+          trailing={<span className="text-sm text-muted">%</span>}
+          error={form.formState.errors.apr?.message}
+          {...form.register("apr")}
+        />
+      </div>
+      <p className="text-sm text-muted">
+        Changes it on the check of {formatDay(dateOf(balance.lastCheck.asOf))}. Leave the APR empty for none.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" loading={update.isPending}>
+          Save
+        </Button>
+        <Button variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /** A new check, optionally dated earlier: a statement's closing balance, say. */
 function AddCheck({ data }: { data: BalanceHistoryResponse }) {
   const { balance } = data;
@@ -312,9 +417,9 @@ function AddCheck({ data }: { data: BalanceHistoryResponse }) {
   const check = useCheckBalance();
   const form = useForm<BalanceFormValues>({
     resolver: zodResolver(balanceFormSchema),
-    defaultValues: { ...balanceFieldDefaults(balance.estimateCents, balance.lastCheck.aprBps, false), asOfDate: "" },
+    defaultValues: { ...checkDefaults(balance), asOfDate: "" },
   });
-  useFollowRate(form, balance.lastCheck.aprBps);
+  useFollowRates(form, balance);
   const today = timezone ? todayIn(timezone, new Date()) : undefined;
 
   const submit = form.handleSubmit((values) => {
@@ -327,7 +432,7 @@ function AddCheck({ data }: { data: BalanceHistoryResponse }) {
         // and starting the next check from its rate would undo a rate just changed.
         onSuccess: ({ balance: saved }) => {
           toast(`${balance.name} checked.`);
-          form.reset({ ...balanceFieldDefaults(saved.estimateCents, saved.lastCheck.aprBps, false), asOfDate: "" });
+          form.reset({ ...checkDefaults(saved), asOfDate: "" });
         },
         onError: (error) => {
           const fields = error instanceof ApiError ? error.fields : undefined;

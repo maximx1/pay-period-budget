@@ -8,7 +8,14 @@ import { useToast } from "../../components/ui/Toaster.tsx";
 import { ApiError } from "../../lib/api.ts";
 import { useBillsIncome } from "../billsIncome/api.ts";
 import { useBalances, useTrackBalance } from "./api.ts";
-import { applyBalanceErrors, BalanceFields, balanceFieldsInput, type BalanceFormValues, balanceFormSchema } from "./BalanceFields.tsx";
+import {
+  applyBalanceErrors,
+  BalanceFields,
+  balanceFieldsInput,
+  type BalanceFormValues,
+  balanceFormSchema,
+  blankBalanceFields,
+} from "./BalanceFields.tsx";
 
 type TrackBalanceDialogProps = {
   open: boolean;
@@ -43,7 +50,7 @@ function TrackForm({ onClose, billIncomeId, onTracked }: Omit<TrackBalanceDialog
   const toast = useToast();
   const form = useForm<BalanceFormValues>({
     resolver: zodResolver(balanceFormSchema),
-    defaultValues: { amount: "", side: "owed", apr: "", billIncomeId: billIncomeId ?? "", every: "" },
+    defaultValues: { ...blankBalanceFields, billIncomeId: billIncomeId ?? "", every: "" },
   });
 
   const tracked = new Set((balances.data?.balances ?? []).map((balance) => balance.billIncomeId));

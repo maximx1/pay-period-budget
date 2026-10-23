@@ -2,7 +2,7 @@ import type { AdvicePlan, ExtraMoneyFacts } from "../../shared/advice.ts";
 import { formatApr } from "../../shared/balances.ts";
 import { formatDateRange } from "../../shared/dates.ts";
 import { formatCents, parseMoneyInput } from "../../shared/money.ts";
-import { describeMonths, makePlan, PLAN_STRATEGIES, type PlanLine, safeToSpare, STRATEGY_LABELS } from "../../shared/paydown.ts";
+import { describeMonths, makePlan, PLAN_STRATEGIES, type PlanLine, planKey, safeToSpare, STRATEGY_LABELS } from "../../shared/paydown.ts";
 
 // The extra-money part of the facts a model gets for a Smart Question about extra money
 // (phase 29), and the one line of its answer that names payments. Items are numbered in
@@ -20,7 +20,7 @@ const numbered = (extra: ExtraMoneyFacts) => [...extra.debts, ...extra.savings];
 export function extraMoneyText(amountCents: number, extra: ExtraMoneyFacts): string {
   const { safeCents, zeroCents, limiting } = safeToSpare(extra.periods, extra.lowBalanceCents);
   const usable = usableAmount(amountCents, extra);
-  const number = new Map(numbered(extra).map((item, index) => [item.billIncomeId, index + 1]));
+  const number = new Map(numbered(extra).map((item, index) => [planKey(item), index + 1]));
   const lines: string[] = [`EXTRA MONEY: ${money(amountCents)} to put somewhere now.`];
   const lowest = extra.periods[limiting];
   if (lowest) {
@@ -42,7 +42,7 @@ export function extraMoneyText(amountCents: number, extra: ExtraMoneyFacts): str
         debt.aprBps === null ? "no APR given" : `APR ${formatApr(debt.aprBps)}`,
         debt.monthlyPaymentCents ? `usual payment about ${money(debt.monthlyPaymentCents)} a month` : "no scheduled payment",
       ];
-      lines.push(`- [${number.get(debt.billIncomeId)}] ${debt.name}: ${parts.join("; ")}`);
+      lines.push(`- [${number.get(planKey(debt))}] ${debt.name}: ${parts.join("; ")}`);
     }
   } else {
     lines.push("DEBTS: none tracked.");
@@ -51,7 +51,7 @@ export function extraMoneyText(amountCents: number, extra: ExtraMoneyFacts): str
     lines.push("SAVINGS (tracked balances held):");
     for (const saving of extra.savings) {
       lines.push(
-        `- [${number.get(saving.billIncomeId)}] ${saving.name}: holds ${money(saving.heldCents)}${saving.aprBps === null ? "" : `; earns ${formatApr(saving.aprBps)}`}`,
+        `- [${number.get(planKey(saving))}] ${saving.name}: holds ${money(saving.heldCents)}${saving.aprBps === null ? "" : `; earns ${formatApr(saving.aprBps)}`}`,
       );
     }
   } else {
@@ -69,7 +69,7 @@ export function extraMoneyText(amountCents: number, extra: ExtraMoneyFacts): str
     lines.push(`PLANS FOR ${money(usable)}, worked out by the app:`);
     for (const strategy of PLAN_STRATEGIES) {
       const plan = makePlan(strategy, usable, extra.debts, extra.savings, extra.monthlySpendCents);
-      const described = plan.lines.map((line) => `[${number.get(line.billIncomeId)}] ${line.name} ${money(line.amountCents)} (${lineReason(line)})`);
+      const described = plan.lines.map((line) => `[${number.get(planKey(line))}] ${line.name} ${money(line.amountCents)} (${lineReason(line)})`);
       if (plan.unplacedCents > 0) described.push(`${money(plan.unplacedCents)} not needed by any of them`);
       lines.push(`- ${STRATEGY_LABELS[strategy]}: ${described.length > 0 ? described.join("; ") : "nothing to put it in"}`);
     }
@@ -114,12 +114,21 @@ export function readPlanLine(answer: string, amountCents: number, extra: ExtraMo
     const item = items[Number(match[1]) - 1];
     const cents = parseMoneyInput(match[2]!.replaceAll(",", ""));
     if (!item || cents === null || cents <= 0) return { text, plan: null };
-    amounts.set(item.billIncomeId, (amounts.get(item.billIncomeId) ?? 0) + cents);
+    amounts.set(planKey(item), (amounts.get(planKey(item)) ?? 0) + cents);
   }
   const total = [...amounts.values()].reduce((sum, cents) => sum + cents, 0);
   if (amounts.size === 0 || total > usableAmount(amountCents, extra)) return { text, plan: null };
   return {
     text,
-    plan: { items: items.filter((item) => amounts.has(item.billIncomeId)).map((item) => ({ billIncomeId: item.billIncomeId, name: item.name, amountCents: amounts.get(item.billIncomeId)! })) },
+    plan: {
+      items: items
+        .filter((item) => amounts.has(planKey(item)))
+        .map((item) => ({
+          billIncomeId: item.billIncomeId,
+          ...(item.partId && { partId: item.partId }),
+          name: item.name,
+          amountCents: amounts.get(planKey(item))!,
+        })),
+    },
   };
 }
