@@ -1,8 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Trash2 } from "lucide-react";
-import { useState } from "react";
+import { PencilLine, Trash2 } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { type BalanceHistoryResponse, type CheckEveryDays, formatApr } from "../../../shared/balances.ts";
+import type { z } from "zod";
+import {
+  type BalanceHistoryResponse,
+  type CheckEveryDays,
+  formatApr,
+  parseAprInput,
+  type TrackedBalance,
+} from "../../../shared/balances.ts";
 import { dateOf, formatDay, todayIn } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
 import { compactCents, SERIES_COLORS } from "../../components/charts/palette.ts";
@@ -28,11 +35,14 @@ import {
 } from "./api.ts";
 import {
   applyBalanceErrors,
+  aprInput,
   BalanceFields,
   balanceFieldDefaults,
   balanceFieldsInput,
+  balanceFieldsSchema,
   type BalanceFormValues,
   balanceFormSchema,
+  useFollowRate,
 } from "./BalanceFields.tsx";
 import { everyOptions } from "./TrackBalanceDialog.tsx";
 
@@ -70,11 +80,14 @@ function History({ billIncomeId, onClose }: { billIncomeId: string; onClose: () 
   return <Loaded data={history.data} onClose={onClose} />;
 }
 
-function Figure({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+function Figure({ label, value, wide = false, action }: { label: string; value: string; wide?: boolean; action?: ReactNode }) {
   return (
-    <div className={cn("min-w-0 rounded-lg bg-surface-2 px-3 py-2", wide && "col-span-2")}>
-      <dt className="truncate text-xs text-muted">{label}</dt>
-      <dd className="font-semibold break-words text-fg tabular-nums">{value}</dd>
+    <div className={cn("flex min-w-0 items-center gap-1 rounded-lg bg-surface-2 py-2 pl-3", action ? "pr-1" : "pr-3", wide && "col-span-2")}>
+      <div className="min-w-0 flex-1">
+        <dt className="truncate text-xs text-muted">{label}</dt>
+        <dd className="font-semibold break-words text-fg tabular-nums">{value}</dd>
+      </div>
+      {action}
     </div>
   );
 }
@@ -87,6 +100,7 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
   const stop = useStopTrackingBalance();
   const remove = useDeleteBalanceCheck();
   const [stopping, setStopping] = useState(false);
+  const [changingRate, setChangingRate] = useState(false);
   const rate = balance.lastCheck.aprBps;
   const interest = balance.monthlyInterestCents;
   // Oldest first along the bottom, then where the estimate has got to since.
@@ -102,13 +116,25 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
       <dl className="grid grid-cols-2 gap-2">
         <Figure wide label={balance.sinceCount > 0 ? "Estimated balance" : "Balance"} value={shownBalance(balance.estimateCents)} />
         <Figure label="Last checked" value={formatDay(dateOf(balance.lastCheck.asOf))} />
-        <Figure label="APR" value={rate === null ? "None given" : formatApr(rate)} />
+        <Figure
+          label="APR"
+          value={rate === null ? "None given" : formatApr(rate)}
+          action={
+            !changingRate && (
+              <IconButton label="Change the APR" onClick={() => setChangingRate(true)}>
+                <PencilLine className="size-4" aria-hidden />
+              </IconButton>
+            )
+          }
+        />
         <Figure
           wide
           label={balance.estimateCents < 0 ? "Interest a month" : "Earns a month"}
           value={interest === null ? "Give an APR to see" : `About ${formatCents(interest)}`}
         />
       </dl>
+
+      {changingRate && <ChangeRate balance={balance} onDone={() => setChangingRate(false)} />}
 
       <div className="flex flex-col gap-1">
         <SelectField
@@ -228,6 +254,56 @@ function Loaded({ data, onClose }: { data: BalanceHistoryResponse; onClose: () =
   );
 }
 
+const rateSchema = balanceFieldsSchema.pick({ apr: true });
+type RateValues = z.infer<typeof rateSchema>;
+
+/** A new rate on the last check, in place: no balance to retype, and not counted as a check. */
+function ChangeRate({ balance, onDone }: { balance: TrackedBalance; onDone: () => void }) {
+  const toast = useToast();
+  const update = useUpdateTrackedBalance();
+  const form = useForm<RateValues>({ resolver: zodResolver(rateSchema), defaultValues: { apr: aprInput(balance.lastCheck.aprBps) } });
+  useEffect(() => form.setFocus("apr", { shouldSelect: true }), [form]);
+
+  const submit = form.handleSubmit((values) =>
+    update.mutate(
+      { billIncomeId: balance.billIncomeId, patch: { aprBps: values.apr.trim() === "" ? null : parseAprInput(values.apr) } },
+      {
+        onSuccess: () => {
+          toast("APR changed.");
+          onDone();
+        },
+        onError: (error) => {
+          const field = error instanceof ApiError ? error.fields?.aprBps : undefined;
+          if (field) form.setError("apr", { message: field });
+          else toast(error instanceof ApiError ? error.message : "Couldn't save that. Try again.", { variant: "error" });
+        },
+      },
+    ),
+  );
+
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <TextField
+        label="APR"
+        inputMode="decimal"
+        autoComplete="off"
+        trailing={<span className="text-sm text-muted">%</span>}
+        hint={`Changes the rate on the check of ${formatDay(dateOf(balance.lastCheck.asOf))}. Leave empty for none.`}
+        error={form.formState.errors.apr?.message}
+        {...form.register("apr")}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" loading={update.isPending}>
+          Save APR
+        </Button>
+        <Button variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /** A new check, optionally dated earlier: a statement's closing balance, say. */
 function AddCheck({ data }: { data: BalanceHistoryResponse }) {
   const { balance } = data;
@@ -238,6 +314,7 @@ function AddCheck({ data }: { data: BalanceHistoryResponse }) {
     resolver: zodResolver(balanceFormSchema),
     defaultValues: { ...balanceFieldDefaults(balance.estimateCents, balance.lastCheck.aprBps, false), asOfDate: "" },
   });
+  useFollowRate(form, balance.lastCheck.aprBps);
   const today = timezone ? todayIn(timezone, new Date()) : undefined;
 
   const submit = form.handleSubmit((values) => {
@@ -246,9 +323,11 @@ function AddCheck({ data }: { data: BalanceHistoryResponse }) {
     check.mutate(
       { billIncomeId: balance.billIncomeId, input: { ...balanceFieldsInput(values), asOf } },
       {
-        onSuccess: () => {
+        // From the saved balance, not `balance`: that is still the one from before this check,
+        // and starting the next check from its rate would undo a rate just changed.
+        onSuccess: ({ balance: saved }) => {
           toast(`${balance.name} checked.`);
-          form.reset({ ...balanceFieldDefaults(balance.estimateCents, balance.lastCheck.aprBps, false), asOfDate: "" });
+          form.reset({ ...balanceFieldDefaults(saved.estimateCents, saved.lastCheck.aprBps, false), asOfDate: "" });
         },
         onError: (error) => {
           const fields = error instanceof ApiError ? error.fields : undefined;

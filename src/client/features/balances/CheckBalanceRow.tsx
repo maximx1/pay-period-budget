@@ -15,6 +15,7 @@ import {
   balanceFieldsInput,
   type BalanceFormValues,
   balanceFormSchema,
+  useFollowRate,
 } from "./BalanceFields.tsx";
 
 const SNOOZES = [
@@ -45,6 +46,7 @@ export function CheckBalanceRow({ balance, onOpen }: { balance: TrackedBalance; 
     resolver: zodResolver(balanceFormSchema),
     defaultValues: balanceFieldDefaults(balance.estimateCents, balance.lastCheck.aprBps, false),
   });
+  useFollowRate(form, balance.lastCheck.aprBps);
 
   const failed = (error: unknown) => {
     if (!applyBalanceErrors(error, form)) {

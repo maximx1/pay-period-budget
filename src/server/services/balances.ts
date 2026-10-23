@@ -260,19 +260,25 @@ export function createBalanceService(deps: {
       });
     },
 
-    /** A new interval, or back to the account's (null). The next ask moves to match the last check. */
+    /**
+     * A new interval, or back to the account's (null): the next ask moves to match the last
+     * check. A new rate changes the last check's in place; it is not a check, so the asking
+     * stays as it was.
+     */
     update(userId: string, billIncomeId: string, patch: TrackedBalancePatch): Promise<TrackedBalance> {
       return store.transaction(async (repos) => {
         await loadTracked(repos, userId, billIncomeId);
-        const settings = await settingsOf(repos, userId);
         const last = (await repos.balances.listChecks(userId, billIncomeId))[0]!;
-        const every = patch.checkEveryDays ?? settings.checkEveryDays;
-        await repos.balances.updateTracked(
-          userId,
-          billIncomeId,
-          { checkEveryDays: patch.checkEveryDays, nextCheckOn: nextCheckOn(dateOf(last.asOf), every, random()) },
-          now(),
-        );
+        if (patch.checkEveryDays !== undefined) {
+          const every = patch.checkEveryDays ?? (await settingsOf(repos, userId)).checkEveryDays;
+          await repos.balances.updateTracked(
+            userId,
+            billIncomeId,
+            { checkEveryDays: patch.checkEveryDays, nextCheckOn: nextCheckOn(dateOf(last.asOf), every, random()) },
+            now(),
+          );
+        }
+        if (patch.aprBps !== undefined) await repos.balances.updateCheck(userId, last.id, { aprBps: patch.aprBps });
         return one(repos, userId, billIncomeId);
       });
     },

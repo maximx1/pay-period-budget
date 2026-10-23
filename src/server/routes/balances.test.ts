@@ -202,6 +202,41 @@ describe("tracking a balance", () => {
     expect((await response.json()).balance).toMatchObject({ checkEveryDays: null, nextCheckOn: "2026-02-14" });
     expect((await ann.patch(`/api/balances/${pension.id}`, { checkEveryDays: 45 })).status).toBe(400);
   });
+
+  it("changes the last check's rate in place, without counting it as a check", async () => {
+    const loan = await addItem(ann, "Car loan");
+    await track(ann, loan.id, { balanceCents: -1_200_000, aprBps: 650, checkEveryDays: 91 });
+    t.clock.advance(DAY);
+    const before = (await history(ann, loan.id)).balance;
+
+    let response = await ann.patch(`/api/balances/${loan.id}`, { aprBps: 725 });
+    expect(response.status).toBe(200);
+    expect((await response.json()).balance).toMatchObject({
+      lastCheck: { id: before.lastCheck.id, balanceCents: -1_200_000, aprBps: 725, asOf: "2026-01-15T12:00" },
+      monthlyInterestCents: 7_250,
+      checkEveryDays: 91,
+      nextCheckOn: before.nextCheckOn,
+    });
+    expect((await history(ann, loan.id)).checks).toHaveLength(1);
+
+    response = await ann.patch(`/api/balances/${loan.id}`, { aprBps: null });
+    expect((await response.json()).balance).toMatchObject({ lastCheck: { aprBps: null }, monthlyInterestCents: null });
+
+    response = await ann.patch(`/api/balances/${loan.id}`, { aprBps: 100_000 });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.fields).toHaveProperty("aprBps");
+  });
+
+  it("changes only the latest check's rate", async () => {
+    const card = await addItem(ann, "Card");
+    await track(ann, card.id, { balanceCents: -250_000, aprBps: 2299 });
+    t.clock.advance(DAY);
+    await ann.post(`/api/balances/${card.id}/checks`, { balanceCents: -260_000 });
+
+    await ann.patch(`/api/balances/${card.id}`, { aprBps: 2499 });
+    const { checks } = await history(ann, card.id);
+    expect(checks.map((check) => check.aprBps)).toEqual([2499, 2299]);
+  });
 });
 
 describe("asking for checks", () => {
@@ -261,6 +296,7 @@ describe("another user", () => {
       await bob.get(`/api/balances/${loan.id}`),
       await bob.post(`/api/balances/${loan.id}`, { balanceCents: 0 }),
       await bob.patch(`/api/balances/${loan.id}`, { checkEveryDays: 14 }),
+      await bob.patch(`/api/balances/${loan.id}`, { aprBps: 999 }),
       await bob.post(`/api/balances/${loan.id}/checks`, { balanceCents: 0 }),
       await bob.post(`/api/balances/${loan.id}/looks-right`),
       await bob.post(`/api/balances/${loan.id}/snooze`, { days: 1 }),

@@ -51,6 +51,12 @@ export function createBalanceRepo(db: Db): BalanceRepo {
         .limit(1);
       return row ?? null;
     },
+    async updateCheck(userId, id, patch) {
+      await db
+        .update(checks)
+        .set(patch)
+        .where(and(eq(checks.userId, userId), eq(checks.id, id)));
+    },
     async deleteCheck(userId, id) {
       await db.delete(checks).where(and(eq(checks.userId, userId), eq(checks.id, id)));
     },

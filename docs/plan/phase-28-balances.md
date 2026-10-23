@@ -214,3 +214,22 @@ history on the Balances page.
 
 **Not checked:** dark mode (only semantic colours are used); "Track its balance" for an
 untracked item (the same dialog the page opens); Android.
+
+## Changing the APR in place (2026-10-22)
+
+The owner couldn't change a rate without retyping the balance, since a new rate came only
+with a new check. Now:
+
+- `PATCH /api/balances/:billIncomeId` takes `aprBps` as well as `checkEveryDays`, both
+  optional. A rate there changes the latest check's in place (`BalanceRepo.updateCheck`); it
+  is not a check, so the estimate's starting point and the next ask don't move.
+- The history dialog's APR figure has a pencil that opens an APR field with Save and Cancel.
+- The check forms (Add a check, and each "Due for a check" row) follow the last check's
+  rate when it changes elsewhere, unless one has been typed into them, so the next check
+  doesn't put the old rate back. Add a check also resets from the saved balance after
+  Save; it used the one from before the check, and so showed the old rate again.
+- MCP: no tool for it yet; `record_balance_check` still records a rate with a balance.
+
+**Checked in the browser** on the dev account at 1280px and 360px: 8.1% to 9.99% from the
+pencil, with the interest a month following and no new check in the list; Add a check's APR
+then showed 9.99; "1000" was refused with "Enter a rate like 24.99".

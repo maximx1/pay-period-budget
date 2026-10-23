@@ -107,7 +107,12 @@ export const trackBalanceInputSchema = balanceCheckInputSchema.extend({
 });
 export type TrackBalanceInput = z.output<typeof trackBalanceInputSchema>;
 
-export const trackedBalancePatchSchema = z.object({ checkEveryDays: checkEveryDaysSchema.nullable() });
+export const trackedBalancePatchSchema = z.object({
+  /** Null: the account's setting. Left out: unchanged. */
+  checkEveryDays: checkEveryDaysSchema.nullable().optional(),
+  /** The last check's rate, changed in place; null for none. Left out: unchanged. */
+  aprBps: aprBpsSchema.nullable().optional(),
+});
 export type TrackedBalancePatch = z.output<typeof trackedBalancePatchSchema>;
 
 export const snoozeInputSchema = z.object({

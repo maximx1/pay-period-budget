@@ -503,6 +503,7 @@ export interface BalanceRepo {
   /** An item's checks, newest first: by `asOf`, then by when they were entered. */
   listChecks(userId: string, billIncomeId: string): Promise<BalanceCheckRecord[]>;
   findCheck(userId: string, id: string): Promise<BalanceCheckRecord | null>;
+  updateCheck(userId: string, id: string, patch: Partial<Pick<BalanceCheckRecord, "aprBps">>): Promise<void>;
   deleteCheck(userId: string, id: string): Promise<void>;
 }
 

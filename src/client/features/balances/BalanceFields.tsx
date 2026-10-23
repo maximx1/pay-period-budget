@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { type UseFormReturn, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { balanceSide, formatApr, parseAprInput } from "../../../shared/balances.ts";
@@ -44,8 +45,22 @@ export function balanceFieldDefaults(balanceCents: number, aprBps: number | null
   return {
     amount: amount ? centsToInput(Math.abs(balanceCents)) : "",
     side: balanceSide(balanceCents),
-    apr: aprBps === null ? "" : formatApr(aprBps).replace("%", ""),
+    apr: aprInput(aprBps),
   };
+}
+
+/** The APR field's text for a rate: "24.99", or empty for none. */
+export const aprInput = (aprBps: number | null): string => (aprBps === null ? "" : formatApr(aprBps).replace("%", ""));
+
+/**
+ * Keeps a check form's APR on the last check's rate when that changes elsewhere (edited in
+ * place, say), unless someone has typed one into it. Otherwise the next check would put the
+ * old rate back.
+ */
+export function useFollowRate(form: UseFormReturn<BalanceFormValues>, aprBps: number | null): void {
+  useEffect(() => {
+    if (!form.getFieldState("apr").isDirty) form.resetField("apr", { defaultValue: aprInput(aprBps) });
+  }, [form, aprBps]);
 }
 
 /** Puts the server's complaints about a check on the fields they belong to. Returns whether any did. */

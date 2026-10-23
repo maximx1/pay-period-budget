@@ -506,6 +506,9 @@ On screen the page is "Balances"; never "accounts" (decision 11).
   in basis points (2499 is 24.99%), and `asOf`, a local date-time no later than now (by
   default now). A check that leaves out the APR keeps the last one's. The last check can't
   be deleted while tracked (409).
+- **Changing the rate in place.** `PATCH /api/balances/:billIncomeId { aprBps }` sets the
+  latest check's APR (null for none) without recording a check: the balance, `asOf` and
+  when to ask next stay as they were. Earlier checks keep their rates.
 - **The estimate** is worked out on read, never stored: the latest check (by `asOf`, then
   by when it was entered), less the signed amount of every **paid** transaction tied to the
   item dated strictly after `asOf`. Money sent to it (an expense) raises it, money taken
