@@ -83,31 +83,36 @@ export function addTo<K>(totals: Map<K, number>, key: K, amount: number): void {
 export const mean = (values: readonly number[]) =>
   values.length === 0 ? 0 : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 
-export const KEPT = "kept";
-export const FROM_LEFTOVER = "from-leftover";
-/** The income side of the cash-flow chart, and what was kept, are drawn in the app's own colour. */
+export const STARTED_WITH = "started-with";
+export const CASH_ON_HAND = "cash-on-hand";
+export const ADJUSTMENTS = "adjustments";
+/** The income side of the cash-flow chart, and the cash on hand, are drawn in the app's own colour. */
 export const INCOME_COLOR = "var(--color-primary)";
 
 export type FlowNode = { key: string; name: string; color: string; value: number };
 export type CashFlow = {
-  /** Where the money came from, largest first. */
+  /** Where the money came from: income, largest first, then what the span started with. */
   sources: FlowNode[];
-  /** Everything that came in, which is everything that went out or was kept. */
+  /** Everything there was to spend, which is everything spent or still on hand. */
   total: { name: string; value: number };
-  /** Where it went: what was kept first, then by category, largest first. */
+  /** Where it went: the cash on hand first, then by category, largest first. */
   uses: FlowNode[];
 };
 
 /**
- * Money in by where it came from, against money out by category, over a span. The two sides
- * always balance: income beyond spending is "Kept", and spending beyond income was paid
- * from what was left over before, which joins the sources. Null with no money either way.
+ * Money in by where it came from, against money out by category, over a span. The leftover
+ * the span started with (`startedWith`, the first period's starting amount) joins the
+ * sources, and what it ends with (`cashOnHand`, the last period's projected leftover) joins
+ * the uses: income less spending is only what moved that leftover. Anything else that
+ * moved it (a starting amount set by hand, a balance below zero) is "Adjustments", on
+ * whichever side is short, so the two sides always balance. Null with no money either way.
  */
 export function cashFlow(
   sourceIn: ReadonlyMap<string | null, number>,
   sources: ReturnType<typeof rankSeries>,
   categoryOut: ReadonlyMap<string | null, number>,
   categories: ReturnType<typeof rankSeries>,
+  { startedWith, cashOnHand }: { startedWith: number; cashOnHand: number },
 ): CashFlow | null {
   const nodes = (totals: ReadonlyMap<string | null, number>, ranked: ReturnType<typeof rankSeries>) =>
     ranked.series.map(({ key, name, color }) => {
@@ -121,10 +126,21 @@ export function cashFlow(
   const outTotal = spent.reduce((total, node) => total + node.value, 0);
   if (inTotal === 0 && outTotal === 0) return null;
 
-  const kept = inTotal - outTotal;
+  const started = Math.max(0, startedWith);
+  const onHand = Math.max(0, cashOnHand);
+  const short = inTotal + started - (outTotal + onHand);
+  const adjustments = (value: number): FlowNode => ({ key: ADJUSTMENTS, name: "Adjustments", color: NEUTRAL_COLOR, value });
   return {
-    sources: kept < 0 ? [...income, { key: FROM_LEFTOVER, name: "From leftover", color: NEUTRAL_COLOR, value: -kept }] : income,
-    total: { name: kept < 0 ? "Income and leftover" : "Income", value: Math.max(inTotal, outTotal) },
-    uses: kept > 0 ? [{ key: KEPT, name: "Kept", color: INCOME_COLOR, value: kept }, ...spent] : spent,
+    sources: [
+      ...income,
+      ...(started > 0 ? [{ key: STARTED_WITH, name: "Started with", color: NEUTRAL_COLOR, value: started }] : []),
+      ...(short < 0 ? [adjustments(-short)] : []),
+    ],
+    total: { name: started > 0 ? "Income and what you started with" : "Income", value: Math.max(inTotal + started, outTotal + onHand) },
+    uses: [
+      ...(onHand > 0 ? [{ key: CASH_ON_HAND, name: "Cash on hand", color: INCOME_COLOR, value: onHand }] : []),
+      ...spent,
+      ...(short > 0 ? [adjustments(short)] : []),
+    ],
   };
 }

@@ -196,7 +196,11 @@ function Reports({ report }: { report: Report }) {
 
     const income = sum(periods.map((period) => period.incomeCents));
     const expenses = sum(periods.map((period) => period.expenseCents));
-    const flow = cashFlow(sourceIn, sources, categoryOut, categories);
+    // What the span started with, and the leftover it ends with (the last period's projection).
+    const flow = cashFlow(sourceIn, sources, categoryOut, categories, {
+      startedWith: periods[0]?.startingCents ?? 0,
+      cashOnHand: periods.at(-1)?.endingCents ?? 0,
+    });
     return { labels, titles, categoryName, item, categoryOut, billOut, sourceIn, categories, bills, sources, stack, slices, income, expenses, flow };
   }, [report, periods]);
 
@@ -442,7 +446,7 @@ function Reports({ report }: { report: Report }) {
           <ChartCard
             wide
             title="Where the money went"
-            about="Money in by where it came from, flowing out by category, over the whole span. Kept is income less spending."
+            about="Money in by where it came from, plus what the span started with, flowing out by category and into the cash on hand at its end (the last pay period's leftover). Adjustments are what else changed the leftover, such as a starting amount set by hand."
             table={flowTable}
           >
             <SankeyChart
