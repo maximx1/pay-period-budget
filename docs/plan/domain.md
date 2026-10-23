@@ -530,6 +530,11 @@ On screen the page is "Balances"; never "accounts" (decision 11).
   7 days; "not today" snoozes every one asked about today by a day. The home screen shows
   today's asks on today's period only; the Balances page lists every due one.
 - The test app's random is fixed at 0.5: every next check is exactly its interval away.
+- **Over time** (`GET /api/balances/over-time`): owed and held across every tracked balance
+  at the end of each pay period that exists, from the one holding the earliest check to
+  today's, which is as of now. Each balance is read as the estimate is, at that moment: its
+  latest check by then, less what was paid tied to it after that check and by then. A
+  balance counts from its first check (`counted` says how many did).
 
 ### Balances in parts (phase 32)
 

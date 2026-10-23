@@ -5,6 +5,7 @@ import { formatCents } from "../../../shared/money.ts";
 import type { Report } from "../../../shared/reports.ts";
 import { NO_CATEGORY } from "../../../shared/transactions.ts";
 import { BarList, type BarRow } from "../../components/charts/BarList.tsx";
+import { ChartCard, seriesTable } from "../../components/charts/ChartCard.tsx";
 import { DataTable, type TableData } from "../../components/charts/DataTable.tsx";
 import { DonutChart, type Slice } from "../../components/charts/DonutChart.tsx";
 import { compactCents, SERIES_COLORS } from "../../components/charts/palette.ts";
@@ -29,46 +30,6 @@ const RED = SERIES_COLORS[7];
 const percent = (value: number) => `${Math.round(value)}%`;
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0);
 
-type ReportCardProps = {
-  title: string;
-  /** One line saying what is being shown and what counts. */
-  about: string;
-  /** The same numbers as a table, offered beside the chart. */
-  table?: TableData;
-  /** A choice that belongs to this report alone. */
-  controls?: ReactNode;
-  /** Takes the whole width of the section on wide screens. */
-  wide?: boolean;
-  children: ReactNode;
-};
-
-/** One report: what it is, the drawing, and the numbers behind it for anyone who would rather read them. */
-function ReportCard({ title, about, table, controls, wide, children }: ReportCardProps) {
-  const [asTable, setAsTable] = useState(false);
-  return (
-    <Card className={`flex min-w-0 flex-col gap-3 ${wide ? "xl:col-span-2" : ""}`}>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-fg">{title}</h3>
-          <p className="text-sm text-muted">{about}</p>
-        </div>
-        {table && (
-          <button
-            type="button"
-            aria-pressed={asTable}
-            onClick={() => setAsTable((value) => !value)}
-            className="-mt-2 -mr-2 min-h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-primary hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            {asTable ? "Chart" : "Table"}
-          </button>
-        )}
-      </div>
-      {controls}
-      {asTable && table ? <DataTable {...table} /> : children}
-    </Card>
-  );
-}
-
 function Tiles({ tiles }: { tiles: ReadonlyArray<{ label: string; value: string; note?: string }> }) {
   return (
     <dl className="grid grid-cols-2 gap-2 lg:grid-cols-3">
@@ -89,14 +50,6 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
     <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">{children}</div>
   </section>
 );
-
-/** A chart's series as a table: one row for each position along the bottom. */
-function seriesTable(first: string, titles: readonly string[], series: readonly ChartSeries[], format: (value: number) => string): TableData {
-  return {
-    head: [first, ...series.map((entry) => entry.name)],
-    rows: titles.map((title, i) => [title, ...series.map((entry) => (entry.values[i] == null ? "" : format(entry.values[i]!)))]),
-  };
-}
 
 /** Charts, tables and totals drawn from the pay periods a span of time covers. */
 export function ReportsPage() {
@@ -451,7 +404,7 @@ function Reports({ report }: { report: Report }) {
   return (
     <>
       <Section title="At a glance">
-        <ReportCard title="The span in figures" about="Everything dated in these pay periods, paid or upcoming.">
+        <ChartCard title="The span in figures" about="Everything dated in these pay periods, paid or upcoming.">
           <Tiles
             tiles={[
               { label: "Income", value: formatCents(d.income), note: `${formatCents(Math.round(d.income / counted))} a pay period` },
@@ -466,9 +419,9 @@ function Reports({ report }: { report: Report }) {
               { label: "Pay periods", value: String(counted) },
             ]}
           />
-        </ReportCard>
+        </ChartCard>
         {report.categories.length > 0 && (
-          <ReportCard
+          <ChartCard
             title="Not filed under a category"
             about="Money out that the category reports can only show as Uncategorised."
           >
@@ -483,10 +436,10 @@ function Reports({ report }: { report: Report }) {
                 Find them
               </Button>
             )}
-          </ReportCard>
+          </ChartCard>
         )}
         {d.flow && (
-          <ReportCard
+          <ChartCard
             wide
             title="Where the money went"
             about="Money in by where it came from, flowing out by category, over the whole span. Kept is income less spending."
@@ -497,25 +450,25 @@ function Reports({ report }: { report: Report }) {
               format={formatCents}
               label={`Cash flow: ${formatCents(d.flow.total.value)} in, by where it came from and by category spent.`}
             />
-          </ReportCard>
+          </ChartCard>
         )}
       </Section>
 
       <Section title="Pay period by pay period">
-        <ReportCard title="Income and expenses" about="What came in and what went out in each pay period." table={seriesTable("Pay period", titles, inOut, money.format)}>
+        <ChartCard title="Income and expenses" about="What came in and what went out in each pay period." table={seriesTable("Pay period", titles, inOut, money.format)}>
           <XYChart label="Income and expenses in each pay period" labels={labels} titles={titles} bars={{ series: inOut, mode: "grouped" }} {...money} />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="What each paycheck left"
           about="Income less expenses. Below the line, more went out than came in."
           table={{ head: ["Pay period", "Income less expenses"], rows: titles.map((title, i) => [title, formatCents(net[i]!)]) }}
         >
           <XYChart label="Income less expenses in each pay period" labels={labels} titles={titles} bars={{ series: netSeries, mode: "grouped" }} {...money} />
-        </ReportCard>
-        <ReportCard title="Leftover over time" about="What each pay period ended with, which is what the next one started with." table={seriesTable("Pay period", titles, leftover, money.format)}>
+        </ChartCard>
+        <ChartCard title="Leftover over time" about="What each pay period ended with, which is what the next one started with." table={seriesTable("Pay period", titles, leftover, money.format)}>
           <XYChart label="Leftover at the end of each pay period" labels={labels} titles={titles} lines={leftover} {...money} />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="Bills and transfers"
           about="Money out tied to each bill or transfer, in each pay period."
           table={seriesTable("Pay period", titles, byBill, money.format)}
@@ -525,9 +478,9 @@ function Reports({ report }: { report: Report }) {
           ) : (
             <XYChart label="Money out by bill in each pay period" labels={labels} titles={titles} bars={{ series: byBill, mode: "stacked" }} {...money} />
           )}
-        </ReportCard>
+        </ChartCard>
         {chosenItem && (
-          <ReportCard
+          <ChartCard
             title="One recurring item over time"
             about="What went to it, or came from it, in each pay period. A change in a bill's price shows as a step."
             table={{ head: ["Pay period", chosenItem.name], rows: titles.map((title, i) => [title, formatCents(itemValues[i]!)]) }}
@@ -554,13 +507,13 @@ function Reports({ report }: { report: Report }) {
                 { label: "A year, as scheduled", value: chosenItem.yearlyCents === null ? "No schedule" : formatCents(chosenItem.yearlyCents) },
               ]}
             />
-          </ReportCard>
+          </ChartCard>
         )}
-        <ReportCard title="Spending by category" about="Money out under each category, in each pay period." table={seriesTable("Pay period", titles, byCategory, money.format)}>
+        <ChartCard title="Spending by category" about="Money out under each category, in each pay period." table={seriesTable("Pay period", titles, byCategory, money.format)}>
           <XYChart label="Money out by category in each pay period" labels={labels} titles={titles} bars={{ series: byCategory, mode: "stacked" }} {...money} />
-        </ReportCard>
+        </ChartCard>
         {chosenCategory && (
-          <ReportCard
+          <ChartCard
             title="One category over time"
             about="What was spent under it in each pay period, against that period's limit where it had one."
             table={seriesTable("Pay period", titles, [...categorySpent, ...categoryLimit], money.format)}
@@ -581,33 +534,33 @@ function Reports({ report }: { report: Report }) {
               lines={hasLimitLine ? categoryLimit : []}
               {...money}
             />
-          </ReportCard>
+          </ChartCard>
         )}
-        <ReportCard
+        <ChartCard
           title="Committed and everything else"
           about="How much of each pay period's spending went to bills, how much was sent to transfers (less what came back), and the rest."
           table={seriesTable("Pay period", titles, committed, money.format)}
         >
           <XYChart label="Spending on bills, transfers and the rest, in each pay period" labels={labels} titles={titles} bars={{ series: committed, mode: "stacked" }} {...money} />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="Shares of income"
           about="The part of each pay period's income that went to bills, the part sent to transfers, and the part left over."
           table={seriesTable("Pay period", titles, shares, percent)}
         >
           <XYChart label="Bills, transfers and leftover as shares of income" labels={labels} titles={titles} lines={shares} format={percent} formatAxis={percent} />
-        </ReportCard>
+        </ChartCard>
         {hasTransfers && (
-          <ReportCard
+          <ChartCard
             title="Transfers"
             about={`Money sent to your other accounts and brought back, each account's counted once a pay period as the difference. Over this span, ${formatCents(Math.abs(putAway))} more was ${putAway >= 0 ? "sent than brought back" : "brought back than sent"}.`}
             table={seriesTable("Pay period", titles, transfers, money.format)}
           >
             <XYChart label="Transfers sent and brought back in each pay period" labels={labels} titles={titles} bars={{ series: transfers, mode: "grouped" }} {...money} />
-          </ReportCard>
+          </ChartCard>
         )}
         {pace.length > 0 && (
-          <ReportCard
+          <ChartCard
             title="Spending pace"
             about="Money out added up day by day through a pay period: this one so far, against the average of the ones before it."
             table={seriesTable("Day", Array.from({ length: paceDays }, (_, day) => `Day ${day + 1}`), pace, money.format)}
@@ -619,24 +572,24 @@ function Reports({ report }: { report: Report }) {
               lines={pace}
               {...money}
             />
-          </ReportCard>
+          </ChartCard>
         )}
       </Section>
 
       <Section title="Where it went">
-        <ReportCard title="By category" about="Every dollar out over the span, by the category it was filed under.">
+        <ChartCard title="By category" about="Every dollar out over the span, by the category it was filed under.">
           <DonutChart label="Money out by category" totalLabel="spent" slices={d.slices(d.categories, d.categoryOut)} format={formatCents} />
-        </ReportCard>
-        <ReportCard title="By bill" about="Every dollar out over the span, by the bill or transfer it was tied to.">
+        </ChartCard>
+        <ChartCard title="By bill" about="Every dollar out over the span, by the bill or transfer it was tied to.">
           <DonutChart label="Money out by bill" totalLabel="spent" slices={d.slices(d.bills, d.billOut)} format={formatCents} />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="Where income came from"
           about="Every dollar in over the span, by the income it was tied to. A transfer counts where more came back from it than was sent in a pay period."
         >
           <DonutChart label="Money in by source" totalLabel="came in" slices={d.slices(d.sources, d.sourceIn)} format={formatCents} />
-        </ReportCard>
-        <ReportCard title="Names most was spent under" about="Transactions with the same name, whatever its capitals, added together.">
+        </ChartCard>
+        <ChartCard title="Names most was spent under" about="Transactions with the same name, whatever its capitals, added together.">
           <BarList
             rows={report.names.map((entry) => ({
               name: entry.name,
@@ -645,11 +598,11 @@ function Reports({ report }: { report: Report }) {
               detail: `${entry.count} transaction${entry.count === 1 ? "" : "s"}`,
             }))}
           />
-        </ReportCard>
-        <ReportCard title="Largest one-off payments" about="The ten biggest single amounts out, not counting what your schedules added.">
+        </ChartCard>
+        <ChartCard title="Largest one-off payments" about="The ten biggest single amounts out, not counting what your schedules added.">
           <DataTable head={["Name", "Date", "Amount"]} rows={transactionRows(report.largest)} />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="Days of the week"
           about="Money out by the day it was dated. Bills land on their due dates, whatever the day."
           table={{ head: ["Day", "Money out"], rows: weekdayNames.map((day, i) => [day, formatCents(report.weekdays[i] ?? 0)]) }}
@@ -661,17 +614,17 @@ function Reports({ report }: { report: Report }) {
             {...money}
             height={180}
           />
-        </ReportCard>
+        </ChartCard>
       </Section>
 
       <Section title="Limits">
-        <ReportCard title="Spending against limits" about="For each category, what was spent in the pay periods that had a limit, against those limits added up.">
+        <ChartCard title="Spending against limits" about="For each category, what was spent in the pay periods that had a limit, against those limits added up.">
           <BarList rows={limitRows} empty="No pay period in this span has a category limit." />
-        </ReportCard>
-        <ReportCard title="Kept or gone over" about="Each limit in each pay period: what was left of it, or how far over it went.">
+        </ChartCard>
+        <ChartCard title="Kept or gone over" about="Each limit in each pay period: what was left of it, or how far over it went.">
           <DataTable {...limitGrid} empty="No pay period in this span has a category limit." />
-        </ReportCard>
-        <ReportCard
+        </ChartCard>
+        <ChartCard
           title="This pay period against your usual"
           about={
             latest && before.length > 0
@@ -680,25 +633,25 @@ function Reports({ report }: { report: Report }) {
           }
         >
           <DataTable {...againstUsual} empty="This needs at least two pay periods in the span." />
-        </ReportCard>
+        </ChartCard>
       </Section>
 
       <Section title="Bills and what is coming">
-        <ReportCard title="What each bill costs a year" about="Each recurring item at its usual amount over the next twelve months, beside what it actually came to in this span.">
+        <ChartCard title="What each bill costs a year" about="Each recurring item at its usual amount over the next twelve months, beside what it actually came to in this span.">
           <DataTable {...yearly} empty="No recurring items yet." />
-        </ReportCard>
+        </ChartCard>
         {ahead.some((series) => series.values.some((value) => value)) && (
-          <ReportCard
+          <ChartCard
             title="The next six pay periods"
             about="What your schedules bring: income and bills at their usual amounts. A tall orange bar is a heavy paycheck."
             table={seriesTable("Pay period", aheadTitles, ahead, money.format)}
           >
             <XYChart label="Scheduled income and bills in the next six pay periods" labels={aheadLabels} titles={aheadTitles} bars={{ series: ahead, mode: "grouped" }} {...money} />
-          </ReportCard>
+          </ChartCard>
         )}
-        <ReportCard title="Not yet marked paid" about="Dated before today and still upcoming: a bill that was skipped, or one that was paid and never ticked.">
+        <ChartCard title="Not yet marked paid" about="Dated before today and still upcoming: a bill that was skipped, or one that was paid and never ticked.">
           <DataTable head={["Name", "Date", "Amount"]} rows={transactionRows(report.unpaid)} empty="Nothing from before today is still upcoming." />
-        </ReportCard>
+        </ChartCard>
       </Section>
 
       <SearchDialog

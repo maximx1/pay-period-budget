@@ -447,6 +447,35 @@ describe("a balance in parts", () => {
   });
 });
 
+describe("balances over time", () => {
+  it("adds up owed and held at the end of each pay period, as the checks and the payments since them put it", async () => {
+    expect((await (await ann.get("/api/balances/over-time")).json()).points).toEqual([]);
+
+    const loan = await addItem(ann, "Car loan");
+    const savings = await addItem(ann, "Savings", { kind: "transfer" });
+    await track(ann, loan.id, { balanceCents: -100_000, asOf: "2025-12-20T09:00" });
+    await pay(ann, loan.id, "2026-01-05", 10_000);
+    await ann.post(`/api/balances/${loan.id}/checks`, { balanceCents: -85_000, asOf: "2026-01-14T08:00" });
+    await pay(ann, loan.id, "2026-01-15", 5_000);
+    // Dated after now: not yet, even marked paid.
+    await pay(ann, loan.id, "2026-01-20", 5_000);
+    await track(ann, savings.id, { balanceCents: 50_000 });
+
+    const response = await ann.get("/api/balances/over-time");
+    expect(response.status).toBe(200);
+    expect((await response.json()).points).toEqual([
+      { startDate: "2025-12-16", endDate: "2025-12-29", current: false, owedCents: 100_000, heldCents: 0, counted: 1 },
+      { startDate: "2025-12-30", endDate: "2026-01-12", current: false, owedCents: 90_000, heldCents: 0, counted: 1 },
+      // Today's, as of now: the loan's later check less the payment since, and the savings, checked today.
+      { startDate: "2026-01-13", endDate: "2026-01-26", current: true, owedCents: 80_000, heldCents: 50_000, counted: 2 },
+    ]);
+
+    const bob = await signUp("bob");
+    expect((await (await bob.get("/api/balances/over-time")).json()).points).toEqual([]);
+    expect((await t.client().get("/api/balances/over-time")).status).toBe(401);
+  });
+});
+
 describe("another user", () => {
   it("can't see, track, check, snooze or stop someone else's balance", async () => {
     const loan = await addItem(ann, "Ann's loan");

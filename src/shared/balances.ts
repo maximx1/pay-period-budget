@@ -299,3 +299,22 @@ export type BalanceHistoryResponse = {
 };
 
 export type TrackedBalanceResponse = { balance: TrackedBalance };
+
+/** What every tracked balance came to at the end of one pay period: today's is as of now. */
+export type BalancesAtPoint = {
+  startDate: LocalDate;
+  endDate: LocalDate;
+  /** Today's period, counted up to now. */
+  current: boolean;
+  /** Every balance below zero, as a positive amount. */
+  owedCents: number;
+  /** Every balance at or above zero. */
+  heldCents: number;
+  /** How many balances had been checked by then: one counts from its first check. */
+  counted: number;
+};
+
+export type BalancesOverTimeResponse = {
+  /** Oldest first: from the period holding the first check of any tracked balance to today's. */
+  points: BalancesAtPoint[];
+};

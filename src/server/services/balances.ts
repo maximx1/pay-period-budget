@@ -5,6 +5,8 @@ import {
   canTrackBalance,
   type BalanceCheck,
   type BalanceCheckInput,
+  type BalancesAtPoint,
+  type BalancesOverTimeResponse,
   type BalancePartPatch,
   type BalanceHistoryResponse,
   type BalanceSettings,
@@ -268,6 +270,48 @@ export function createBalanceService(deps: {
 
   return {
     list,
+
+    /**
+     * Owed and held across every tracked balance at the end of each pay period, from the one
+     * holding the earliest check to today's (as of now). Each balance is worked out as the
+     * estimate is: its latest check by then, less what was paid tied to it after that check
+     * and by then. A balance counts from its first check.
+     */
+    async overTime(userId: string): Promise<BalancesOverTimeResponse> {
+      const { timezone } = await settingsOf(store, userId);
+      const today = await periods.today(store, userId);
+      const current = nowIn(timezone, now());
+      const histories = [];
+      for (const row of await store.balances.listTracked(userId)) {
+        // Newest first, as the estimate reads them.
+        const checks = await store.balances.listChecks(userId, row.billIncomeId);
+        const first = checks.at(-1);
+        if (!first) continue;
+        histories.push({ checks, paid: await store.transactions.listPaidForBillOrIncomeAfter(userId, row.billIncomeId, first.asOf) });
+      }
+      const earliest = histories.map(({ checks }) => dateOf(checks.at(-1)!.asOf)).sort()[0];
+      if (earliest === undefined) return { points: [] };
+
+      const points: BalancesAtPoint[] = [];
+      for (const period of await periods.list(userId)) {
+        if (period.endDate < earliest || period.startDate > today) continue;
+        const isCurrent = period.endDate >= today;
+        const at = isCurrent ? current : `${period.endDate}T23:59`;
+        const point = { startDate: period.startDate, endDate: period.endDate, current: isCurrent, owedCents: 0, heldCents: 0, counted: 0 };
+        for (const { checks, paid } of histories) {
+          const check = checks.find((candidate) => candidate.asOf <= at);
+          if (!check) continue;
+          const cents = paid
+            .filter((transaction) => transaction.occursAt > check.asOf && transaction.occursAt <= at)
+            .reduce((sum, transaction) => sum - transaction.amountCents, check.balanceCents);
+          if (cents < 0) point.owedCents -= cents;
+          else point.heldCents += cents;
+          point.counted += 1;
+        }
+        points.push(point);
+      }
+      return { points };
+    },
 
     async history(userId: string, billIncomeId: string): Promise<BalanceHistoryResponse> {
       const { item, tracked } = await loadTracked(store, userId, billIncomeId);

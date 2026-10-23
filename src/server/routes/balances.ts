@@ -4,6 +4,7 @@ import {
   balancePartPatchSchema,
   balanceSettingsSchema,
   type BalanceHistoryResponse,
+  type BalancesOverTimeResponse,
   type BalancesResponse,
   snoozeInputSchema,
   type TrackedBalanceResponse,
@@ -30,6 +31,8 @@ export function balanceRoutes(deps: { balances: BalanceService; authed: Middlewa
     await balances.snoozeAsks(c.var.user.id);
     return c.body(null, 204);
   });
+
+  routes.get("/over-time", async (c) => c.json<BalancesOverTimeResponse>(await balances.overTime(c.var.user.id)));
 
   routes.get("/:billIncomeId", async (c) =>
     c.json<BalanceHistoryResponse>(await balances.history(c.var.user.id, c.req.param("billIncomeId"))),

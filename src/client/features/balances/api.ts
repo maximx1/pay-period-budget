@@ -4,6 +4,7 @@ import type {
   BalanceHistoryResponse,
   BalancePartPatch,
   BalanceSettings,
+  BalancesOverTimeResponse,
   BalancesResponse,
   TrackBalanceInput,
   TrackedBalancePatch,
@@ -28,6 +29,15 @@ export const balancePath = (billIncomeId: string, tracked: boolean) =>
 /** Every tracked balance, what to ask about today, and the settings. */
 export function useBalances() {
   return useQuery({ queryKey: balanceKeys.all, queryFn: () => api.get<BalancesResponse>("/api/balances") });
+}
+
+/** Owed and held across every tracked balance at the end of each pay period. */
+export function useBalancesOverTime() {
+  return useQuery({
+    // Beside `all`, not under it: under the transactions prefix, so a payment marked paid refreshes it.
+    queryKey: [...billsIncomeKeys.transactions, "balances-over-time"] as const,
+    queryFn: () => api.get<BalancesOverTimeResponse>("/api/balances/over-time"),
+  });
 }
 
 /** One balance with its checks and what has been paid since the last. Pass null for none. */

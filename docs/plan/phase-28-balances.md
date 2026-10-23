@@ -233,3 +233,19 @@ with a new check. Now:
 **Checked in the browser** on the dev account at 1280px and 360px: 8.1% to 9.99% from the
 pencil, with the interest a month following and no new check in the list; Add a check's APR
 then showed 9.99; "1000" was refused with "Enter a rate like 24.99".
+
+## Balances over time (2026-10-22)
+
+Asked for: "a total combined chart with debt and savings on the balances page".
+
+- `GET /api/balances/over-time` (`overTime` in `services/balances.ts`): one point per pay
+  period that exists, from the one holding the earliest check to today's, with owed, held
+  and how many balances were counted. The rule is in `domain.md` ("Over time").
+- The Balances page shows "Over time" under the totals once there are two points: Owed and
+  Held as lines (a side that is zero throughout is left out), with a Table view. The card
+  with the Chart/Table toggle moved from the Reports page to
+  `components/charts/ChartCard.tsx`, with `seriesTable`, for both pages to use.
+
+**Checked in the browser** on the dev account at 1024px and 360px, after adding two earlier
+pay periods and back-dated checks there: three points, the readout and the table matching
+the API. The Reports page still shows its cards and Table buttons.

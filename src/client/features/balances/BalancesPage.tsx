@@ -2,18 +2,60 @@ import { Landmark, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import type { TrackedBalance } from "../../../shared/balances.ts";
-import { formatDay } from "../../../shared/dates.ts";
+import { formatDateRange, formatDay, formatMonthDay } from "../../../shared/dates.ts";
 import { formatCents } from "../../../shared/money.ts";
+import { ChartCard, seriesTable } from "../../components/charts/ChartCard.tsx";
+import { compactCents, SERIES_COLORS } from "../../components/charts/palette.ts";
+import { type ChartSeries, XYChart } from "../../components/charts/XYChart.tsx";
 import { Alert } from "../../components/ui/Alert.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Card } from "../../components/ui/Card.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { cn } from "../../lib/cn.ts";
-import { useBalances } from "./api.ts";
+import { useBalances, useBalancesOverTime } from "./api.ts";
 import { BalanceHistoryDialog } from "./BalanceHistoryDialog.tsx";
 import { CheckBalanceRow, estimateLine } from "./CheckBalanceRow.tsx";
 import { TrackBalanceDialog } from "./TrackBalanceDialog.tsx";
+
+/**
+ * Owed and held across every balance at the end of each pay period, from the one holding
+ * the first check to today's. Shown once there are two periods to join; a side that has
+ * never been above zero (no savings tracked, say) is left out.
+ */
+function OverTime() {
+  const overTime = useBalancesOverTime();
+  const points = overTime.data?.points ?? [];
+  if (points.length < 2) return null;
+
+  const labels = points.map((point) => formatMonthDay(point.startDate));
+  const titles = points.map((point) => `${formatDateRange(point.startDate, point.endDate)}${point.current ? " (so far)" : ""}`);
+  const lines: ChartSeries[] = [
+    { name: "Owed", color: SERIES_COLORS[0], values: points.map((point) => point.owedCents) },
+    { name: "Held", color: SERIES_COLORS[1], values: points.map((point) => point.heldCents) },
+  ].filter((series) => series.values.some((cents) => cents !== 0));
+  if (lines.length === 0) return null;
+  // A balance tracked later joins partway: the totals jump there, and the note says why.
+  const joined = points.some((point) => point.counted !== points.at(-1)!.counted);
+
+  return (
+    <ChartCard
+      title="Over time"
+      about={`What all of them owed and held at the end of each pay period, by the checks and the payments since.${joined ? " Each balance counts from its first check." : ""}`}
+      table={seriesTable("Pay period", titles, lines, (cents) => formatCents(cents))}
+    >
+      <XYChart
+        label="Owed and held at the end of each pay period"
+        labels={labels}
+        titles={titles}
+        lines={lines}
+        format={(cents) => formatCents(cents)}
+        formatAxis={compactCents}
+        height={200}
+      />
+    </ChartCard>
+  );
+}
 
 /**
  * What the bills and transfers whose balances are tracked owe or hold, the ones due for a
@@ -78,6 +120,8 @@ export function BalancesPage() {
               <dd className="text-lg font-semibold break-words text-fg tabular-nums">{formatCents(balances.data.totals.heldCents)}</dd>
             </div>
           </dl>
+
+          <OverTime />
 
           {due.length > 0 && (
             <section>
